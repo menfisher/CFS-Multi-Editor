@@ -1,0 +1,27 @@
+{% raw %}
+<nav>
+    <div class="nav-wrapper">
+        <a :href="viewMode === 'shared' ? '/?mode=shared' : '/'" class="brand-logo"><i class="material-icons">share</i>Contacts</a>
+        <a href="#" data-target="mobile-menu" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+        
+        <ul id="nav-mobile" class="right hide-on-med-and-down">
+            <template v-if="!hasLoadError && !isLoading">
+                <li><span><i class="material-icons left">account_circle</i>{{accountLabel}}</span></li>
+                <li v-if="viewMode === 'shared'"><a href="#" @click.prevent="refreshSharedPage"><i class="material-icons left" >refresh</i>Refresh</a></li>
+                <li v-else><a href="/"><i class="material-icons left" >refresh</i>Refresh</a></li>
+                <li v-if="viewMode === 'shared'"><a :href="switchAccountUrl"><i class="material-icons left">logout</i>Switch account</a></li>
+            </template>
+            
+        </ul>
+    </div>
+</nav>
+
+<ul class="sidenav" id="mobile-menu">
+    <template v-if="!hasLoadError && !isLoading">
+        <li><span><i class="material-icons left">account_circle</i>{{accountLabel}}</span></li>
+        <li v-if="viewMode === 'shared'"><a href="#" @click.prevent="refreshSharedPage"><i class="material-icons left" >refresh</i>Refresh</a></li>
+        <li v-else><a href="/"><i class="material-icons left" >refresh</i>Refresh</a></li>
+        <li v-if="viewMode === 'shared'"><a :href="switchAccountUrl"><i class="material-icons left">logout</i>Switch account</a></li>
+    </template>
+</ul>
+{% endraw %}

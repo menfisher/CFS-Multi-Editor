@@ -1,0 +1,128 @@
+<main>
+    <template v-if="hasLoadError">
+        <div class="red-text">{{error}}</div>
+    </template>
+    <template v-else>
+        <h5 class="teal-text" v-if="viewMode !== 'shared'">Your groups</h5>
+        <div v-if="viewMode !== 'shared' && syncStatusMessage" class="green-text">
+            {{syncStatusMessage}}
+        </div>
+        <div v-if="viewMode !== 'shared' && shareStatusMessage" :class="shareStatusIsError ? 'red-text' : 'green-text'">
+            {{shareStatusMessage}}
+        </div>
+        <div v-if="viewMode !== 'shared' && ownerSyncRequiredMessage" class="amber-text text-darken-3">
+            {{ownerSyncRequiredMessage}}
+        </div>
+        <table class="responsive-table striped owner-groups-table" v-if="viewMode !== 'shared'">
+            <tr><th>Group name</th><th>Status</th><th>Contacts</th><th>Share</th><th>Sync</th><th>Skipped</th></tr>
+            
+            <template v-for="(group, index) in groupsList">
+                <tr :key="group.resourceName || index">
+                <td>{{group.name}}</td>
+
+                <td class="teal-text" v-if="group.shared.length">
+                     <i class="material-icons left">group</i>Shared ({{group.shared.length}})
+                </td>
+                <td v-else>
+                     <i class="material-icons left">person</i>Not shared
+                </td>
+                
+                <td>{{group.memberCount ? group.memberCount : 0}}</td>
+                
+                <td>
+                    <button class="btn waves-effect waves-light modal-trigger"
+                        data-target="popup-share"
+                        @click='resetPopupData({
+                            title: "Share with people",
+                            name: group.name,
+                            resourceName: group.resourceName,
+                            memberCount: group.memberCount,
+                            members: group.members,
+                            groupType: group.groupType,
+                            shared: group.shared,
+                            notifyByEmail: true,
+                            owner: profile.email,
+                            callback: shareContactGroup,
+                        })'
+                        ><i class="material-icons">group_add</i>
+                    </button>
+                </td>
+                <td>
+                    <button
+                        type="button"
+                        class="btn waves-effect waves-light owner-sync-btn"
+                        :class="{'is-syncing': syncingGroups[group.resourceName], 'is-zero': isOwnerSyncZeroState(group)}"
+                        @click="startOwnerSync(group.resourceName, true)"
+                        title="Sync now"
+                    >
+                        <span v-if="group.resourceName && (ownerSyncLabels[group.resourceName] || syncingGroups[group.resourceName] || activeOwnerSyncResourceName === group.resourceName || shouldShowOwnerSyncText(group))">
+                            {{getOwnerSyncButtonText(group)}}
+                        </span>
+                        <i v-else class="material-icons" :class="{'sync-rotating': syncingGroups[group.resourceName]}">sync</i>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn waves-effect waves-light owner-reset-sync-btn"
+                        @click.stop.prevent="resetGroupSyncState(group.resourceName, group.name)"
+                        title="Reset sync state for this group"
+                    >
+                        Reset
+                    </button>
+                </td>
+                <td>
+                    <button
+                        v-if="group.skippedCount && group.skippedCount > 0"
+                        class="btn amber darken-2 waves-effect waves-light"
+                        @click="showSkippedContacts(group.resourceName, group.name)"
+                        title="Show skipped contacts"
+                    >
+                        {{group.skippedCount}}
+                    </button>
+                    <span v-else>-</span>
+                </td>
+                </tr>
+            </template>
+        </table>
+        
+        <!-- Contacts Groups Shared with You -->
+        <template v-if="viewMode === 'shared'">
+            <h5 class="teal-text">Groups shared with you</h5>
+            <div class="blue-grey-text text-darken-1 shared-help-text">
+                Recipient action imports new shared contacts and retries failed imports. Owner sync pushes later contact updates.
+            </div>
+            <div v-if="!recipientConnected">
+                <button class="btn waves-effect waves-light" @click="connectAccount">
+                    <i class="material-icons left">link</i>Connect account
+                </button>
+            </div>
+            <table class="responsive-table striped shared-groups-table">
+                <tr><th>Group name</th><th>Owner</th><th>Contacts</th><th>Status</th><th>Import</th></tr>
+                
+                <template v-for="(group, index) in sharedGroups">
+                    <tr :key="`${group.owner || ''}|${group.resourceName || index}`">
+                        <td class="shared-col-name" :title="group.name">{{group.name}}</td>
+                        <td class="shared-col-owner" :title="group.owner">{{group.owner}}</td>
+                        <td class="shared-col-contacts">{{group.memberCount ? group.memberCount : 0}}</td>
+                        <td class="shared-col-status">
+                            <span v-if="group.memberCount">
+                                {{getSharedImportedCount(group)}}/{{Number(group.memberCount)}}
+                                <span v-if="group.status"> - {{formatSharedStatusLabel(group)}}</span>
+                            </span>
+                            <span v-else>{{group.status ? group.status : "-"}}</span>
+                        </td>
+                        <td class="shared-col-sync">
+                            <button
+                                class="btn waves-effect waves-light"
+                                :class="{disabled: isSharedGroupSyncing(group)}"
+                                @click="syncSharedRecipientGroup(group)"
+                                title="Import new contacts or retry failed contacts for this group"
+                            >
+                                <i class="material-icons" :class="{'sync-rotating': isSharedGroupSyncing(group)}">download</i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+            </table>
+        </template>
+    </template>
+</main>

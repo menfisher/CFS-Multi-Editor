@@ -1,0 +1,21 @@
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+  {% if show_pending_edits_nav %}
+    <a class="mobile-bottom-nav-link{% if request.url.path.startswith('/m/pending-edits') %} is-active{% endif %}" href="/m/pending-edits">Pending</a>
+  {% else %}
+    <form method="post" action="/m/contacts/sync" id="mobile-contacts-sync-form">
+      <button
+        type="submit"
+        id="mobile-contacts-sync-button"
+        class="{% if sync_needs_attention %}mobile-sync-reminder{% endif %}"
+        data-sync-pending="{{ 'true' if sync_needs_attention else 'false' }}"
+      >Sync</button>
+    </form>
+  {% endif %}
+  <a class="mobile-bottom-nav-link{% if request.url.path.startswith('/m/contacts') and not request.url.path.startswith('/m/pending-edits') %} is-active{% endif %}" href="/m/contacts/">Contacts</a>
+  <a
+    class="mobile-bottom-nav-link{% if request.url.path.startswith('/auth/logout') %} is-active{% endif %}"
+    href="/auth/logout"
+    id="mobile-logout-link"
+    data-multi-editor="{{ 'true' if multi_editor_enabled else 'false' }}"
+  >Log out</a>
+</nav>

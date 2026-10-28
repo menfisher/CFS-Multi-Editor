@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Contacts Settings | Contacts Website{% endblock %}
+
+{% block content %}
+  <div class="settings-page">
+  <section class="panel page-top-panel meetingdata-filter-panel" style="--meetingdata-title-bar-color: {{ selected_preset.contacts_title_bar_color }};">
+    <div class="editor-actions">
+      <div>
+        <h2>Contacts Settings</h2>
+        <p class="muted">Configure Contacts row colors for the current Book Layout.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel preset-editor-panel">
+    <form method="post" action="/presets/book-layouts/save" data-preset-form>
+      <input type="hidden" name="return_to" value="contacts">
+      <input type="hidden" name="preset_id" value="{{ selected_preset.id or '' }}">
+      <input type="hidden" name="name" value="{{ selected_preset.name }}">
+      <input type="hidden" name="book_title" value="{{ selected_preset.book_title }}">
+      <input type="hidden" name="trim_width_in" value="{{ selected_preset.trim_width_in }}">
+      <input type="hidden" name="trim_height_in" value="{{ selected_preset.trim_height_in }}">
+      <input type="hidden" name="margin_left_in" value="{{ selected_preset.margin_left_in }}">
+      <input type="hidden" name="margin_right_in" value="{{ selected_preset.margin_right_in }}">
+      <input type="hidden" name="margin_top_in" value="{{ selected_preset.margin_top_in }}">
+      <input type="hidden" name="margin_bottom_in" value="{{ selected_preset.margin_bottom_in }}">
+      <input type="hidden" name="font_family" value="{{ selected_preset.font_family }}">
+      <input type="hidden" name="base_font_size_pt" value="{{ selected_preset.base_font_size_pt }}">
+      <input type="hidden" name="title_font_size_pt" value="{{ selected_preset.title_font_size_pt }}">
+      <input type="hidden" name="toc_font_size_pt" value="{{ selected_preset.toc_font_size_pt }}">
+      <input type="hidden" name="line_height" value="{{ selected_preset.line_height }}">
+      <input type="hidden" name="meeting_table_column_count" value="{{ selected_preset.meeting_table_column_count }}">
+      <input type="hidden" name="meeting_table_column_gap_px" value="{{ selected_preset.meeting_table_column_gap_px }}">
+      <input type="hidden" name="screen_preview_scale" value="{{ selected_preset.screen_preview_scale }}">
+      <input type="hidden" name="meetingdata_title_bar_color" value="{{ selected_preset.meetingdata_title_bar_color }}">
+      <input type="hidden" name="meetingdata_primary_row_color" value="{{ selected_preset.meetingdata_primary_row_color }}">
+      <input type="hidden" name="meetingdata_secondary_row_color" value="{{ selected_preset.meetingdata_secondary_row_color }}">
+      <input type="hidden" name="meetingdata_highlight_row_color" value="{{ selected_preset.meetingdata_highlight_row_color }}">
+      {% if selected_preset.is_default %}
+        <input type="hidden" name="is_default" value="1">
+      {% endif %}
+
+      <section class="subcard">
+        <div class="subcard-title">Contacts Colors</div>
+        <div class="editor-grid editor-grid-color-quad">
+          <div>
+            <label class="form-label" for="contacts_title_bar_color">Title Bar Color</label>
+            <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_title_bar_color }};">
+              <input id="contacts_title_bar_color" name="contacts_title_bar_color" type="color" value="{{ selected_preset.contacts_title_bar_color }}" data-color-input>
+              <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_title_bar_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="contacts_primary_row_color">Primary Row Color</label>
+            <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_primary_row_color }};">
+              <input id="contacts_primary_row_color" name="contacts_primary_row_color" type="color" value="{{ selected_preset.contacts_primary_row_color }}" data-color-input>
+              <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_primary_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="contacts_secondary_row_color">Secondary Row Color</label>
+            <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_secondary_row_color }};">
+              <input id="contacts_secondary_row_color" name="contacts_secondary_row_color" type="color" value="{{ selected_preset.contacts_secondary_row_color }}" data-color-input>
+              <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_secondary_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="contacts_highlight_row_color">Cursor Hover Color</label>
+            <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_highlight_row_color }};">
+              <input id="contacts_highlight_row_color" name="contacts_highlight_row_color" type="color" value="{{ selected_preset.contacts_highlight_row_color }}" data-color-input>
+              <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_highlight_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="editor-savebar">
+        <button type="submit" class="primary-save-button">Save Settings</button>
+      </div>
+    </form>
+  </section>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="/static/js/preset_editor.js?v=4"></script>
+{% endblock %}

@@ -1,0 +1,553 @@
+{% extends "base.html" %}
+
+{% block title %}Address Book PDF | Contacts Website{% endblock %}
+{% block body_class %}address-book-pdf-page-body{% endblock %}
+
+{% block content %}
+  <form method="post" action="/address-book/pdf/save" class="address-book-pdf-page" data-address-book-pdf-form data-preset-form>
+    <input type="hidden" name="preset_id" value="{{ selected_preset.id or '' }}">
+    <input type="hidden" name="return_to" value="address-book-pdf">
+    <input type="hidden" name="is_default" value="{{ 1 if selected_preset.is_default else 0 }}">
+    <input type="hidden" name="meetingdata_title_bar_color" value="{{ selected_preset.meetingdata_title_bar_color }}">
+    <input type="hidden" name="meetingdata_primary_row_color" value="{{ selected_preset.meetingdata_primary_row_color }}">
+    <input type="hidden" name="meetingdata_secondary_row_color" value="{{ selected_preset.meetingdata_secondary_row_color }}">
+    <input type="hidden" name="meetingdata_highlight_row_color" value="{{ selected_preset.meetingdata_highlight_row_color }}">
+    <input type="hidden" name="contacts_title_bar_color" value="{{ selected_preset.contacts_title_bar_color }}">
+    <input type="hidden" name="contacts_primary_row_color" value="{{ selected_preset.contacts_primary_row_color }}">
+    <input type="hidden" name="contacts_secondary_row_color" value="{{ selected_preset.contacts_secondary_row_color }}">
+    <input type="hidden" name="contacts_highlight_row_color" value="{{ selected_preset.contacts_highlight_row_color }}">
+    <input type="hidden" name="meeting_table_column_count" value="{{ selected_preset.meeting_table_column_count }}">
+    <input type="hidden" name="meeting_table_column_gap_px" value="{{ selected_preset.meeting_table_column_gap_px }}">
+    <input type="hidden" name="screen_preview_scale" value="{{ selected_preset.screen_preview_scale }}">
+    <input type="hidden" name="print_order_json" value="{{ address_book_settings.print_order_json }}" data-address-book-pdf-print-order-json>
+    <input type="hidden" name="print_field_names" value="" data-address-book-pdf-print-field-names>
+    <input type="hidden" name="include_cover_image" value="0" data-address-book-pdf-include-cover-value>
+    <input type="hidden" name="include_cover_title" value="0" data-address-book-pdf-include-cover-title-value>
+    <input type="hidden" name="include_cover_date" value="0" data-address-book-pdf-include-cover-date-value>
+    <input type="hidden" name="cover_image_data" value="" data-address-book-pdf-cover-image-data>
+    <input type="hidden" name="cover_image_width" value="" data-address-book-pdf-cover-image-width>
+    <input type="hidden" name="cover_image_height" value="" data-address-book-pdf-cover-image-height>
+    <input type="hidden" name="cover_image_label" value="" data-address-book-pdf-cover-image-label>
+    <input type="hidden" name="cover_title_text" value="" data-address-book-pdf-cover-title-text>
+    <input type="hidden" name="cover_title_font_size" value="30" data-address-book-pdf-cover-title-font-size>
+    <input type="hidden" name="cover_title_color" value="#ffffff" data-address-book-pdf-cover-title-color>
+    <input type="hidden" name="cover_title_effect" value="shadow" data-address-book-pdf-cover-title-effect>
+    <input type="hidden" name="cover_title_x" value="0.5" data-address-book-pdf-cover-title-x>
+    <input type="hidden" name="cover_title_y" value="0.24" data-address-book-pdf-cover-title-y>
+    <input type="hidden" name="cover_title_preview_width" value="" data-address-book-pdf-cover-title-preview-width>
+    <input type="hidden" name="cover_date_text" value="" data-address-book-pdf-cover-date-text>
+    <input type="hidden" name="cover_date_font_size" value="18" data-address-book-pdf-cover-date-font-size>
+    <input type="hidden" name="cover_date_color" value="#ffffff" data-address-book-pdf-cover-date-color>
+    <input type="hidden" name="cover_date_x" value="0.5" data-address-book-pdf-cover-date-x>
+    <input type="hidden" name="cover_date_y" value="0.82" data-address-book-pdf-cover-date-y>
+    <input type="hidden" name="include_insert_file" value="0" data-address-book-pdf-include-insert-value>
+    <input type="hidden" name="insert_file_data" value="" data-address-book-pdf-insert-file-data>
+    <input type="hidden" name="insert_file_mime" value="" data-address-book-pdf-insert-file-mime>
+    <input type="hidden" name="insert_file_width" value="" data-address-book-pdf-insert-file-width>
+    <input type="hidden" name="insert_file_height" value="" data-address-book-pdf-insert-file-height>
+    <input type="hidden" name="insert_file_label" value="" data-address-book-pdf-insert-file-label>
+    <input type="hidden" name="insert_file_crop" value="" data-address-book-pdf-insert-file-crop>
+
+    <aside class="panel address-book-pdf-sidebar address-book-pdf-sidebar-left">
+      <section class="address-book-pdf-palette">
+        <label class="form-label" for="address-book-pdf-preset-id">Book Layout</label>
+        <select id="address-book-pdf-preset-id" data-address-book-pdf-preset-picker>
+          {% if selected_preset.id and not selected_preset.is_default %}
+            <option value="__default__">Default</option>
+          {% endif %}
+          {% for preset in presets %}
+            <option value="{{ preset.id }}" {% if selected_preset.id == preset.id %}selected{% endif %}>
+              {{ preset.name }}{% if preset.is_default %} (Default){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </section>
+
+      <section
+        class="address-book-pdf-palette address-book-pdf-picker-palette"
+        data-address-book-pdf-picker='{{ address_book_picker_json|forceescape }}'
+        data-address-book-pdf-meeting-preview='{{ address_book_meeting_preview_json|forceescape }}'
+      >
+        <div class="address-book-pdf-palette-title">Preview</div>
+        <label class="form-label" for="address-book-pdf-field-picker">
+          <span>All Fields</span>
+          <select id="address-book-pdf-field-picker" name="selected_field_name" data-address-book-pdf-field-picker data-selected-field-name="{{ address_book_settings.selected_field_name }}">
+            <option value="">All Fields</option>
+            {% for field in address_book_picker_fields %}
+              <option value="{{ field.name }}" {% if address_book_settings.selected_field_name == field.name %}selected{% endif %}>{{ field.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-label" for="address-book-pdf-meeting-picker">
+          <span>All Meetings</span>
+          <select id="address-book-pdf-meeting-picker" name="selected_meeting_name" data-address-book-pdf-meeting-picker data-selected-meeting-name="{{ address_book_settings.selected_meeting_name }}">
+            <option value="">All Meetings</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="address-book-pdf-palette address-book-pdf-green-palette">
+        <div class="address-book-pdf-palette-title">Page Size</div>
+        <div class="address-book-pdf-two-up">
+          <label class="form-label" for="address-book-pdf-width">
+            Width
+            <input id="address-book-pdf-width" name="trim_width_in" type="number" min="0.1" step="0.01" value="{{ selected_preset.trim_width_in }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-height">
+            Height
+            <input id="address-book-pdf-height" name="trim_height_in" type="number" min="0.1" step="0.01" value="{{ selected_preset.trim_height_in }}">
+          </label>
+        </div>
+      </section>
+
+      <section class="address-book-pdf-palette address-book-pdf-green-palette">
+        <div class="address-book-pdf-palette-title">Typography</div>
+        <label class="form-label" for="address-book-pdf-font-family">Font</label>
+        <select id="address-book-pdf-font-family" name="font_family">
+          {% for font_family in font_families %}
+            <option value="{{ font_family }}" {% if selected_preset.font_family == font_family %}selected{% endif %}>{{ font_family }}</option>
+          {% endfor %}
+        </select>
+        <div class="address-book-pdf-two-up">
+          <label class="form-label" for="address-book-pdf-font-size">
+            Size
+            <input id="address-book-pdf-font-size" name="base_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.base_font_size_pt }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-line-height">
+            Line spacing
+            <input id="address-book-pdf-line-height" name="line_height" type="number" min="0.5" step="0.01" value="{{ selected_preset.line_height }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-title-font-size">
+            Title
+            <input id="address-book-pdf-title-font-size" name="title_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.title_font_size_pt }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-toc-font-size">
+            TOC
+            <input id="address-book-pdf-toc-font-size" name="toc_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.toc_font_size_pt }}">
+          </label>
+        </div>
+      </section>
+
+      <section class="address-book-pdf-palette address-book-pdf-green-palette">
+        <div class="address-book-pdf-palette-title">Margins</div>
+        <div class="address-book-pdf-two-up">
+          <label class="form-label" for="address-book-pdf-margin-left">
+            Left
+            <input id="address-book-pdf-margin-left" name="margin_left_in" type="number" min="0" step="0.01" value="{{ selected_preset.margin_left_in }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-margin-right">
+            Right
+            <input id="address-book-pdf-margin-right" name="margin_right_in" type="number" min="0" step="0.01" value="{{ selected_preset.margin_right_in }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-margin-top">
+            Top
+            <input id="address-book-pdf-margin-top" name="margin_top_in" type="number" min="0" step="0.01" value="{{ selected_preset.margin_top_in }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-margin-bottom">
+            Bottom
+            <input id="address-book-pdf-margin-bottom" name="margin_bottom_in" type="number" min="0" step="0.01" value="{{ selected_preset.margin_bottom_in }}">
+          </label>
+        </div>
+      </section>
+    </aside>
+
+    <section class="panel address-book-pdf-center">
+      <div class="address-book-pdf-toolbar">
+        <div class="address-book-pdf-title-block">
+          <h2>Address Book</h2>
+          <div class="address-book-pdf-size-stack">
+            <div data-address-book-pdf-book-size></div>
+            <div data-address-book-pdf-printable-size></div>
+          </div>
+        </div>
+        <div class="address-book-pdf-title-fields">
+          <label class="form-label" for="address-book-pdf-name">
+            <span>Layout Name</span>
+            <input id="address-book-pdf-name" name="name" type="text" value="{{ selected_preset.name }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-title">
+            <span>Book Title</span>
+            <input id="address-book-pdf-title" name="book_title" type="text" value="{{ selected_preset.book_title }}">
+          </label>
+        </div>
+        <div class="address-book-pdf-actions">
+          <button type="submit" class="primary-save-button">Save</button>
+          {% if can_delete_selected_preset %}
+            <button
+              type="submit"
+              class="danger-button"
+              formaction="/presets/book-layouts/{{ selected_preset.id }}/delete"
+              formmethod="post"
+              data-address-book-delete-layout
+            >
+              Delete
+            </button>
+          {% endif %}
+        </div>
+      </div>
+      {% if notice_message %}
+        <div class="notice is-info" id="contacts-temporary-notice" data-auto-hide-ms="3600">{{ notice_message }}</div>
+      {% endif %}
+      <div class="address-book-pdf-canvas-wrap">
+        <div class="address-book-pdf-canvas" data-address-book-pdf-canvas>
+          <div class="address-book-pdf-page-sheet" data-address-book-pdf-page>
+            <div class="address-book-pdf-cover-canvas-preview" data-address-book-pdf-cover-canvas-preview hidden>
+              <img src="" alt="" data-address-book-pdf-cover-canvas-image>
+              <div class="address-book-pdf-cover-title-preview" data-address-book-pdf-cover-canvas-title></div>
+              <div class="address-book-pdf-cover-date-preview" data-address-book-pdf-cover-canvas-date></div>
+            </div>
+            <div class="address-book-pdf-printable" data-address-book-pdf-printable>
+              <div class="address-book-pdf-sample-title" data-address-book-pdf-meeting-title>All Meetings</div>
+              <div class="address-book-pdf-sample-rule"></div>
+              <div class="address-book-pdf-contact-list" data-address-book-pdf-contact-list>
+                <div class="address-book-pdf-contact-row">
+                  <div class="address-book-pdf-contact-line">
+                    <div class="address-book-pdf-phone-line is-primary-phone">
+                      <span class="address-book-pdf-phone-value">205-960-0789</span>
+                      <span class="address-book-pdf-phone-code">c</span>
+                    </div>
+                    <div class="address-book-pdf-contact-name"><strong>FIEVET</strong>, Gabe</div>
+                  </div>
+                  <div class="address-book-pdf-contact-line">
+                    <div class="address-book-pdf-phone-line address-book-pdf-phone-spacer" aria-hidden="true">
+                      <span class="address-book-pdf-phone-value">000-000-0000</span>
+                      <span class="address-book-pdf-phone-code">MM</span>
+                    </div>
+                    <div class="address-book-pdf-address-line no-gps">207 Tutwiler Dr</div>
+                  </div>
+                  <div class="address-book-pdf-contact-line">
+                    <div class="address-book-pdf-phone-line address-book-pdf-phone-spacer" aria-hidden="true">
+                      <span class="address-book-pdf-phone-value">000-000-0000</span>
+                      <span class="address-book-pdf-phone-code">MM</span>
+                    </div>
+                    <div class="address-book-pdf-address-line no-gps">Trussville, AL 35173</div>
+                  </div>
+                </div>
+              </div>
+              <div class="address-book-pdf-bible-preview" data-address-book-pdf-bible-preview></div>
+              <div class="address-book-pdf-page-footer" data-address-book-pdf-page-footer>All Fields - Page 1</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel address-book-pdf-sidebar address-book-pdf-sidebar-right">
+      <section class="address-book-pdf-palette address-book-pdf-address-options">
+        <div class="address-book-pdf-palette-title">Map Links for Addresses</div>
+        <div class="address-book-pdf-choice-row">
+          <label>
+            <input type="radio" name="address_map_provider" value="google" {% if address_book_settings.address_map_provider != "apple" %}checked{% endif %}>
+            <span>Google Maps</span>
+          </label>
+          <label>
+            <input type="radio" name="address_map_provider" value="apple" {% if address_book_settings.address_map_provider == "apple" %}checked{% endif %}>
+            <span>Apple Maps</span>
+          </label>
+        </div>
+
+        <div class="address-book-pdf-palette-title">GPS Coordinates NOT provided</div>
+        <label class="address-book-pdf-check-row">
+          <input type="checkbox" name="address_italic" value="1" {% if address_book_settings.address_italic %}checked{% endif %}>
+          <span>Italicize address</span>
+        </label>
+
+        <div class="address-book-pdf-palette-title">Address Alignment</div>
+        <div class="address-book-pdf-choice-row">
+          <label>
+            <input type="radio" name="address_align" value="left" {% if address_book_settings.address_align == "left" %}checked{% endif %}>
+            <span>Left aligned</span>
+          </label>
+          <label>
+            <input type="radio" name="address_align" value="right" {% if address_book_settings.address_align != "left" %}checked{% endif %}>
+            <span>Right aligned</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="address-book-pdf-palette address-book-pdf-print-palette">
+        <div class="address-book-pdf-palette-title">Print</div>
+        <div class="address-book-pdf-choice-column">
+          <label>
+            <input type="radio" name="print_order_mode" value="alphabetical" {% if address_book_settings.print_order_mode != "custom" %}checked{% endif %}>
+            <span>Print Fields/Meetings alphabetically</span>
+          </label>
+          <label>
+            <input type="radio" name="print_order_mode" value="custom" {% if address_book_settings.print_order_mode == "custom" %}checked{% endif %}>
+            <span>User defined print order</span>
+          </label>
+          <button
+            type="button"
+            class="secondary-button address-book-pdf-order-button"
+            data-address-book-pdf-order-open
+          >
+            Print Order
+          </button>
+        </div>
+        <div class="address-book-pdf-choice-column">
+          <label>
+            <input type="radio" name="meeting_page_mode" value="one_meeting" {% if address_book_settings.meeting_page_mode != "complete_meetings" %}checked{% endif %}>
+            <span>1 mtg/page</span>
+          </label>
+          <label>
+            <input type="radio" name="meeting_page_mode" value="complete_meetings" {% if address_book_settings.meeting_page_mode == "complete_meetings" %}checked{% endif %}>
+            <span>Complete mtgs/page</span>
+          </label>
+        </div>
+        <div class="address-book-pdf-cover-choice-block">
+          <label class="address-book-pdf-check-row address-book-pdf-cover-include-row">
+            <input type="checkbox" data-address-book-pdf-cover-include>
+            <span>Cover picture</span>
+          </label>
+          <div class="address-book-pdf-cover-right-checks">
+            <label class="address-book-pdf-check-row address-book-pdf-cover-include-row">
+              <input type="checkbox" data-address-book-pdf-cover-title-include>
+              <span>Title</span>
+            </label>
+            <label class="address-book-pdf-check-row address-book-pdf-cover-date-row">
+              <input type="checkbox" data-address-book-pdf-cover-date-include>
+              <span>Date</span>
+            </label>
+          </div>
+          <button
+            type="button"
+            class="secondary-button address-book-pdf-cover-button"
+            data-address-book-pdf-cover-open
+            hidden
+          >
+            Choose/Edit picture
+          </button>
+          <div class="address-book-pdf-cover-summary" data-address-book-pdf-cover-summary hidden></div>
+        </div>
+        <div class="address-book-pdf-insert-file-block">
+          <label class="address-book-pdf-check-row address-book-pdf-insert-include-row">
+            <input type="checkbox" data-address-book-pdf-insert-include>
+            <span>Add file</span>
+          </label>
+          <button
+            type="button"
+            class="secondary-button address-book-pdf-insert-button"
+            data-address-book-pdf-insert-open
+            hidden
+          >
+            Choose file
+          </button>
+          <div class="address-book-pdf-insert-summary" data-address-book-pdf-insert-summary hidden></div>
+        </div>
+        <button
+          type="submit"
+          class="primary-save-button"
+          formaction="/address-book/pdf/print"
+          formmethod="post"
+          data-address-book-pdf-print-button
+        >
+          Print PDF
+        </button>
+        <div class="address-book-pdf-paper-book-block">
+          <div class="address-book-pdf-paper-book-options">
+            <div class="address-book-pdf-choice-column">
+              <div class="address-book-pdf-palette-title">Book binding</div>
+              <label>
+                <input type="radio" name="paper_book_binding" value="side_spiral" checked>
+                <span>Side spiral</span>
+              </label>
+              <label>
+                <input type="radio" name="paper_book_binding" value="top_spiral">
+                <span>Top spiral</span>
+              </label>
+              <label>
+                <input type="radio" name="paper_book_binding" value="stapled_folded">
+                <span>Stapled/folded</span>
+              </label>
+            </div>
+            <div class="address-book-pdf-choice-column">
+              <div class="address-book-pdf-palette-title">Cut marks</div>
+              <label>
+                <input type="radio" name="paper_book_cut_marks" value="1" checked>
+                <span>On</span>
+              </label>
+              <label>
+                <input type="radio" name="paper_book_cut_marks" value="0">
+                <span>Off</span>
+              </label>
+            </div>
+          </div>
+          <button
+            type="submit"
+            class="primary-save-button"
+            formaction="/address-book/pdf/print-paper"
+            formmethod="post"
+            data-address-book-pdf-print-paper-button
+          >
+            Print paper book
+          </button>
+        </div>
+      </section>
+
+    </aside>
+
+    <dialog class="app-modal address-book-pdf-order-modal" data-address-book-pdf-order-modal>
+      <div class="app-modal-panel address-book-pdf-order-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title">Print Order - drag and drop for placement</h3>
+        </div>
+        <div class="address-book-pdf-order-list" data-address-book-pdf-order-list>
+          <div class="address-book-pdf-order-column">
+            <h4>Fields</h4>
+            <div class="address-book-pdf-sortable-list" data-address-book-pdf-order-fields></div>
+          </div>
+          <div class="address-book-pdf-order-column">
+            <h4 data-address-book-pdf-order-meeting-title>Meetings</h4>
+            <div class="address-book-pdf-sortable-list" data-address-book-pdf-order-meetings></div>
+          </div>
+        </div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-edit" data-address-book-pdf-order-apply>Save</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-order-cancel>Close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="app-modal address-book-pdf-field-print-modal" data-address-book-pdf-field-print-modal>
+      <div class="app-modal-panel address-book-pdf-field-print-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title">Print PDF - choose fields</h3>
+        </div>
+        <div class="address-book-pdf-field-print-list" data-address-book-pdf-field-print-list></div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-edit" data-address-book-pdf-field-print-confirm>Print</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-field-print-cancel>Cancel</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="app-modal address-book-pdf-cover-modal" data-address-book-pdf-cover-modal>
+      <div class="app-modal-panel address-book-pdf-cover-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title">Choose picture</h3>
+        </div>
+        <div class="address-book-pdf-cover-tool">
+          <label class="form-label" for="address-book-pdf-cover-file">
+            Picture
+            <input id="address-book-pdf-cover-file" type="file" accept="image/*" data-address-book-pdf-cover-file>
+          </label>
+          <label class="form-label address-book-pdf-cover-zoom-field" for="address-book-pdf-cover-zoom">
+            Zoom
+            <input id="address-book-pdf-cover-zoom" type="range" min="1" max="3" step="0.01" value="1" data-address-book-pdf-cover-zoom>
+          </label>
+          <div class="address-book-pdf-cover-text-controls">
+            <div class="address-book-pdf-cover-title-controls">
+              <label class="form-label" for="address-book-pdf-cover-title-input">
+                Title
+                <textarea id="address-book-pdf-cover-title-input" rows="3" data-address-book-pdf-cover-title-input></textarea>
+              </label>
+              <div class="address-book-pdf-two-up">
+                <label class="form-label" for="address-book-pdf-cover-title-size">
+                  Size
+                  <input id="address-book-pdf-cover-title-size" type="number" min="8" max="72" step="1" value="30" data-address-book-pdf-cover-title-size>
+                </label>
+                <label class="form-label" for="address-book-pdf-cover-title-color">
+                  Color
+                  <input id="address-book-pdf-cover-title-color" type="color" value="#ffffff" data-address-book-pdf-cover-title-color-input>
+                </label>
+              </div>
+              <fieldset class="address-book-pdf-cover-effects">
+                <legend>Effect</legend>
+                <label><input type="radio" name="cover_title_effect_choice" value="outline" data-address-book-pdf-cover-title-effect-choice> Outline / Stroke</label>
+                <label><input type="radio" name="cover_title_effect_choice" value="shadow" data-address-book-pdf-cover-title-effect-choice checked> Shadow / Drop Shadow</label>
+                <label><input type="radio" name="cover_title_effect_choice" value="embossed" data-address-book-pdf-cover-title-effect-choice> Embossed</label>
+                <label><input type="radio" name="cover_title_effect_choice" value="engraved" data-address-book-pdf-cover-title-effect-choice> Engraved / Debossed</label>
+                <label><input type="radio" name="cover_title_effect_choice" value="bevel" data-address-book-pdf-cover-title-effect-choice> Bevel</label>
+                <label><input type="radio" name="cover_title_effect_choice" value="none" data-address-book-pdf-cover-title-effect-choice> None</label>
+              </fieldset>
+            </div>
+            <div class="address-book-pdf-cover-date-controls">
+              <div class="address-book-pdf-cover-date-fields">
+                <label class="form-label" for="address-book-pdf-cover-date-input">
+                  Date
+                  <input id="address-book-pdf-cover-date-input" type="text" data-address-book-pdf-cover-date-input>
+                </label>
+                <div class="address-book-pdf-two-up">
+                  <label class="form-label" for="address-book-pdf-cover-date-size">
+                    Size
+                    <input id="address-book-pdf-cover-date-size" type="number" min="8" max="72" step="1" value="18" data-address-book-pdf-cover-date-size>
+                  </label>
+                  <label class="form-label" for="address-book-pdf-cover-date-color">
+                    Color
+                    <input id="address-book-pdf-cover-date-color" type="color" value="#ffffff" data-address-book-pdf-cover-date-color-input>
+                  </label>
+                </div>
+              </div>
+              <div class="address-book-pdf-cover-saved-controls">
+                <label class="form-label" for="address-book-pdf-cover-saved-select">
+                  Saved cover pages
+                  <select id="address-book-pdf-cover-saved-select" data-address-book-pdf-cover-saved-select>
+                    <option value="">Choose saved cover</option>
+                  </select>
+                </label>
+                <div class="address-book-pdf-cover-saved-actions">
+                  <button type="button" class="contact-card-button contact-card-button-edit" data-address-book-pdf-cover-save>Save</button>
+                  <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-cover-delete>Delete</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="address-book-pdf-cover-preview" data-address-book-pdf-cover-preview></div>
+        </div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-edit" data-address-book-pdf-cover-apply>Use Picture</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-cover-clear>Clear</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-cover-cancel>Close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="app-modal address-book-pdf-insert-modal" data-address-book-pdf-insert-modal>
+      <div class="app-modal-panel address-book-pdf-insert-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title">Add file before Table of Contents</h3>
+        </div>
+        <div class="address-book-pdf-insert-tool">
+          <label class="form-label" for="address-book-pdf-insert-file">
+            File
+            <input id="address-book-pdf-insert-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" data-address-book-pdf-insert-file>
+          </label>
+          <label class="form-label address-book-pdf-insert-zoom-field" for="address-book-pdf-insert-zoom">
+            Zoom
+            <input id="address-book-pdf-insert-zoom" type="range" min="1" max="3" step="0.01" value="1" data-address-book-pdf-insert-zoom hidden>
+          </label>
+          <div class="address-book-pdf-insert-preview" data-address-book-pdf-insert-preview></div>
+        </div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-edit" data-address-book-pdf-insert-apply>Use File</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-insert-clear>Clear</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" data-address-book-pdf-insert-cancel>Close</button>
+        </div>
+      </div>
+    </dialog>
+  </form>
+  <dialog class="app-modal" id="address-book-delete-layout-modal">
+    <form method="dialog" class="app-modal-panel" id="address-book-delete-layout-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="address-book-delete-layout-modal-title">Delete Layout?</h3>
+        <p class="app-modal-copy" id="address-book-delete-layout-modal-copy">
+          Meetings using this layout will be reassigned to another layout.
+        </p>
+      </div>
+      <label class="app-modal-field" style="display:none;">
+        <span id="address-book-delete-layout-modal-label">Layout</span>
+        <input type="text" id="address-book-delete-layout-modal-input" autocomplete="off">
+      </label>
+      <div class="app-modal-error" id="address-book-delete-layout-modal-error" aria-live="polite"></div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="address-book-delete-layout-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-delete" id="address-book-delete-layout-modal-confirm" value="confirm">Delete</button>
+      </div>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="/static/js/address_book_pdf.js?v=80"></script>
+{% endblock %}

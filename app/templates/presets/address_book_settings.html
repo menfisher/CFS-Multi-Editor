@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Field List Settings | Contacts Website{% endblock %}
+
+{% block content %}
+  <div class="settings-page">
+    <section class="panel page-top-panel meetingdata-filter-panel">
+      <div class="editor-actions">
+        <div>
+          <h2>Field List Settings</h2>
+          <p class="muted">Field List uses these margins and typography settings on a fixed 8.5x11 page.</p>
+        </div>
+      </div>
+      {% if notice_message %}
+        <div class="notice {% if 'failed' in notice_message|lower %}is-warning{% endif %}">{{ notice_message }}</div>
+      {% endif %}
+    </section>
+
+    <section class="panel preset-editor-panel">
+      <form method="post" action="/presets/address-book/save">
+        <section class="subcard">
+          <div class="subcard-title">Page Margins</div>
+          <div class="editor-grid editor-grid-quad">
+            <label class="form-label">
+              <span>Left margin</span>
+              <input type="number" name="margin_left_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_left_in }}">
+            </label>
+            <label class="form-label">
+              <span>Right margin</span>
+              <input type="number" name="margin_right_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_right_in }}">
+            </label>
+            <label class="form-label">
+              <span>Top margin</span>
+              <input type="number" name="margin_top_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_top_in }}">
+            </label>
+            <label class="form-label">
+              <span>Bottom margin</span>
+              <input type="number" name="margin_bottom_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_bottom_in }}">
+            </label>
+          </div>
+        </section>
+
+        <section class="subcard">
+          <div class="subcard-title">Typography</div>
+          <div class="editor-grid editor-grid-quad">
+            <label class="form-label">
+              <span>Font family</span>
+              <input type="text" name="font_family" maxlength="80" value="{{ address_book_settings.font_family }}">
+            </label>
+            <label class="form-label">
+              <span>Base font size</span>
+              <input type="number" name="base_font_size_pt" min="8" max="36" step="0.5" value="{{ address_book_settings.base_font_size_pt }}">
+            </label>
+            <label class="form-label">
+              <span>Line height</span>
+              <input type="number" name="line_height" min="0.8" max="3" step="0.05" value="{{ address_book_settings.line_height }}">
+            </label>
+            <label class="form-label">
+              <span>Preview scale</span>
+              <input type="number" name="preview_scale" min="0.25" max="1.2" step="0.05" value="{{ address_book_settings.preview_scale }}">
+            </label>
+          </div>
+        </section>
+
+        <div class="editor-savebar">
+          <button type="submit" class="primary-save-button">Save Settings</button>
+        </div>
+      </form>
+    </section>
+  </div>
+{% endblock %}

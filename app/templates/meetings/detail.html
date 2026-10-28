@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Meeting Row {{ meeting_row.sheet_row_number }} | Contacts Website{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="crumb"><a href="/meetings/">MeetingData</a></p>
+    <h2>MeetingData Row {{ meeting_row.sheet_row_number }}</h2>
+    <dl class="meta-list">
+      <div><dt>Field</dt><dd>{{ meeting_row.effective_field_name or meeting_row.field_name or "" }}</dd></div>
+      <div><dt>Meeting</dt><dd>{{ meeting_row.effective_meeting_name or meeting_row.meeting_name or "" }}</dd></div>
+      <div><dt>Row Header Field</dt><dd>{{ meeting_row.field_name or "" }}</dd></div>
+      <div><dt>Row Header Meeting</dt><dd>{{ meeting_row.meeting_name or "" }}</dd></div>
+      <div><dt>Format</dt><dd>{{ meeting_row.format_code or "" }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h3>Visual Layout</h3>
+    {% if meeting_row.visual_cells %}
+      <div class="meeting-sheet-grid meeting-sheet-grid-detail">
+        {% for cell in meeting_row.visual_cells %}
+          <div
+            class="meeting-sheet-cell {% if cell.is_full_width %}meeting-sheet-cell-title{% endif %}"
+            style="grid-column: {{ cell.grid_column }} / span {{ cell.grid_span }}"
+          >
+            <div class="preserve-breaks">{{ cell.value|safe }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">This row has no D-AE content.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h3>Cols D-AE Values</h3>
+    {% if meeting_row.content_columns %}
+      <div class="meeting-columns">
+        {% for column in meeting_row.content_columns %}
+          <article class="subcard">
+            <div class="subcard-title">{{ column.name }}</div>
+            <div class="preserve-breaks">{{ column.value|safe }}</div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">This row has no D-AE content.</p>
+    {% endif %}
+  </section>
+{% endblock %}

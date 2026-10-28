@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    
+    <!-- Compiled and minified CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <!-- App CSS -->
+    <?!= include("css") ?>
+    
+    
+  </head>
+  <body>
+  
+    <!-- App HTML -->
+    <div id="app" class="container" v-cloak>
+        <?!= include("comNavbar") ?>
+        
+        <?!= include("comMain") ?>
+        <?!= include("comFooter") ?>
+        <?!= include("comPopup") ?>
+    </div>
+    
+    <!-- Compiled and minified JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+   
+    <!-- Vue JS from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+    
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+
+    <script>
+      window.VIEW_MODE = "<?= viewMode ?>";
+    </script>
+    
+    <!-- App JS -->
+    <?!= include("js") ?>
+    
+  </body>
+</html>

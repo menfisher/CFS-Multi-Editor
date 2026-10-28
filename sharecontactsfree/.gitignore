@@ -1,0 +1,9 @@
+.clasp.json
+.claspignore
+node_modules/
+.DS_Store
+__pycache__/
+*.pyc
+python/.env
+python/.venv/
+python/data/

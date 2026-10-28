@@ -1,0 +1,253 @@
+{% from "includes/filter_option_label.html" import filter_option_label %}
+<!DOCTYPE html>
+<html lang="en" class="mobile-nav-shell-page">
+<head>
+  <meta charset="utf-8">
+  {% include "includes/mobile_head.html" %}
+  <title>Pending Edits</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=40">
+</head>
+<body class="mobile-shell mobile-nav-shell mobile-pending-edits-page">
+  {% include "includes/mobile_busy_modal.html" %}
+  <div class="mobile-app-scroll">
+  <header class="mobile-header mobile-list-header">
+    <div class="mobile-list-title-row">
+      <h1>Pending Edits</h1>
+    </div>
+    <p class="mobile-subtitle">{{ access_name or owner_email }}</p>
+    <p class="mobile-home-hint">After you save a contact, your changes appear here. Green shows the old text; yellow shows the new text.</p>
+    <p class="mobile-pending-edits-upload-hint">Tap <strong>Upload to Drive</strong> to send edits and contact photos to your Editor. The yellow photo path is stored on your phone until you upload. Tap <strong>Download from Drive</strong> after your Editor marks changes completed.</p>
+  </header>
+
+  <section class="mobile-panel mobile-pending-edits-panel">
+    <div class="mobile-pending-edits-actions">
+      {% if can_edit_changes %}
+        <button type="button" class="mobile-button mobile-pending-edits-add" id="mobile-pending-edits-add">Add row</button>
+        <div class="mobile-pending-edits-drive-actions">
+          <button
+            type="button"
+            class="mobile-button mobile-pending-edits-upload"
+            id="mobile-pending-edits-upload"
+            {% if not needs_drive_upload %}disabled aria-disabled="true"{% endif %}
+          >
+            Upload to Drive
+          </button>
+          <button
+            type="button"
+            class="mobile-button mobile-pending-edits-download"
+            id="mobile-pending-edits-download"
+          >
+            Download from Drive
+          </button>
+        </div>
+      {% endif %}
+    </div>
+    {% if needs_drive_upload %}
+      <p class="mobile-pending-edits-upload-status" id="mobile-pending-edits-upload-status">You have edits waiting to upload.</p>
+    {% else %}
+      <p class="mobile-pending-edits-upload-status is-quiet" id="mobile-pending-edits-upload-status" hidden>You have edits waiting to upload.</p>
+    {% endif %}
+    <div class="mobile-pending-edits-list" id="mobile-pending-edits-list">
+      {% for entry in entries %}
+        <article class="mobile-pending-edits-entry" data-row-id="{{ entry.id }}">
+          <div class="mobile-pending-edits-entry-top">
+            <div class="mobile-pending-edits-date" data-field="automatic_date">{{ entry.automatic_date }}</div>
+            <input
+              class="mobile-pending-edits-input"
+              data-field="name_event"
+              value="{{ entry.name_event }}"
+              placeholder="Name or event"
+              autocomplete="off"
+              {% if not can_edit_changes %}disabled{% endif %}
+            >
+          </div>
+          {% if entry.contact_edit_url %}
+            <a class="mobile-pending-edits-contact-link" href="{{ entry.contact_edit_url }}">Open contact edit</a>
+          {% endif %}
+          {% if entry.changes_text_has_diff %}
+            <div class="mobile-pending-edits-changes-display{% if entry.completed_by %} is-completed{% endif %}">
+              {{ entry.changes_text_html | safe }}
+            </div>
+            <input type="hidden" data-field="changes_text" value="{{ entry.changes_text }}">
+          {% else %}
+            <textarea
+              class="mobile-pending-edits-textarea{% if entry.completed_by %} is-completed{% endif %}"
+              data-field="changes_text"
+              rows="3"
+              placeholder="Changes"
+              {% if not can_edit_changes %}disabled{% endif %}
+            >{{ entry.changes_text }}</textarea>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+  </div>
+
+  <footer class="mobile-app-footer mobile-bottom-nav-footer">
+    {% include "includes/mobile_bottom_nav.html" %}
+  </footer>
+
+  <script src="/static/js/mobile-busy.js?v=5"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const list = document.getElementById("mobile-pending-edits-list");
+      const addButton = document.getElementById("mobile-pending-edits-add");
+      const uploadButton = document.getElementById("mobile-pending-edits-upload");
+      const downloadButton = document.getElementById("mobile-pending-edits-download");
+      const uploadStatus = document.getElementById("mobile-pending-edits-upload-status");
+      const saveTimers = new Map();
+
+      const setUploadPending = (hasPending) => {
+        if (!uploadButton) return;
+        uploadButton.disabled = !hasPending;
+        uploadButton.setAttribute("aria-disabled", hasPending ? "false" : "true");
+        if (uploadStatus) {
+          uploadStatus.hidden = !hasPending;
+          uploadStatus.classList.toggle("is-quiet", !hasPending);
+        }
+      };
+
+      setUploadPending({{ "true" if needs_drive_upload else "false" }});
+
+      const rowCells = (rowId) => {
+        const entry = list?.querySelector(`.mobile-pending-edits-entry[data-row-id="${rowId}"]`);
+        if (!entry) {
+          return {};
+        }
+        return {
+          nameEvent: entry.querySelector('[data-field="name_event"]'),
+          changesText: entry.querySelector('[data-field="changes_text"]'),
+          automaticDate: entry.querySelector('[data-field="automatic_date"]'),
+        };
+      };
+
+      const saveRow = async (rowId) => {
+        const cells = rowCells(rowId);
+        if (!cells.nameEvent || !cells.changesText) return;
+        const body = new FormData();
+        body.set("name_event", cells.nameEvent.value || "");
+        body.set("changes_text", cells.changesText.value || "");
+        const response = await fetch(`/m/pending-edits/rows/${rowId}/save`, {
+          method: "POST",
+          body,
+          credentials: "same-origin",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (payload?.entry?.automatic_date && cells.automaticDate) {
+          cells.automaticDate.textContent = payload.entry.automatic_date;
+        }
+        if (payload?.needs_drive_upload) {
+          setUploadPending(true);
+        }
+      };
+
+      const scheduleSave = (rowId) => {
+        if (saveTimers.has(rowId)) {
+          window.clearTimeout(saveTimers.get(rowId));
+        }
+        saveTimers.set(rowId, window.setTimeout(() => {
+          saveTimers.delete(rowId);
+          saveRow(rowId);
+        }, 450));
+      };
+
+      list?.querySelectorAll("[data-field='name_event'], textarea[data-field='changes_text']").forEach((element) => {
+        const entry = element.closest(".mobile-pending-edits-entry");
+        const rowId = entry?.dataset.rowId || "";
+        element.addEventListener("input", () => scheduleSave(rowId));
+        element.addEventListener("blur", () => saveRow(rowId));
+      });
+
+      addButton?.addEventListener("click", async () => {
+        const response = await fetch("/m/pending-edits/rows", {
+          method: "POST",
+          credentials: "same-origin",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!payload?.entry?.id) return;
+        window.location.reload();
+      });
+
+      uploadButton?.addEventListener("click", async () => {
+        if (uploadButton.disabled) {
+          return;
+        }
+        if (window.MobileBusy) {
+          window.MobileBusy.show({ title: "Uploading", message: "Sending pending edits to Google Drive..." });
+        }
+        try {
+          const response = await fetch("/m/pending-edits/upload", {
+            method: "POST",
+            credentials: "same-origin",
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.ok) {
+            window.MobileBusy?.showResult({
+              type: "error",
+              title: "Upload failed",
+              message: payload.error || "Could not upload pending edits.",
+            });
+            return;
+          }
+          setUploadPending(false);
+          window.MobileBusy?.showResult({
+            type: "success",
+            title: "Uploaded",
+            message: payload.message || "Pending edits uploaded to Google Drive.",
+          });
+        } catch (_error) {
+          window.MobileBusy?.showResult({
+            type: "error",
+            title: "Upload failed",
+            message: "Could not upload pending edits. Check your connection and try again.",
+          });
+        }
+      });
+
+      downloadButton?.addEventListener("click", async () => {
+        if (window.MobileBusy) {
+          window.MobileBusy.show({ title: "Downloading", message: "Checking Google Drive for completed edits..." });
+        }
+        try {
+          const response = await fetch("/m/pending-edits/download-from-drive", {
+            method: "POST",
+            credentials: "same-origin",
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.ok) {
+            window.MobileBusy?.showResult({
+              type: "error",
+              title: "Download failed",
+              message: payload.error || "Could not download pending edits from Google Drive.",
+            });
+            return;
+          }
+          if (payload.updated) {
+            window.MobileBusy?.showResult({
+              type: "success",
+              title: "Downloaded",
+              message: payload.message || "Pending edits were downloaded from Google Drive.",
+              autoHideMs: 900,
+            });
+            window.setTimeout(() => window.location.reload(), 950);
+            return;
+          }
+          window.MobileBusy?.showResult({
+            type: "success",
+            title: "Up to date",
+            message: payload.message || "Pending edits are already up to date with Google Drive.",
+            autoHideMs: 3600,
+          });
+        } catch (_error) {
+          window.MobileBusy?.showResult({
+            type: "error",
+            title: "Download failed",
+            message: "Could not download pending edits. Check your connection and try again.",
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

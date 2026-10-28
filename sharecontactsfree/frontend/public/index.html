@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    {% include 'css.html' %}
+  </head>
+  <body>
+    <div id="app" class="container" v-cloak>
+        <noscript><p style="color:red">JavaScript is required.</p></noscript>
+        {% include 'comNavbar.html' %}
+        {% include 'comMain.html' %}
+        {% include 'comFooter.html' %}
+        {% include 'comPopup.html' %}
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+    <script>
+      window.VIEW_MODE = "{{ viewMode }}";
+      window.UI_BUILD_TAG = "{{ uiBuildTag }}";
+      window.INVITE_RECIPIENT_EMAIL = {{ inviteRecipientEmail|tojson }};
+      console.log("App build:", window.UI_BUILD_TAG);
+    </script>
+    <script src="/static/api-bridge.js?v={{ uiBuildTag }}"></script>
+    {% include 'js.html' %}
+  </body>
+</html>

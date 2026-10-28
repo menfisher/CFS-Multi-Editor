@@ -1,0 +1,2526 @@
+{% raw %}
+<script>
+const APP_BUILD_TAG = window.UI_BUILD_TAG || "unknown"
+if (!window.UI_BUILD_TAG){
+    console.log("App build:", APP_BUILD_TAG)
+}
+    
+let popupData = {}
+
+let formatClientError = function(error){
+    if (!error){
+        return "Unknown error"
+    }
+    if (typeof error === "string"){
+        return error
+    }
+    return error.message || JSON.stringify(error)
+}
+
+let isShareNetworkError_ = function(error){
+    let message = String(formatClientError(error) || "").toLowerCase()
+    return (
+        message.includes("failed to fetch") ||
+        message.includes("networkerror") ||
+        message.includes("network error") ||
+        message.includes("load failed") ||
+        message.includes("aborted")
+    )
+}
+
+let notifyUser = function(message, classes){
+    let text = String(message || "").trim()
+    if (!text){
+        return
+    }
+    if (typeof M !== "undefined" && M && typeof M.toast === "function"){
+        M.toast({html: text, classes: classes || ""})
+        return
+    }
+    window.alert(text)
+}
+
+let normalizeOwnerEmail = function(email){
+    return String(email || "").trim().toLowerCase()
+}
+
+let sharedGroupOwnersCompatible = function(left, right){
+    let a = normalizeOwnerEmail(left)
+    let b = normalizeOwnerEmail(right)
+    if (!a || !b || a === b){
+        return true
+    }
+    return a === "unknown" || b === "unknown"
+}
+
+let dismissalOwnerKey = function(email){
+    let owner = normalizeOwnerEmail(email)
+    return owner && owner !== "unknown" ? owner : ""
+}
+
+let sharedGroupSyncKeyFromParts = function(ownerKey, resourceName){
+    let owner = normalizeOwnerEmail(ownerKey)
+    let resource = String(resourceName || "").trim()
+    if (!owner || !resource){
+        return ""
+    }
+    return `shared:${owner}|${resource}`
+}
+
+let sharedGroupMatches = function(group, ownerKey, resourceName){
+    if (!group){
+        return false
+    }
+    return (
+        sharedGroupOwnersCompatible(group.owner, ownerKey) &&
+        String(group.resourceName || "").trim() === String(resourceName || "").trim()
+    )
+}
+
+let sharedGroupSameAs = function(candidate, reference){
+    if (!candidate || !reference){
+        return false
+    }
+    let shareA = String(candidate.shareId || "").trim()
+    let shareB = String(reference.shareId || "").trim()
+    if (shareA && shareB && shareA === shareB){
+        return true
+    }
+    let createdA = String(candidate.created || "").trim()
+    let createdB = String(reference.created || "").trim()
+    if (createdA && createdB && createdA === createdB){
+        return true
+    }
+    if (sharedGroupMatches(candidate, reference.owner, reference.resourceName)){
+        return true
+    }
+    let owner = dismissalOwnerKey(reference.owner)
+    let name = String(reference.name || "").trim().toLowerCase()
+    if (
+        name &&
+        String(candidate.name || "").trim().toLowerCase() === name &&
+        sharedGroupOwnersCompatible(candidate.owner, reference.owner)
+    ){
+        return true
+    }
+    return false
+}
+
+let resolveSharedGroupIdentity = function(group){
+    if (!group){
+        return null
+    }
+    return {
+        owner: String(group.owner || "").trim(),
+        resourceName: String(group.resourceName || "").trim(),
+        shareId: String(group.shareId || "").trim(),
+        created: String(group.created || "").trim(),
+        name: String(group.name || "").trim(),
+    }
+}
+
+let sharedGroupHasRemovableIdentity = function(identity){
+    if (!identity){
+        return false
+    }
+    if (identity.shareId || identity.created){
+        return true
+    }
+    if (identity.resourceName && (identity.owner || identity.name)){
+        return true
+    }
+    if (identity.name){
+        return true
+    }
+    return false
+}
+
+let sharedGroupDismissalKeys = function(group){
+    if (!group){
+        return []
+    }
+    let owner = dismissalOwnerKey(group.owner)
+    let resource = String(group.resourceName || "").trim()
+    let shareId = String(group.shareId || "").trim()
+    let created = String(group.created || "").trim()
+    let name = String(group.name || "").trim().toLowerCase()
+    let keys = []
+    if (created){
+        keys.push(`created:${created}`)
+    }
+    if (shareId){
+        keys.push(`share-id:${shareId}`)
+        if (owner){
+            keys.push(`share:${owner}|${shareId}`)
+        } else {
+            keys.push(`share:|${shareId}`)
+        }
+    }
+    if (resource){
+        if (owner){
+            keys.push(`group:${owner}|${resource}`)
+            keys.push(`shared:${owner}|${resource}`)
+        } else {
+            keys.push(`group:|${resource}`)
+        }
+    }
+    if (name){
+        keys.push(`name:${name}`)
+        if (owner){
+            keys.push(`name:${owner}|${name}`)
+        }
+    }
+    return keys.filter((key, index, all)=> key && all.indexOf(key) === index)
+}
+
+let isSharedGroupDismissed = function(group, dismissedMap){
+    if (!group || !dismissedMap || !Object.keys(dismissedMap).length){
+        return false
+    }
+    let keys = sharedGroupDismissalKeys(group)
+    let hasIdentity = String(group.resourceName || "").trim() || String(group.shareId || "").trim() || String(group.created || "").trim()
+    if (hasIdentity){
+        keys = keys.filter((key)=> !String(key || "").startsWith("name:"))
+    }
+    return keys.some(key=> dismissedMap[key])
+}
+
+let dismissSharedGroupLocally = function(vm, group){
+    sharedGroupDismissalKeys(group).forEach(key=>{
+        vm.$set(vm.dismissedSharedGroupKeys, key, true)
+    })
+}
+
+let filterDismissedSharedGroups = function(groups, dismissedMap){
+    if (!dismissedMap || !Object.keys(dismissedMap).length){
+        return groups || []
+    }
+    return (groups || []).filter(group=> !isSharedGroupDismissed(group, dismissedMap))
+}
+
+let encodeMailtoValue = function(value){
+    return encodeURIComponent(String(value || "")).replace(/%20/g, "%20")
+}
+
+let buildInviteUrl = function(baseUrl, recipientEmail){
+    let base = String(baseUrl || `${window.location.origin}/?mode=shared`).trim()
+    let email = String(recipientEmail || "").trim().toLowerCase()
+    if (!email){
+        return base
+    }
+    if (/([?&])email=/.test(base)){
+        return base.replace(/([?&])email=[^&]*/, `$1email=${encodeURIComponent(email)}`)
+    }
+    return `${base}${base.includes("?") ? "&" : "?"}email=${encodeURIComponent(email)}`
+}
+
+let KEEP_PAGE_OPEN_PLAIN = "KEEP THIS PAGE OPEN until the contacts finish downloading."
+let RETRY_IMPORT_PLAIN = "If you close the page or open another tab, use the Retry button to restart the import."
+
+let inviteDisplayName = function(groupName, resourceName, appConfig){
+    let googleName = String(groupName || "").trim()
+    let settingsName = String((appConfig && appConfig.sharedContactsGroupName) || "").trim()
+    let settingsResource = String((appConfig && appConfig.sharedContactsGroupResourceName) || "").trim()
+    let resource = String(resourceName || "").trim()
+    if (settingsName && settingsResource && resource === settingsResource){
+        return settingsName
+    }
+    if (settingsName && googleName && settingsName.toLowerCase() === googleName.toLowerCase()){
+        return settingsName
+    }
+    return googleName || settingsName
+}
+
+let openShareInviteMailto = function(ownerEmail, groupName, recipientEmails, inviteUrl){
+    let recipients = (recipientEmails || []).map(email=>String(email || "").trim().toLowerCase()).filter(Boolean)
+    if (!recipients.length){
+        return false
+    }
+    let subject = "Share Google Contacts"
+    let bodyLines = [
+        "Hi,",
+        "",
+        `${ownerEmail} shared the contact group "${groupName}" with you.`,
+        "",
+    ]
+    if (recipients.length === 1){
+        bodyLines.push(
+            "Open this link to import shared contacts (sign in with the Google account that received this email):",
+            buildInviteUrl(inviteUrl, recipients[0]),
+        )
+    } else {
+        bodyLines.push("Open your personal link below (sign in with the matching Google account):")
+        recipients.forEach((email)=>{
+            bodyLines.push("", `${email}:`, buildInviteUrl(inviteUrl, email))
+        })
+    }
+    bodyLines.push("", KEEP_PAGE_OPEN_PLAIN, "", RETRY_IMPORT_PLAIN)
+    let body = bodyLines.join("\n")
+    let params = [
+        `bcc=${encodeMailtoValue(recipients.join(","))}`,
+        `subject=${encodeMailtoValue(subject)}`,
+        `body=${encodeMailtoValue(body)}`,
+    ]
+    window.location.href = `mailto:?${params.join("&")}`
+    return true
+}
+
+let parseSharedStatusFraction = function(status){
+    let match = String(status || "").match(/\((\d+)\s*\/\s*(\d+)/)
+    if (!match){
+        return null
+    }
+    return {done: Number(match[1]), total: Number(match[2])}
+}
+
+let isSharedRecipientPrepStatus = function(status){
+    status = String(status || "")
+    return (
+        status.startsWith("Ready (") ||
+        status.startsWith("Ready to") ||
+        status.startsWith("Waiting for owner sync")
+    )
+}
+
+let parseSharedImportStatusFraction = function(status){
+    if (isSharedRecipientPrepStatus(status)){
+        return null
+    }
+    return parseSharedStatusFraction(status)
+}
+
+let formatSharedStatusLabel = function(group){
+    let status = String((group && group.status) || "")
+    if (!status){
+        return "-"
+    }
+    if (status.startsWith("Shared (")){
+        return status
+    }
+    if (status.startsWith("Photos")){
+        return "Adding photos"
+    }
+    if (status.startsWith("Importing photos")){
+        return "Adding photos"
+    }
+    if (status.startsWith("Importing")){
+        return "Importing"
+    }
+    if (status.startsWith("Queued")){
+        return "Queued"
+    }
+    if (status.startsWith("Pushing")){
+        let match = status.match(/\((\d+\s*\/\s*\d+)\)/)
+        return match ? `Pushing (${match[1]})` : "Pushing"
+    }
+    if (status.startsWith("Waiting for owner sync")){
+        return "Waiting for owner sync"
+    }
+    if (status.startsWith("Connect account")){
+        return "Connect account to import"
+    }
+    if (status.startsWith("Ready")){
+        return "Ready to import"
+    }
+    if (status.startsWith("Shared")){
+        return "Shared"
+    }
+    return status
+}
+
+let getSharedImportedCount = function(group){
+    if (!group){
+        return 0
+    }
+    let total = Number(group.memberCount || 0)
+    let status = String(group.status || "")
+    let parsed = parseSharedImportStatusFraction(status)
+    let processed = Number(group.importCursor || 0)
+    if (parsed){
+        processed = Math.max(processed, parsed.done)
+    }
+    let actualCount = Number(group.actualCount || 0)
+    let contactsPassComplete =
+        (total > 0 && processed >= total) ||
+        status.startsWith("Photos (") ||
+        status.startsWith("Importing photos") ||
+        group.importPhase === "photos" ||
+        status.startsWith("Shared")
+    if (contactsPassComplete && actualCount > 0){
+        processed = Math.max(processed, actualCount)
+    }
+    let skipped = Number(group.skippedCount || 0)
+    let imported = processed - skipped
+    if (imported < 0){
+        imported = 0
+    }
+    if (imported > total){
+        imported = total
+    }
+    return imported
+}
+
+let resolveOwnerSyncCountLabel = function(group){
+    if (!group){
+        return ""
+    }
+    if (!group.shared || !group.shared.length){
+        return ""
+    }
+    let statusText = String(group.status || "")
+    if (
+        statusText.startsWith("Synced") ||
+        statusText.startsWith("Syncing") ||
+        statusText.startsWith("Queued")
+    ){
+        let match = statusText.match(/(\d+)\s*\/\s*(\d+)/)
+        if (match){
+            return `${match[1]}/${match[2]}`
+        }
+    }
+    let progress = group.syncProgress || {}
+    let done = Number(progress.done || 0)
+    let total = Number(progress.total || group.memberCount || 0)
+    if (total > 0 && done > 0){
+        if (done < 0){
+            done = 0
+        }
+        if (done > total){
+            done = total
+        }
+        return `${done}/${total}`
+    }
+    return ""
+}
+
+let isSharedGroupPending_ = function(group){
+    if (!group){
+        return false
+    }
+    let status = String(group.status || "")
+    if (status.startsWith("Error")){
+        return false
+    }
+    if (status.startsWith("Waiting for owner sync")){
+        return false
+    }
+    if (status.startsWith("Ready (") || status.startsWith("Ready to")){
+        return false
+    }
+    if (status.startsWith("Pushing")){
+        return true
+    }
+    if (status.startsWith("Photos (")){
+        if (
+            group.importPhase === "done"
+            && !(group.photoPendingIndexes || []).length
+            && !(group.photoRetryIndexes || []).length
+        ){
+            return false
+        }
+        if (
+            sharedPhotosComplete_(group)
+            && !(group.photoPendingIndexes || []).length
+            && !(group.photoRetryIndexes || []).length
+            && group.importPhase !== "photos"
+        ){
+            return false
+        }
+        return true
+    }
+    let photoPending = group.photoPendingIndexes || []
+    let photoRetry = group.photoRetryIndexes || []
+    if (photoPending.length || photoRetry.length){
+        return true
+    }
+    let retryIndexes = group.retryIndexes || []
+    if (retryIndexes.length){
+        return true
+    }
+    if (status.startsWith("Shared")){
+        if (isSharedPhotoPhase_(group)){
+            return true
+        }
+        return false
+    }
+    if (status.startsWith("Importing photos")){
+        return true
+    }
+    if (status.startsWith("Importing") || status.startsWith("Queued")){
+        return true
+    }
+    let total = Number(group.memberCount || 0)
+    let cursor = Number(group.importCursor || 0)
+    let parsed = parseSharedImportStatusFraction(status)
+    if (parsed){
+        cursor = Math.max(cursor, parsed.done)
+    }
+    return total > 0 && cursor < total
+}
+
+let sharedGroupServerPushLikelyActive_ = function(group){
+    if (!group){
+        return false
+    }
+    let status = String(group.status || "")
+    if (
+        status.startsWith("Pushing") ||
+        status.startsWith("Importing") ||
+        status.startsWith("Queued")
+    ){
+        return true
+    }
+    if (status.startsWith("Photos (") || status.startsWith("Importing photos")){
+        return true
+    }
+    return group.importPhase === "photos"
+}
+
+let sharedGroupNeedsPhotoImport_ = function(group){
+    if (!group){
+        return false
+    }
+    if (group.importPhase === "photos"){
+        return true
+    }
+    let status = String(group.status || "")
+    if (status.startsWith("Photos (") || status.startsWith("Importing photos")){
+        return true
+    }
+    return shouldShowSharedPhotoProgress_(group)
+}
+
+let holdSharedPhotoProgress_ = function(group, photoDone, photoTotal){
+    let done = Math.max(0, Number(photoDone || 0))
+    let total = Math.max(0, Number(photoTotal || 0), done)
+    let memberCount = Number(group && group.memberCount || 0)
+    if (memberCount > 0){
+        done = Math.min(done, memberCount)
+        total = Math.min(total, memberCount)
+    }
+    return {photoDone: done, photoTotal: total}
+}
+
+let getSharedPhotoProgress = function(group){
+    if (!group){
+        return {photoDone: 0, photoTotal: 0, photoRemaining: 0}
+    }
+    let status = String(group.status || "")
+    let match = status.match(/Photos\s*\((\d+)\s*\/\s*(\d+)/)
+    let photoDone = Number(group.photoDoneCount || 0)
+    let photoPending = Number(group.photoPendingCount || 0)
+    if (!photoPending){
+        photoPending = (group.photoPendingIndexes || []).length
+    }
+    let photoRetry = (group.photoRetryIndexes || []).length
+    if (match){
+        photoDone = Math.max(photoDone, Number(match[1]))
+    }
+    let photoTargetCount = Number(group.photoTargetCount || 0)
+    if (!photoTargetCount){
+        let targetKeys = Object.keys(group.photoTargets || {}).length
+        if (targetKeys > 0){
+            photoTargetCount = targetKeys
+        }
+    }
+    let photoTotal = photoTargetCount
+    if (!photoTotal && match){
+        photoTotal = Number(match[2])
+    }
+    if (!photoTotal){
+        photoTotal = photoDone + photoPending + photoRetry
+    }
+    let held = holdSharedPhotoProgress_(group, photoDone, photoTotal)
+    return {
+        photoDone: held.photoDone,
+        photoTotal: held.photoTotal,
+        photoRemaining: photoPending + photoRetry,
+    }
+}
+
+let sharedPhotosComplete_ = function(group){
+    if (!group){
+        return false
+    }
+    if (String(group.status || "").startsWith("Shared")){
+        return true
+    }
+    if ((group.photoPendingIndexes || []).length || (group.photoRetryIndexes || []).length){
+        return false
+    }
+    if (group.importPhase === "photos"){
+        return false
+    }
+    let photo = getSharedPhotoProgress(group)
+    return photo.photoTotal > 0 && photo.photoDone >= photo.photoTotal
+}
+
+let contactsImportComplete_ = function(group){
+    if (!group){
+        return false
+    }
+    let memberTotal = Number(group.memberCount || 0)
+    if (memberTotal <= 0){
+        return false
+    }
+    let status = String(group.status || "")
+    if (
+        status.startsWith("Ready (") ||
+        status.startsWith("Ready to") ||
+        status.startsWith("Waiting for owner sync")
+    ){
+        return false
+    }
+    let cursor = Number(group.importCursor || 0)
+    if (cursor >= memberTotal){
+        return true
+    }
+    if (
+        status.startsWith("Importing") ||
+        status.startsWith("Photos (") ||
+        status.startsWith("Importing photos") ||
+        status.startsWith("Shared")
+    ){
+        let parsed = parseSharedImportStatusFraction(status)
+        return !!(parsed && parsed.done >= memberTotal)
+    }
+    return false
+}
+
+let shouldShowSharedPhotoProgress_ = function(group){
+    if (!group){
+        return false
+    }
+    if (group.importPhase === "photos"){
+        return true
+    }
+    if (isSharedPhotoPhase_(group)){
+        return true
+    }
+    if (!contactsImportComplete_(group)){
+        return false
+    }
+    let photoTarget = Number(group.photoTargetCount || 0)
+    let photoDone = Number(group.photoDoneCount || 0)
+    if (photoTarget > 0 && photoDone < photoTarget){
+        return true
+    }
+    let photoPending = Number(group.photoPendingCount || 0)
+    if (!photoPending){
+        photoPending = (group.photoPendingIndexes || []).length
+    }
+    return photoPending > 0
+}
+
+let isSharedPhotoPhase_ = function(group){
+    if (!group){
+        return false
+    }
+    let status = String(group.status || "")
+    if (status.startsWith("Photos (") || status.startsWith("Importing photos")){
+        return true
+    }
+    if (group.importPhase === "photos"){
+        return true
+    }
+    let memberTotal = Number(group.memberCount || 0)
+    let cursor = Number(group.importCursor || 0)
+    let contactsDone = memberTotal > 0 && cursor >= memberTotal
+    if (!contactsDone && !isSharedRecipientPrepStatus(status)){
+        let parsed = parseSharedImportStatusFraction(status)
+        if (parsed && memberTotal > 0 && parsed.done >= memberTotal){
+            contactsDone = true
+        }
+    }
+    if (!contactsDone){
+        return false
+    }
+    let photoDone = Number(group.photoDoneCount || 0)
+    let targetCount = Number(group.photoTargetCount || 0)
+    if (!targetCount){
+        targetCount = Object.keys(group.photoTargets || {}).length
+    }
+    if (targetCount > 0 && photoDone < targetCount){
+        return true
+    }
+    let photoPending = (group.photoPendingIndexes || []).length
+    let photoRetry = (group.photoRetryIndexes || []).length
+    if (photoPending || photoRetry){
+        return true
+    }
+    let photo = getSharedPhotoProgress(group)
+    if (photo.photoRemaining > 0){
+        return true
+    }
+    if (photo.photoTotal > 0 && photo.photoDone < photo.photoTotal){
+        return true
+    }
+    return false
+}
+
+let buildSharedImportProgress = function(group, isActive){
+    if (!group){
+        return {
+            pending: false,
+            active: false,
+            phase: "idle",
+            done: 0,
+            total: 0,
+            percent: 0,
+            label: "-",
+        }
+    }
+
+    let total = Number(group.memberCount || 0)
+    let status = String(group.status || "")
+    if (status.startsWith("Waiting for owner sync")){
+        return {
+            pending: false,
+            active: false,
+            phase: "waiting",
+            done: 0,
+            total,
+            percent: 0,
+            label: "Waiting for owner sync",
+        }
+    }
+    let active = !!isActive
+
+    if (group.importPhase === "photos" || shouldShowSharedPhotoProgress_(group)){
+        if (sharedPhotosComplete_(group)){
+            return {
+                pending: false,
+                active: false,
+                phase: "done",
+                done: Number(group.memberCount || 0),
+                total: Number(group.memberCount || 0),
+                photoDone: getSharedPhotoProgress(group).photoDone,
+                photoTotal: getSharedPhotoProgress(group).photoTotal,
+                percent: 100,
+                label: "Shared",
+                detail: "Import complete",
+            }
+        }
+        let photo = getSharedPhotoProgress(group)
+        let photoDone = photo.photoDone
+        let photoTotal = photo.photoTotal
+        return {
+            pending: true,
+            active,
+            phase: "photos",
+            done: Number(group.memberCount || 0),
+            total: Number(group.memberCount || 0),
+            photoDone,
+            photoTotal,
+            percent: photoTotal > 0 ? Math.min(100, Math.round((photoDone / photoTotal) * 100)) : 0,
+            label: active ? "Adding photos" : "Photos remaining",
+            detail: `Contacts imported · Photos ${photoDone}/${photoTotal}`,
+        }
+    }
+
+    let done = getSharedImportedCount(group)
+    let pending = isSharedGroupPending_(group)
+
+    if (!pending && !active){
+        return {
+            pending: false,
+            active: false,
+            phase: status.startsWith("Shared") ? "done" : "idle",
+            done,
+            total,
+            percent: total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 100,
+            label: formatSharedStatusLabel(group),
+        }
+    }
+
+    let phase = status.startsWith("Queued") ? "queued" : "importing"
+    let label = "Importing contacts"
+    if (phase === "queued"){
+        label = active ? "Starting import" : "Queued"
+    }
+
+    return {
+        pending: true,
+        active,
+        phase,
+        done,
+        total,
+        percent: total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0,
+        label,
+    }
+}
+
+let reconcileOwnerSyncRequiredMessage = function(){
+    if (!this.ownerSyncRequiredMessage){
+        return
+    }
+    let sharedGroupsNeedingSync = (this.groupsList || []).filter(group=>{
+        let shared = group && group.shared
+        if (!Array.isArray(shared) || !shared.length){
+            return false
+        }
+        let status = String(group.status || "")
+        return !(status.startsWith("Synced") || status.startsWith("Ready"))
+    })
+    if (!sharedGroupsNeedingSync.length){
+        this.ownerSyncRequiredMessage = ""
+    }
+}
+
+let clearOwnerShareNotices = function(options){
+    let keepSyncStatus = options && options.keepSyncStatus
+    this.shareStatusMessage = ""
+    this.shareStatusIsError = false
+    this.ownerSyncRequiredMessage = ""
+    if (!keepSyncStatus){
+        this.syncStatusMessage = ""
+    }
+}
+    
+    let data = {
+        popupData,
+        isLoading: true,
+        hasLoadError: false,
+        error: "",
+        profile: { displayName: "", email: "" },
+        isSharing: false,
+        syncingGroups: {},
+        activeOwnerSyncResourceName: "",
+        groupsById: {},
+        groupsList: [],
+        recipientConnected: false,
+        sharedImportProgressByKey: {},
+        sharedImportProgressTick: 0,
+        syncStatusMessage: "",
+        ownerSyncPollErrors: {},
+        ownerSyncLabels: {},
+        ownerProgressProbeAt: {},
+        ownerSyncInFlight: {},
+        shareStatusMessage: "",
+        shareStatusIsError: false,
+        ownerSyncRequiredMessage: "",
+        cardRepairSummary: "",
+        cardRepairStatus: null,
+        skippedDialog: {
+            groupName: "",
+            contacts: [],
+            loading: false,
+            error: "",
+        },
+        viewMode: window.VIEW_MODE || "owner",
+        inviteRecipientEmail: String(window.INVITE_RECIPIENT_EMAIL || "").trim().toLowerCase(),
+        sendShareEmailsEnabled: false,
+        inviteUrl: "",
+        sharedContactsGroupName: "",
+        sharedContactsGroupResourceName: "",
+        syncConfirm: {
+            resourceName: "",
+            groupName: ""
+        },
+        resetConfirm: {
+            resourceName: "",
+            groupName: "",
+            message: ""
+        },
+        dismissConfirm: {
+            groupName: "",
+            groupSnapshot: null,
+            identity: null,
+        },
+        pendingDismissGroup: null,
+        sharedGroups: [],
+        dismissedSharedGroupKeys: {}
+    }
+    
+    let resetPopupData = function(data){
+        this.popupData = data
+        if (typeof this.popupData.notifyByEmail !== "boolean"){
+            this.popupData.notifyByEmail = true
+        }
+        
+        // initialize share email chip
+        let elem = document.querySelector('.chip-share-emails')
+        options = {
+            placeholder: "Add email"
+        }
+        M.Chips.init(elem, options)
+    }
+    
+    let shareContactGroup = function(){
+        if (this.isSharing){
+            return
+        }
+        let elem = document.querySelector('.chip-share-emails')
+        let chip = M.Chips.getInstance(elem)
+        // Ensure current input value becomes a chip before reading chipsData
+        let input = elem ? elem.querySelector("input") : null
+        if (input && input.value && input.value.trim()){
+            let value = input.value.toLowerCase().trim()
+            let exists = chip && chip.chipsData.some(c=>c.tag.toLowerCase().trim() === value)
+            if (chip && !exists){
+                chip.addChip({tag: value})
+            }
+            input.value = ""
+        }
+        let rawEmails = chip ? chip.chipsData.map(chip=>chip.tag.toLowerCase().trim()) : []
+        let emails = rawEmails.slice()
+        
+        let key = this.profile.email
+        let shared = this.popupData.shared
+        let resourceName = this.popupData.resourceName
+        let name = this.popupData.name
+        let memberCount = this.popupData.memberCount
+        let members = this.popupData.members
+        let notifyByEmail = this.popupData.notifyByEmail !== false
+        let latestShared = (
+            this.groupsById &&
+            this.groupsById[resourceName] &&
+            Array.isArray(this.groupsById[resourceName].shared)
+        ) ? this.groupsById[resourceName].shared : shared
+        let sharedSet = new Set((latestShared || []).map(email=>String(email || "").trim().toLowerCase()))
+        
+        emails = emails.filter(email=>!sharedSet.has(String(email || "").trim().toLowerCase()))
+        
+        if (emails.length){
+            let call = window.appCall
+            if (typeof call !== "function"){
+                this.shareStatusIsError = true
+                this.shareStatusMessage = "App API bridge failed to load. Hard refresh the page."
+                return
+            }
+            this.isSharing = true
+            this.shareStatusMessage = ""
+            this.shareStatusIsError = false
+            call("shareContactGroup", [key, resourceName, name, members, memberCount, emails, notifyByEmail])
+                .then((result)=>{
+                    let groups = result && result.groups
+                    let shareStatus = result && result.shareStatus
+                    let nextGroups = Object.assign({}, this.groupsById || {})
+                    if (groups){
+                        Object.keys(groups).forEach(id=>{
+                            let existing = nextGroups[id] || {}
+                            let incoming = groups[id] || {}
+                            nextGroups[id] = Object.assign({}, existing, incoming)
+                        })
+                    }
+                    this.groupsById = nextGroups
+                    this.groupsList = Object.values(nextGroups).sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, {sensitivity: "base"}))
+                    if (nextGroups[resourceName] && nextGroups[resourceName].shared){
+                        this.popupData.shared = nextGroups[resourceName].shared
+                    }
+                    let sent = shareStatus && shareStatus.sent ? shareStatus.sent : 0
+                    let notified = shareStatus && typeof shareStatus.notified === "number" ? shareStatus.notified : (notifyByEmail ? sent : 0)
+                    let blockedNoInvite = shareStatus && shareStatus.blockedNoInvite ? shareStatus.blockedNoInvite : 0
+                    let blockedNoInviteEmails = (shareStatus && Array.isArray(shareStatus.blockedNoInviteEmails))
+                        ? shareStatus.blockedNoInviteEmails
+                        : []
+                    let requiresOwnerSync = !!(shareStatus && shareStatus.requiresOwnerSync)
+                    if (!requiresOwnerSync && sent > 0){
+                        requiresOwnerSync = true
+                    }
+                    let requestedContacts = shareStatus && shareStatus.requestedContacts ? shareStatus.requestedContacts : 0
+                    let preparedContacts = shareStatus && shareStatus.preparedContacts ? shareStatus.preparedContacts : 0
+                    let missingContacts = shareStatus && shareStatus.missingContacts ? shareStatus.missingContacts : 0
+                    if (sent <= 0){
+                        this.shareStatusIsError = true
+                        if (blockedNoInvite > 0){
+                            let blockedList = blockedNoInviteEmails.length
+                                ? blockedNoInviteEmails.join(", ")
+                                : `${blockedNoInvite} recipient(s)`
+                            this.shareStatusMessage = `No recipients were added. Not added (no prior invite): ${blockedList}. Turn on email notification for first-time shares, or share again with the checkbox enabled.`
+                        } else {
+                            this.shareStatusMessage = "No recipients were added."
+                        }
+                    } else {
+                        this.shareStatusMessage = `Shared with ${sent} recipient(s). Prepared ${preparedContacts}/${requestedContacts} contact(s).`
+                        if (notifyByEmail){
+                            if (this.sendShareEmailsEnabled){
+                                this.shareStatusMessage += ` Email sent to ${notified} recipient(s).`
+                            } else if (openShareInviteMailto(
+                                key,
+                                (shareStatus && shareStatus.inviteGroupName) || inviteDisplayName(name, resourceName, this),
+                                emails,
+                                this.inviteUrl
+                            )){
+                                this.shareStatusMessage += " Your email app should open with the invite — click Send."
+                            } else {
+                                this.shareStatusMessage += " Email notification skipped — send the invite link manually."
+                            }
+                        } else {
+                            this.shareStatusMessage += " Email notification skipped — send the invite link manually."
+                        }
+                        let hasShareWarning = false
+                        if (blockedNoInvite > 0){
+                            let blockedList = blockedNoInviteEmails.length
+                                ? blockedNoInviteEmails.join(", ")
+                                : `${blockedNoInvite} recipient(s)`
+                            let inviteUrl = this.inviteUrl || `${window.location.origin}/?mode=shared`
+                            this.shareStatusMessage += ` Reminder: send ${blockedList} the invite link: ${inviteUrl}`
+                        }
+                        if (requiresOwnerSync){
+                            this.ownerSyncRequiredMessage = `"${name}" was shared. Click Sync to push contacts to recipients.`
+                        }
+                        this.shareStatusIsError = (missingContacts > 0) || hasShareWarning
+                        if (missingContacts > 0){
+                            this.shareStatusMessage += ` ${missingContacts} contact(s) could not be prepared.`
+                        }
+                    }
+                    if (M && M.toast){
+                        M.toast({html: this.shareStatusMessage})
+                        if (requiresOwnerSync && sent > 0){
+                            M.toast({html: "Group shared. Now click Sync to send contacts.", classes: "amber darken-2"})
+                        }
+                    }
+                    try {
+                        if (chip && typeof chip.deleteChip === "function"){
+                            while (chip.chipsData && chip.chipsData.length){
+                                chip.deleteChip(0)
+                            }
+                        }
+                    } catch (chipErr){
+                        console.warn("Could not clear share chips:", chipErr)
+                    }
+                })
+                .catch((error)=>{
+                    this.shareStatusIsError = true
+                    this.ownerSyncRequiredMessage = ""
+                    this.shareStatusMessage = formatClientError(error)
+                    if (M && M.toast){
+                        M.toast({html: this.shareStatusMessage})
+                    }
+                })
+                .finally(()=>{
+                    this.isSharing = false
+                })
+        } else {
+            this.shareStatusIsError = true
+            if (rawEmails.length > 0){
+                this.shareStatusMessage = "All entered emails are already collaborators for this group."
+            } else {
+                this.shareStatusMessage = "Enter at least one new recipient email."
+            }
+        }
+    }
+    
+    
+    let stopShareContactGroup = function(key, email, resourceName){
+        let call = window.appCall
+        if (typeof call !== "function"){
+            if (M && M.toast){
+                M.toast({html: "App API failed to load. Hard refresh the page."})
+            }
+            return
+        }
+        call("stopShareContactGroup", [key, email, resourceName])
+            .then((result)=>{
+                let groups = result && result.groups
+                let nextGroups = Object.assign({}, this.groupsById || {})
+                if (groups){
+                    Object.keys(groups).forEach(id=>{
+                        let existing = nextGroups[id] || {}
+                        let incoming = groups[id] || {}
+                        nextGroups[id] = Object.assign({}, existing, incoming)
+                    })
+                }
+                this.groupsById = nextGroups
+                this.groupsList = Object.values(nextGroups).sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, {sensitivity: "base"}))
+                if (nextGroups[resourceName]){
+                    let updatedGroup = nextGroups[resourceName]
+                    this.popupData.shared = updatedGroup.shared || []
+                    if (!updatedGroup.shared || !updatedGroup.shared.length){
+                        if (this.ownerSyncLabels[resourceName]){
+                            this.$delete(this.ownerSyncLabels, resourceName)
+                        }
+                        delete updatedGroup.syncProgress
+                        delete updatedGroup.status
+                        clearOwnerShareNotices.call(this)
+                    } else {
+                        this.shareStatusMessage = ""
+                        this.shareStatusIsError = false
+                        reconcileOwnerSyncRequiredMessage.call(this)
+                    }
+                } else {
+                    clearOwnerShareNotices.call(this)
+                }
+                if (M && M.toast){
+                    M.toast({html: `Removed ${email} from this group.`})
+                }
+            })
+            .catch((error)=>{
+                if (M && M.toast){
+                    M.toast({html: formatClientError(error)})
+                }
+            })
+    }
+    
+    
+    let refreshAppData = function(options){
+        options = options || {}
+        let recover = !!options.recover
+        let call = window.appCall
+        if (typeof call !== "function"){
+            return
+        }
+        call("loadApp", [this.viewMode, recover])
+            .then((result)=>{
+                this.isLoading = false
+                this.hasLoadError = false
+                this.profile = result.profile || this.profile
+                this.groupsById = result.groups || {}
+                this.groupsList = Object.values(this.groupsById).sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, {sensitivity: "base"}))
+                this.sharedGroups = filterDismissedSharedGroups(
+                    result.sharedGroups || [],
+                    this.dismissedSharedGroupKeys
+                )
+                this.recipientConnected = !!result.recipientConnected
+                this.sharedGroups.forEach((group)=>{
+                    this.updateSharedImportProgressUi(group)
+                    this.ensureSharedImportProgressPoll(group)
+                })
+                this.seedOwnerSyncLabelsFromGroups()
+                reconcileOwnerSyncRequiredMessage.call(this)
+                if (this.viewMode === "shared" && this.recipientConnected){
+                    this.$nextTick(()=>{
+                        this.resumePendingSharedImports()
+                    })
+                }
+            })
+            .catch((error)=>{
+                this.isLoading = false
+                this.hasLoadError = true
+                this.error = formatClientError(error)
+            })
+    }
+
+    let refreshSharedPage = function(){
+        this.isLoading = true
+        refreshAppData.call(this, {recover: true})
+    }
+    
+    let methods = {
+        resetPopupData,
+        invokePopupCallback: function(){
+            if (this.isSharing){
+                return
+            }
+            let cb = this.popupData && this.popupData.callback
+            if (typeof cb === "function"){
+                cb.call(this)
+            }
+        },
+        formatSharedStatusLabel,
+        getSharedImportedCount,
+        getSharedImportProgress: function(group){
+            void this.sharedImportProgressTick
+            if (!group){
+                return buildSharedImportProgress(group, false)
+            }
+            let active = this.isSharedGroupSyncing(group) || isSharedGroupPending_(group)
+            return buildSharedImportProgress(group, active)
+        },
+        getSharedImportProgressCount: function(group){
+            void this.sharedImportProgressTick
+            if (this.sharedShowPhotoBar(group)){
+                return this.sharedPhotoCountLabel(group)
+            }
+            let progress = this.getSharedImportProgress(group)
+            if (progress.phase === "photos"){
+                return `${progress.photoDone}/${progress.photoTotal} photos`
+            }
+            return `${progress.done}/${progress.total}`
+        },
+        sharedImportBusy: function(group){
+            void this.sharedImportProgressTick
+            if (!group){
+                return false
+            }
+            return this.isSharedGroupSyncing(group) || isSharedGroupPending_(group)
+        },
+        sharedShowPhotoBar: function(group){
+            void this.sharedImportProgressTick
+            if (!group){
+                return false
+            }
+            let status = String(group.status || "")
+            if (isSharedRecipientPrepStatus(status)){
+                return false
+            }
+            if (status.startsWith("Shared")){
+                return false
+            }
+            if (
+                contactsImportComplete_(group)
+                && !sharedPhotosComplete_(group)
+            ){
+                return true
+            }
+            if (status.startsWith("Photos (") || status.startsWith("Importing photos")){
+                return true
+            }
+            if (group.importPhase === "photos"){
+                return true
+            }
+            if (shouldShowSharedPhotoProgress_(group)){
+                return true
+            }
+            return false
+        },
+        sharedContactCountLabel: function(group){
+            void this.sharedImportProgressTick
+            let total = Number(group.memberCount || 0)
+            let done = Number(group.importCursor || 0)
+            let parsed = parseSharedImportStatusFraction(group.status)
+            if (parsed){
+                done = Math.max(done, parsed.done)
+            }
+            if (this.isSharedGroupSyncing(group)){
+                done = Math.max(done, Number(group.actualCount || 0))
+            }
+            if (done > total){
+                done = total
+            }
+            return `${done}/${total}`
+        },
+        sharedPhotoCountLabel: function(group){
+            void this.sharedImportProgressTick
+            let photo = getSharedPhotoProgress(group)
+            return `${photo.photoDone}/${photo.photoTotal} photos`
+        },
+        sharedContactPercent: function(group){
+            void this.sharedImportProgressTick
+            let total = Number(group.memberCount || 0)
+            if (total <= 0){
+                return 0
+            }
+            let done = Number(group.importCursor || 0)
+            let parsed = parseSharedImportStatusFraction(group.status)
+            if (parsed){
+                done = Math.max(done, parsed.done)
+            }
+            if (this.isSharedGroupSyncing(group)){
+                done = Math.max(done, Number(group.actualCount || 0))
+            }
+            if (done > total){
+                done = total
+            }
+            return Math.min(100, Math.round((done / total) * 100))
+        },
+        sharedPhotoPercent: function(group){
+            void this.sharedImportProgressTick
+            let photo = getSharedPhotoProgress(group)
+            if (photo.photoTotal <= 0){
+                return 0
+            }
+            return Math.min(100, Math.round((photo.photoDone / photo.photoTotal) * 100))
+        },
+        updateSharedImportProgressUi: function(group){
+            let key = this.getSharedGroupSyncKey(group)
+            if (!key || !group){
+                return
+            }
+            let active = this.isSharedGroupSyncing(group) || isSharedGroupPending_(group)
+            this.$set(
+                this.sharedImportProgressByKey,
+                key,
+                buildSharedImportProgress(group, active)
+            )
+            this.sharedImportProgressTick = (this.sharedImportProgressTick || 0) + 1
+        },
+        applySharedGroupUpdate: function(ownerKey, resourceName, sharedGroups){
+            let groups = filterDismissedSharedGroups(sharedGroups || [], this.dismissedSharedGroupKeys)
+            let latest = groups.find(item=> sharedGroupMatches(item, ownerKey, resourceName))
+            let targetIndex = this.sharedGroups.findIndex(item=>
+                sharedGroupMatches(item, ownerKey, resourceName)
+            )
+            if (!latest){
+                return targetIndex >= 0 ? this.sharedGroups[targetIndex] : null
+            }
+            if (targetIndex >= 0){
+                let prev = this.sharedGroups[targetIndex] || {}
+                let merged = Object.assign({}, prev, latest)
+                let prevCursor = Number(prev.importCursor || 0)
+                let nextCursor = Number(latest.importCursor || 0)
+                if (!String(latest.status || "").startsWith("Ready")){
+                    merged.importCursor = Math.max(prevCursor, nextCursor)
+                }
+                let memberCount = Math.max(
+                    Number(merged.memberCount || prev.memberCount || 0),
+                    Number(merged.actualCount || 0),
+                    Number(merged.importCursor || 0)
+                )
+                if (memberCount > 0){
+                    merged.photoDoneCount = Math.min(
+                        Math.max(0, Number(merged.photoDoneCount || 0)),
+                        memberCount
+                    )
+                    merged.photoTargetCount = Math.min(
+                        Math.max(0, Number(merged.photoTargetCount || 0)),
+                        memberCount
+                    )
+                }
+                this.$set(this.sharedGroups, targetIndex, merged)
+                this.updateSharedImportProgressUi(merged)
+                let syncKey = this.getSharedGroupSyncKey(merged)
+                if (syncKey && !isSharedGroupPending_(merged)){
+                    this.$set(this.syncingGroups, syncKey, false)
+                    this.stopSharedImportProgressPoll(syncKey)
+                }
+            } else if (!isSharedGroupDismissed(latest, this.dismissedSharedGroupKeys)){
+                this.sharedGroups.push(latest)
+                this.updateSharedImportProgressUi(latest)
+                let syncKey = this.getSharedGroupSyncKey(latest)
+                if (syncKey && !isSharedGroupPending_(latest)){
+                    this.$set(this.syncingGroups, syncKey, false)
+                    this.stopSharedImportProgressPoll(syncKey)
+                }
+            }
+            return targetIndex >= 0 ? this.sharedGroups[targetIndex] : latest
+        },
+        mergeSharedGroupFromServer: function(ownerKey, resourceName, sharedGroups){
+            this.applySharedGroupUpdate(ownerKey, resourceName, sharedGroups)
+            this.$nextTick(()=>{
+                this.$forceUpdate()
+            })
+        },
+        ensureSharedImportProgressPoll: function(group){
+            if (!group || !group.owner || !group.resourceName){
+                return
+            }
+            if (!isSharedGroupPending_(group)){
+                return
+            }
+            let syncKey = this.getSharedGroupSyncKey(group)
+            if (!syncKey){
+                return
+            }
+            if (this._sharedImportPollers && this._sharedImportPollers[syncKey]){
+                return
+            }
+            this.startSharedImportProgressPoll(syncKey, group.owner, group.resourceName)
+        },
+        startSharedImportProgressPoll: function(syncKey, ownerKey, resourceName){
+            this.stopSharedImportProgressPoll(syncKey)
+            if (!this._sharedImportPollers){
+                this._sharedImportPollers = {}
+            }
+            let tick = ()=>{
+                if (this._sharedImportPollInFlight && this._sharedImportPollInFlight[syncKey]){
+                    return
+                }
+                let call = window.appCall
+                if (typeof call !== "function"){
+                    return
+                }
+                if (!this._sharedImportPollInFlight){
+                    this._sharedImportPollInFlight = {}
+                }
+                this._sharedImportPollInFlight[syncKey] = true
+                call("getRecipientSharedGroups", [])
+                    .then(({sharedGroups})=>{
+                        this.mergeSharedGroupFromServer(ownerKey, resourceName, sharedGroups)
+                    })
+                    .catch(()=>{})
+                    .finally(()=>{
+                        if (this._sharedImportPollInFlight){
+                            this._sharedImportPollInFlight[syncKey] = false
+                        }
+                    })
+            }
+            this._sharedImportPollers[syncKey] = setInterval(tick, 1000)
+            tick()
+        },
+        stopSharedImportProgressPoll: function(syncKey){
+            if (this._sharedImportPollers && this._sharedImportPollers[syncKey]){
+                clearInterval(this._sharedImportPollers[syncKey])
+                delete this._sharedImportPollers[syncKey]
+            }
+        },
+        resumePendingSharedImports: function(){
+            if (this.viewMode !== "shared" || !this.recipientConnected){
+                return
+            }
+            (this.sharedGroups || []).forEach((group)=>{
+                if (group && isSharedGroupPending_(group)){
+                    this.ensureSharedImportProgressPoll(group)
+                }
+            })
+        },
+        startRecipientImportWatcher: function(){
+            if (this.viewMode !== "shared"){
+                return
+            }
+            this.stopRecipientImportWatcher()
+            this._recipientImportWatcher = setInterval(()=>{
+                if (!this.recipientConnected || this.isLoading){
+                    return
+                }
+                this.resumePendingSharedImports()
+            }, 4000)
+        },
+        stopRecipientImportWatcher: function(){
+            if (this._recipientImportWatcher){
+                clearInterval(this._recipientImportWatcher)
+                this._recipientImportWatcher = null
+            }
+        },
+        shareContactGroup,
+        stopShareContactGroup,
+        getSharedGroupSyncKey: function(group){
+            if (!group){
+                return ""
+            }
+            return sharedGroupSyncKeyFromParts(group.owner, group.resourceName)
+        },
+        sharedGroupRowKey: function(group, index){
+            let base = this.getSharedGroupSyncKey(group)
+            if (base){
+                return base + "-" + this.sharedImportProgressTick
+            }
+            let shareId = String(group && group.shareId || "").trim()
+            if (shareId){
+                return "share:" + shareId + "-" + index
+            }
+            return "shared-row-" + index + "-" + this.sharedImportProgressTick
+        },
+        bindSharedGroupsTableActions: function(){
+            this.bindDismissModalActions()
+            this.bindRetryVisibilityResume()
+        },
+        bindRetryVisibilityResume: function(){
+            if (this._retryVisibilityBound){
+                return
+            }
+            this._retryVisibilityBound = true
+            let resume = ()=>{
+                this._pushRetryInFlight = {}
+                this._sharedImportPollInFlight = {}
+                this.resumePendingSharedImports()
+            }
+            document.addEventListener("visibilitychange", ()=>{
+                if (document.visibilityState === "visible"){
+                    resume()
+                }
+            })
+            // Safari (especially iPhone) often restores a frozen tab via pageshow
+            // instead of a full reload. Resume polling there too.
+            window.addEventListener("pageshow", resume)
+            window.addEventListener("focus", resume)
+        },
+        bindDismissModalActions: function(){
+            if (this.dismissModalBound){
+                return
+            }
+            let confirmBtn = document.getElementById("btn-confirm-dismiss-shared")
+            if (!confirmBtn){
+                return
+            }
+            let vm = this
+            confirmBtn.addEventListener("click", function(event){
+                event.preventDefault()
+                event.stopImmediatePropagation()
+                vm.confirmDismissSharedGroup()
+            }, true)
+            this.dismissModalBound = true
+        },
+        stopAllSharedImportPolls: function(){
+            if (!this._sharedImportPollers){
+                return
+            }
+            Object.keys(this._sharedImportPollers).forEach((syncKey)=>{
+                this.stopSharedImportProgressPoll(syncKey)
+            })
+        },
+        openDismissSharedModal: function(){
+            let modalElem = document.getElementById("popup-dismiss-shared-confirm")
+            if (typeof M === "undefined" || !M || !M.Modal || !modalElem){
+                return null
+            }
+            let modal = M.Modal.getInstance(modalElem)
+            if (!modal){
+                M.Modal.init(modalElem)
+                modal = M.Modal.getInstance(modalElem)
+            }
+            return modal
+        },
+        promptDismissSharedGroup: function(indexOrGroup){
+            let index = (typeof indexOrGroup === "number") ? indexOrGroup : -1
+            let group = (index >= 0)
+                ? (this.sharedGroups || [])[index]
+                : indexOrGroup
+            if (!group){
+                notifyUser("Cannot dismiss — row not found. Refresh and try again.", "red darken-2")
+                return
+            }
+            let identity = resolveSharedGroupIdentity(group)
+            if (!sharedGroupHasRemovableIdentity(identity)){
+                notifyUser(
+                    "Cannot dismiss this row — group metadata is missing. Try Refresh, then dismiss again.",
+                    "red darken-2"
+                )
+                return
+            }
+            let pending = {
+                index: index,
+                groupSnapshot: Object.assign({}, group),
+                identity: identity,
+            }
+            this.pendingDismissGroup = pending
+            this.dismissConfirm = {
+                groupName: identity.name || "this group",
+                groupSnapshot: pending.groupSnapshot,
+                identity: identity,
+            }
+            let modal = this.openDismissSharedModal()
+            if (modal){
+                modal.open()
+                return
+            }
+            this.confirmDismissSharedGroup()
+        },
+        confirmDismissSharedGroup: function(){
+            let pending = this.pendingDismissGroup
+            let group = pending && pending.groupSnapshot
+            let identity = pending && pending.identity
+            if (!group || !identity){
+                notifyUser("Dismiss failed — row data was lost. Refresh the page and try again.", "red darken-2")
+                return
+            }
+            let modal = this.openDismissSharedModal()
+            if (modal){
+                modal.close()
+            }
+            this.performDismissSharedGroup(group, identity, pending.index)
+        },
+        removeSharedGroupFromList: function(group, index){
+            if (typeof index === "number" && index >= 0 && index < (this.sharedGroups || []).length){
+                let at = (this.sharedGroups || [])[index]
+                if (at && sharedGroupSameAs(at, group)){
+                    this.sharedGroups.splice(index, 1)
+                    return true
+                }
+            }
+            let before = (this.sharedGroups || []).length
+            this.sharedGroups = (this.sharedGroups || []).filter(item=> !sharedGroupSameAs(item, group))
+            return this.sharedGroups.length < before
+        },
+        performDismissSharedGroup: function(group, identity, index){
+            let call = window.appCall
+            if (typeof call !== "function"){
+                notifyUser("App API failed to load. Hard refresh the page.", "red darken-2")
+                return
+            }
+            let dismissedGroup = Object.assign({}, group)
+            dismissSharedGroupLocally(this, group)
+            let removed = this.removeSharedGroupFromList(group, index)
+            this.stopAllSharedImportPolls()
+            let syncKey = this.getSharedGroupSyncKey(group)
+            if (syncKey){
+                this.$delete(this.syncingGroups, syncKey)
+            }
+            call("dismissSharedRecipientGroup", [
+                identity.owner,
+                identity.resourceName,
+                identity.shareId,
+                identity.created,
+                identity.name,
+            ])
+                .then((result)=>{
+                    if (Array.isArray(result?.dismissedSharedGroups)){
+                        result.dismissedSharedGroups.forEach((key)=>{
+                            let normalized = String(key || "").trim()
+                            if (normalized){
+                                this.$set(this.dismissedSharedGroupKeys, normalized, true)
+                            }
+                        })
+                    }
+                    let next = Array.isArray(result?.sharedGroups)
+                        ? result.sharedGroups
+                        : (this.sharedGroups || [])
+                    next = filterDismissedSharedGroups(next, this.dismissedSharedGroupKeys)
+                    next = next.filter(item=> !sharedGroupSameAs(item, dismissedGroup))
+                    this.sharedGroups = next
+                    this.pendingDismissGroup = null
+                    notifyUser("Group dismissed from your list.", "green darken-1")
+                })
+                .catch((error)=>{
+                    this.pendingDismissGroup = null
+                    notifyUser(formatClientError(error), "red darken-2")
+                })
+        },
+        dismissSharedRecipientGroup: function(indexOrGroup){
+            this.promptDismissSharedGroup(indexOrGroup)
+        },
+        removeRecipientSharedGroup: function(indexOrGroup){
+            this.promptDismissSharedGroup(indexOrGroup)
+        },
+        isSharedGroupSyncing: function(group){
+            let key = this.getSharedGroupSyncKey(group)
+            return !!(key && this.syncingGroups && this.syncingGroups[key])
+        },
+        isSharedRetryLocked: function(group){
+            let key = this.getSharedGroupSyncKey(group)
+            if (!key){
+                return false
+            }
+            if (this._pushRetryInFlight && this._pushRetryInFlight[key]){
+                let started = Number(this._pushRetryStartedAt && this._pushRetryStartedAt[key] || 0)
+                return Date.now() - started < 20000
+            }
+            let lastAt = Number(this._lastPushRetryAt && this._lastPushRetryAt[key] || 0)
+            return Date.now() - lastAt < 15000
+        },
+        syncSharedRecipientGroup: function(group, options){
+            this.retrySharePush(group, options)
+        },
+        retrySharePush: function(group, options){
+            options = options || {}
+            let manual = options.manual !== false
+            if (!group || !group.owner || !group.resourceName){
+                return
+            }
+            if (!this.recipientConnected){
+                if (typeof M !== "undefined" && M && M.toast){
+                    M.toast({html: "Connect account first, then retry push.", classes: "amber darken-2"})
+                }
+                this.connectAccount()
+                return
+            }
+            let call = window.appCall
+            if (typeof call !== "function"){
+                if (typeof M !== "undefined" && M && M.toast){
+                    M.toast({html: "App API failed to load. Hard refresh the page."})
+                }
+                return
+            }
+            let syncKey = this.getSharedGroupSyncKey(group)
+            if (!this._pushRetryInFlight){
+                this._pushRetryInFlight = {}
+            }
+            if (!this._lastPushRetryAt){
+                this._lastPushRetryAt = {}
+            }
+            if (this._pushRetryInFlight[syncKey]){
+                let started = Number(this._pushRetryStartedAt && this._pushRetryStartedAt[syncKey] || 0)
+                if (Date.now() - started < 20000){
+                    this.ensureSharedImportProgressPoll(group)
+                    if (manual && typeof M !== "undefined" && M && M.toast){
+                        M.toast({
+                            html: "Retry is still starting. Keep this tab open.",
+                            classes: "blue-grey darken-1",
+                        })
+                    }
+                    return
+                }
+            }
+            let lastAt = Number(this._lastPushRetryAt[syncKey] || 0)
+            if (Date.now() - lastAt < 15000){
+                this.ensureSharedImportProgressPoll(group)
+                if (manual && typeof M !== "undefined" && M && M.toast){
+                    M.toast({
+                        html: "Push already queued recently. Keep this tab open.",
+                        classes: "blue-grey darken-1",
+                    })
+                }
+                return
+            }
+            this._pushRetryInFlight[syncKey] = true
+            if (!this._pushRetryStartedAt){
+                this._pushRetryStartedAt = {}
+            }
+            this._pushRetryStartedAt[syncKey] = Date.now()
+            this.$set(this.syncingGroups, syncKey, true)
+            this.ensureSharedImportProgressPoll(group)
+            call("retrySharePush", [group.owner, group.resourceName])
+                .then((result)=>{
+                    this._lastPushRetryAt[syncKey] = Date.now()
+                    let latest = group
+                    if (Array.isArray(result?.sharedGroups)){
+                        latest = this.applySharedGroupUpdate(group.owner, group.resourceName, result.sharedGroups) || group
+                    }
+                    this.ensureSharedImportProgressPoll(latest)
+                    if (manual && typeof M !== "undefined" && M && M.toast){
+                        if (result?.status === "already_running"){
+                            M.toast({html: "Import still running. Keep this tab open.", classes: "blue-grey darken-1"})
+                        } else {
+                            M.toast({html: "Photo import resumed. Keep this tab open until it finishes.", classes: "green darken-1"})
+                        }
+                    }
+                })
+                .catch((error)=>{
+                    this._lastPushRetryAt[syncKey] = 0
+                    if (isShareNetworkError_(error) && !options._retried){
+                        this._pushRetryInFlight[syncKey] = false
+                        if (manual && typeof M !== "undefined" && M && M.toast){
+                            M.toast({
+                                html: "Connection dropped. Retrying… keep this tab open.",
+                                classes: "amber darken-2",
+                            })
+                        }
+                        this.retrySharePush(group, Object.assign({}, options, {_retried: true}))
+                        return
+                    }
+                    if (manual && typeof M !== "undefined" && M && M.toast){
+                        let message = isShareNetworkError_(error)
+                            ? "Connection dropped. Hit Retry again and keep this tab open."
+                            : `Push retry failed: ${formatClientError(error)}`
+                        M.toast({html: message, classes: "red darken-2"})
+                    }
+                    if (syncKey){
+                        this.$set(this.syncingGroups, syncKey, false)
+                    }
+                })
+                .finally(()=>{
+                    this._pushRetryInFlight[syncKey] = false
+                })
+        },
+        applyCardRepairStatus: function(payload){
+            let status = (payload && payload.status) ? payload.status : payload
+            this.cardRepairStatus = status || null
+            this.cardRepairSummary = String(
+                (payload && payload.summary) || (status && status.state ? `Card repair: ${status.state}` : "")
+            )
+            let state = String((status && status.state) || "")
+            if (["queued", "running", "paused_rate_limit", "stalled"].indexOf(state) < 0){
+                this.stopCardRepairStatusPoll()
+            }
+        },
+        stopCardRepairStatusPoll: function(){
+            if (this._cardRepairPoller){
+                clearInterval(this._cardRepairPoller)
+                this._cardRepairPoller = null
+            }
+        },
+        ensureCardRepairStatusPoll: function(){
+            let state = String((this.cardRepairStatus && this.cardRepairStatus.state) || "")
+            if (["queued", "running", "paused_rate_limit", "stalled"].indexOf(state) < 0){
+                return
+            }
+            if (this._cardRepairPoller){
+                return
+            }
+            let tick = ()=>{
+                let call = window.appCall
+                if (typeof call !== "function"){
+                    return
+                }
+                call("getCardRepairStatus", [])
+                    .then((payload)=>{
+                        this.applyCardRepairStatus(payload)
+                    })
+                    .catch(()=>{})
+            }
+            this._cardRepairPoller = setInterval(tick, 5000)
+            tick()
+        },
+        stopOwnerPushStatusPoll: function(resourceName){
+            if (this._ownerPushPollers && this._ownerPushPollers[resourceName]){
+                clearInterval(this._ownerPushPollers[resourceName])
+                delete this._ownerPushPollers[resourceName]
+            }
+        },
+        startOwnerPushStatusPoll: function(resourceName, ownerKey, initialMessage){
+            if (!resourceName || !ownerKey){
+                return
+            }
+            if (!this._ownerPushPollers){
+                this._ownerPushPollers = {}
+            }
+            this.stopOwnerPushStatusPoll(resourceName)
+            let pollCount = 0
+            let tick = ()=>{
+                let call = window.appCall
+                if (typeof call !== "function"){
+                    return
+                }
+                call("getSharePushStatus", [ownerKey, resourceName])
+                    .then(({recipients})=>{
+                        pollCount++
+                        let rows = Array.isArray(recipients) ? recipients : []
+                        let formatOwnerPushStatus = (row)=>{
+                            return String(
+                                row.displayStatus ||
+                                row.pushStatus ||
+                                row.groupStatus ||
+                                "unknown"
+                            )
+                        }
+                        if (rows.length){
+                            this.syncStatusMessage = rows
+                                .map((row)=>`${row.recipientEmail}: ${formatOwnerPushStatus(row)}`)
+                                .join(" • ")
+                        } else if (initialMessage){
+                            this.syncStatusMessage = initialMessage
+                        }
+                        let stillActive = rows.some((row)=>{
+                            let groupStatus = String(row.groupStatus || "")
+                            let jobStatus = row.job && row.job.status
+                            if (groupStatus.startsWith("Shared") || groupStatus.startsWith("Error")){
+                                return false
+                            }
+                            if (jobStatus === "done"){
+                                return false
+                            }
+                            let text = formatOwnerPushStatus(row)
+                            if (text.startsWith("Ready")){
+                                return jobStatus === "queued" || jobStatus === "running"
+                            }
+                            if (text.startsWith("Waiting for recipient to connect")){
+                                return false
+                            }
+                            return (
+                                text.startsWith("Pushing") ||
+                                text.startsWith("Importing") ||
+                                text.startsWith("Photos") ||
+                                text.startsWith("Queued") ||
+                                text.startsWith("Ready") ||
+                                jobStatus === "queued" ||
+                                jobStatus === "running"
+                            )
+                        })
+                        if (!stillActive || pollCount > 600){
+                            this.stopOwnerPushStatusPoll(resourceName)
+                            this.syncStatusMessage = ""
+                            this.shareStatusMessage = ""
+                            this.shareStatusIsError = false
+                            this.ownerSyncRequiredMessage = ""
+                        }
+                    })
+                    .catch(()=>{})
+            }
+            this._ownerPushPollers[resourceName] = setInterval(tick, 2000)
+            tick()
+        },
+        isGroupSyncing: function(resourceName){
+            return !!(this.syncingGroups && this.syncingGroups[resourceName])
+        },
+        getOwnerSyncButtonLabel: function(group){
+            if (!group){
+                return "Syncing"
+            }
+            let resourceName = group.resourceName || ""
+            let localLabel = resourceName ? this.ownerSyncLabels[resourceName] : ""
+            if (localLabel){
+                return localLabel
+            }
+            let persisted = resolveOwnerSyncCountLabel(group)
+            if (persisted){
+                return persisted
+            }
+            let total = Number(group.memberCount || 0)
+            if (total > 0){
+                return `0/${total}`
+            }
+            return "Syncing"
+        },
+        getOwnerSyncDisplayText: function(group){
+            if (!group){
+                return ""
+            }
+            if (this.isGroupSyncing(group.resourceName)){
+                return this.getOwnerSyncButtonLabel(group)
+            }
+            return this.getOwnerSyncButtonText(group)
+        },
+        shouldShowOwnerSyncText: function(group){
+            return !!this.getOwnerSyncButtonText(group)
+        },
+        getOwnerSyncButtonText: function(group){
+            if (!group){
+                return ""
+            }
+            if (!group.shared || !group.shared.length){
+                return ""
+            }
+            let resourceName = group.resourceName || ""
+            let localLabel = resourceName ? this.ownerSyncLabels[resourceName] : ""
+            if (localLabel){
+                return localLabel
+            }
+            let persisted = resolveOwnerSyncCountLabel(group)
+            if (persisted){
+                return persisted
+            }
+            if (this.isGroupSyncing(resourceName) || this.activeOwnerSyncResourceName === resourceName){
+                return `0/${Number(group.memberCount || 0)}`
+            }
+            return ""
+        },
+        seedOwnerSyncLabelsFromGroups: function(){
+            (this.groupsList || []).forEach((group)=>{
+                if (!group || !group.resourceName){
+                    return
+                }
+                if (!group.shared || !group.shared.length){
+                    return
+                }
+                if (this.ownerSyncLabels[group.resourceName]){
+                    return
+                }
+                let label = resolveOwnerSyncCountLabel(group)
+                if (label){
+                    this.$set(this.ownerSyncLabels, group.resourceName, label)
+                }
+            })
+        },
+        isOwnerSyncZeroState: function(group){
+            if (!group){
+                return false
+            }
+            if (!this.isGroupSyncing(group.resourceName)){
+                return false
+            }
+            let label = String(this.getOwnerSyncButtonLabel(group) || "").trim()
+            let match = label.match(/^(\d+)\s*\/\s*(\d+)$/)
+            if (!match){
+                return false
+            }
+            let done = Number(match[1])
+            let total = Number(match[2])
+            return total > 0 && done === 0
+        },
+        startOwnerSync: function(resourceName, resetSync){
+            console.log("startOwnerSync called", resourceName);
+            if (!resourceName){
+                this.syncStatusMessage = "Sync failed: missing group id."
+                return
+            }
+            if (this.isGroupSyncing(resourceName)){
+                this.syncStatusMessage = "Sync already in progress..."
+                return
+            }
+            let group = this.groupsById ? this.groupsById[resourceName] : null
+            if (!group && Array.isArray(this.groupsList)){
+                group = this.groupsList.find(item=>item && item.resourceName === resourceName) || null
+            }
+            if (!group){
+                console.error("Group not found", resourceName);
+                this.syncStatusMessage = "Sync failed: group not found in current view."
+                return
+            }
+            let shared = Array.isArray(group.shared) ? group.shared : []
+            if (!shared.length){
+                this.syncStatusMessage = "This group is not shared yet. Share it first, then sync."
+                if (typeof M !== "undefined" && M && M.toast){
+                    M.toast({html: "Share this group first before syncing.", classes: "amber darken-2"})
+                }
+                return
+            }
+            
+            if (!this.profile || !this.profile.email) {
+                console.error("Profile not loaded");
+                this.syncStatusMessage = "Sync failed: Profile not loaded."
+                return
+            }
+
+            this.$set(this.ownerSyncPollErrors, resourceName, 0)
+            this.$set(this.ownerProgressProbeAt, resourceName, 0)
+            this.activeOwnerSyncResourceName = resourceName
+            let total = Math.floor(Number((group && group.memberCount) || 0))
+            console.log("Group member count:", group ? group.memberCount : "N/A", "Total:", total);
+            this.$set(this.ownerSyncLabels, resourceName, `${0}/${total}`)
+            this.$set(this.syncingGroups, resourceName, true)
+            this.shareStatusMessage = ""
+            this.shareStatusIsError = false
+            this.ownerSyncRequiredMessage = ""
+            console.log("Sync started for:", resourceName, "Label:", this.ownerSyncLabels[resourceName]);
+            this.syncStatusMessage = total > 0 ? `Syncing... (0/${total})` : "Syncing..."
+            let ownerKey = this.profile.email
+            let pollCount = 0
+            let finishOwnerSync = (doneMsg, keepPollingPush)=>{
+                this.$set(this.ownerSyncPollErrors, resourceName, 0)
+                this.$set(this.syncingGroups, resourceName, false)
+                this.activeOwnerSyncResourceName = ""
+                this.$delete(this.ownerProgressProbeAt, resourceName)
+                clearOwnerShareNotices.call(this, {keepSyncStatus: keepPollingPush})
+                reconcileOwnerSyncRequiredMessage.call(this)
+                this.refreshAppData()
+                if (keepPollingPush){
+                    this.syncStatusMessage = doneMsg || ""
+                    this.startOwnerPushStatusPoll(resourceName, ownerKey, this.syncStatusMessage)
+                }
+            }
+            let probeOwnerSyncProgress = ()=>{
+                let probeCall = window.appCall
+                if (typeof probeCall !== "function"){
+                    return
+                }
+                probeCall("getOwnerGroupSyncProgress", [ownerKey, resourceName])
+                    .then((snapshot)=>{
+                        let snapGroup = snapshot && snapshot.group
+                        let snapProgress = snapshot && snapshot.progress
+                        if (snapGroup && this.groupsById){
+                            this.$set(this.groupsById, resourceName, snapGroup)
+                        }
+                        let done = Number((snapProgress && snapProgress.done) || 0)
+                        let totalSnap = Number(
+                            (snapProgress && snapProgress.total) ||
+                            (snapGroup && snapGroup.memberCount) ||
+                            0
+                        )
+                        if (totalSnap > 0){
+                            if (done < 0){
+                                done = 0
+                            }
+                            if (done > totalSnap){
+                                done = totalSnap
+                            }
+                            this.$set(this.ownerSyncLabels, resourceName, `${done}/${totalSnap}`)
+                            this.syncStatusMessage = `Syncing... (${done}/${totalSnap})`
+                        }
+                    })
+                    .catch(()=>{})
+            }
+            let runStep = (reset)=>{
+                if (this.ownerSyncInFlight[resourceName]){
+                    return
+                }
+                this.$set(this.ownerSyncInFlight, resourceName, true)
+                pollCount++
+                let call = window.appCall
+                if (typeof call !== "function"){
+                    this.$set(this.ownerSyncInFlight, resourceName, false)
+                    this.syncStatusMessage = "App API failed to load. Hard refresh the page."
+                    return
+                }
+                call("syncSharedGroup", [ownerKey, resourceName, 90, !!reset])
+                    .then((response)=>{
+                        this.$set(this.ownerSyncInFlight, resourceName, false)
+                        let groups = response && response.groups
+                        let syncStatus = response && response.syncStatus
+                        let progressByGroup = response && response.progressByGroup
+                        let pending = !!(response && response.pending)
+                        let busy = !!(response && response.busy)
+                        let pendingByStatus = false
+                        let terminalByStatus = false
+                        if (syncStatus && typeof syncStatus === "object"){
+                            let statusValues = Object.values(syncStatus).map(status=>String(status || ""))
+                            pendingByStatus = statusValues.some(text=>{
+                                return text.startsWith("Syncing") || text.startsWith("Queued")
+                            })
+                            terminalByStatus = statusValues.some(text=>{
+                                return text.startsWith("Synced") ||
+                                    text.startsWith("Ready") ||
+                                    text.startsWith("Shared") ||
+                                    text.startsWith("Error") ||
+                                    text.startsWith("Connect required") ||
+                                    text.startsWith("No sharedGroups") ||
+                                    text.startsWith("Group not found") ||
+                                    text.startsWith("Failed") ||
+                                    text.startsWith("Missing")
+                            })
+                        }
+                        console.log("Sync step:", {pending, resourceName});
+                        if (groups && typeof groups === "object"){
+                            let mergedGroups = Object.assign({}, this.groupsById || {})
+                            Object.keys(groups).forEach(id=>{
+                                let existing = mergedGroups[id] || {}
+                                let incoming = groups[id] || {}
+                                mergedGroups[id] = Object.assign({}, existing, incoming)
+                            })
+                            this.groupsById = mergedGroups
+                            this.groupsList = Object.values(this.groupsById).sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, {sensitivity: "base"}))
+                        }
+                        let latestGroup = this.groupsById ? this.groupsById[resourceName] : null
+                        let progressFromResponse = progressByGroup && progressByGroup[resourceName]
+                        if (!pending && !pendingByStatus && !terminalByStatus && !busy){
+                            let progressDone = Number(
+                                (progressFromResponse && progressFromResponse.done) ||
+                                (latestGroup && latestGroup.syncProgress && latestGroup.syncProgress.done) ||
+                                0
+                            )
+                            let progressTotal = Number(
+                                (progressFromResponse && progressFromResponse.total) ||
+                                (latestGroup && latestGroup.memberCount) ||
+                                0
+                            )
+                            if (progressTotal > 0 && progressDone >= progressTotal){
+                                pending = false
+                            } else if (latestGroup){
+                                let statusText = String(latestGroup.status || "")
+                                pending = !(statusText.startsWith("Synced") || statusText.startsWith("Ready"))
+                            } else {
+                                pending = true
+                            }
+                        }
+                        if (latestGroup){
+                            let progress = latestGroup.syncProgress || {}
+                            let done = Number((progressFromResponse && progressFromResponse.done) || progress.done || 0)
+                            let totalFromGroup = Number(
+                                (progressFromResponse && progressFromResponse.total) ||
+                                latestGroup.memberCount ||
+                                progress.total ||
+                                0
+                            )
+                            
+                            // Attempt to parse progress from syncStatus text if structured progress is missing
+                            if (done === 0 && syncStatus) {
+                                Object.values(syncStatus).forEach(statusStr => {
+                                    let match = String(statusStr).match(/(\d+)\/(\d+)/);
+                                    if (match) {
+                                        let d = Number(match[1]);
+                                        if (d > done) done = d;
+                                    }
+                                });
+                            }
+                            
+                            if (totalFromGroup > 0){
+                                if (done < 0){
+                                    done = 0
+                                }
+                                if (done > totalFromGroup){
+                                    done = totalFromGroup
+                                }
+                                this.$set(this.ownerSyncLabels, resourceName, `${done}/${totalFromGroup}`)
+                                if (pending){
+                                    this.syncStatusMessage = `Syncing... (${done}/${totalFromGroup})`
+                                }
+                            }
+                        } else if (pending && !this.ownerSyncLabels[resourceName]){
+                            let fallbackGroup = Array.isArray(this.groupsList)
+                                ? this.groupsList.find(item=>item && item.resourceName === resourceName)
+                                : null
+                            let fallbackTotal = Number((fallbackGroup && fallbackGroup.memberCount) || 0)
+                            this.$set(this.ownerSyncLabels, resourceName, `${0}/${fallbackTotal}`)
+                        }
+                        if (pending && (!progressFromResponse || !latestGroup)){
+                            let lastProbe = Number(this.ownerProgressProbeAt[resourceName] || 0)
+                            let currentLabel = String(this.ownerSyncLabels[resourceName] || "")
+                            let isZeroLabel = /^\s*0\s*\/\s*\d+\s*$/.test(currentLabel)
+                            let probeEvery = isZeroLabel ? 1 : 3
+                            if ((pollCount - lastProbe) >= probeEvery){
+                                this.$set(this.ownerProgressProbeAt, resourceName, pollCount)
+                                probeOwnerSyncProgress()
+                            }
+                        }
+                        if (syncStatus && Object.keys(syncStatus).length){
+                            this.syncStatusMessage = Object.entries(syncStatus)
+                                .map(([email, status]) => `${email}: ${status}`)
+                                .join(" • ")
+                        } else if (pending && busy){
+                            this.syncStatusMessage = "Waiting for previous sync step..."
+                        } else if (pending){
+                            this.syncStatusMessage = "Syncing..."
+                        }
+                        let pendingByGroupStatus = false
+                        if (latestGroup){
+                            let latestStatusText = String(latestGroup.status || "")
+                            pendingByGroupStatus = latestStatusText.startsWith("Syncing") || latestStatusText.startsWith("Queued")
+                        }
+                        if (!pending && (pendingByStatus || pendingByGroupStatus)){
+                            pending = true
+                        }
+                        // Safety valve: if polling runs too long, reconcile from latest app state.
+                        if (pollCount > 80){
+                            this.refreshAppData()
+                            let latest = this.groupsById ? this.groupsById[resourceName] : null
+                            let statusText = String((latest && latest.status) || "")
+                            let stillPending = statusText.startsWith("Syncing")
+                            if (!stillPending){
+                                this.$set(this.syncingGroups, resourceName, false)
+                                clearOwnerShareNotices.call(this)
+                                reconcileOwnerSyncRequiredMessage.call(this)
+                                return
+                            }
+                        }
+                        if (pending){
+                            this.$set(this.syncingGroups, resourceName, true)
+                            if (!this.ownerSyncLabels[resourceName]){
+                                let totalFallback = Number((latestGroup && latestGroup.memberCount) || (group && group.memberCount) || 0)
+                                this.$set(this.ownerSyncLabels, resourceName, `${0}/${totalFallback}`)
+                            }
+                            this.$set(this.ownerSyncPollErrors, resourceName, 0)
+                            if (pollCount > 1200){
+                                this.$set(this.syncingGroups, resourceName, false)
+                                this.$delete(this.ownerProgressProbeAt, resourceName)
+                                this.syncStatusMessage = "Sync polling paused after a long run. Tap Sync to continue."
+                                return
+                            }
+                            let delay = busy ? 800 : 400
+                            setTimeout(()=>runStep(false), delay)
+                            return
+                        }
+                        let doneMsg = latestGroup ? String(latestGroup.status || "") : ""
+                        if (!doneMsg && syncStatus && typeof syncStatus === "object"){
+                            doneMsg = Object.entries(syncStatus)
+                                .map(([email, status]) => `${email}: ${status}`)
+                                .join(" • ")
+                        }
+                        let hasActivePush = syncStatus && typeof syncStatus === "object" &&
+                            Object.values(syncStatus).some((status)=>{
+                                let text = String(status || "")
+                                return (
+                                    text.startsWith("Pushing") ||
+                                    text.startsWith("Importing") ||
+                                    text.startsWith("Photos (")
+                                )
+                            })
+                        finishOwnerSync(doneMsg, hasActivePush)
+                    })
+                    .catch((error)=>{
+                        this.$set(this.ownerSyncInFlight, resourceName, false)
+                        let attempts = Number(this.ownerSyncPollErrors[resourceName] || 0) + 1
+                        this.$set(this.ownerSyncPollErrors, resourceName, attempts)
+                        if (attempts < 8){
+                            this.syncStatusMessage = `Syncing... (retry ${attempts})`
+                            setTimeout(()=>runStep(false), 1200)
+                            return
+                        }
+                        this.$set(this.syncingGroups, resourceName, false)
+                        this.activeOwnerSyncResourceName = ""
+                        this.$delete(this.ownerProgressProbeAt, resourceName)
+                        this.syncStatusMessage = `Sync stopped after retries: ${formatClientError(error)}`
+                        if (typeof M !== "undefined" && M && M.toast){
+                            M.toast({html: this.syncStatusMessage, classes: "red darken-2"})
+                        }
+                        console.error(error)
+                    })
+            }
+            runStep(!!resetSync)
+        },
+        showSkippedContacts: function(resourceName, groupName){
+            this.skippedDialog.groupName = groupName
+            this.skippedDialog.contacts = []
+            this.skippedDialog.loading = true
+            this.skippedDialog.error = ""
+            let modal = M.Modal.getInstance(document.getElementById("popup-skipped-contacts"))
+            if (modal){
+                modal.open()
+            }
+            google.script.run
+                .withSuccessHandler(({contacts})=>{
+                    this.skippedDialog.contacts = contacts || []
+                    this.skippedDialog.loading = false
+                })
+                .withFailureHandler((error)=>{
+                    this.skippedDialog.error = formatClientError(error)
+                    this.skippedDialog.loading = false
+                })
+                .listSkippedContactsForOwnerGroup(this.profile.email, resourceName)
+        },
+        resetGroupSyncState: function(resourceName, groupName){
+            if (!resourceName){
+                return
+            }
+            this.resetConfirm.resourceName = resourceName
+            this.resetConfirm.groupName = groupName
+            this.resetConfirm.message = `Reset sync state for "${groupName}"? This does not delete contacts.`
+            let modalElem = document.getElementById("popup-reset-sync-confirm")
+            let modal = null
+            if (typeof M !== "undefined" && M && M.Modal && modalElem){
+                modal = M.Modal.getInstance(modalElem)
+                if (!modal){
+                    M.Modal.init(modalElem)
+                    modal = M.Modal.getInstance(modalElem)
+                }
+            }
+            if (modal){
+                modal.open()
+            } else {
+                this.confirmResetGroupSyncState()
+            }
+        },
+        confirmResetGroupSyncState: function(){
+            let resourceName = this.resetConfirm.resourceName
+            let groupName = this.resetConfirm.groupName || "this group"
+            if (!resourceName){
+                return
+            }
+            let call = window.appCall
+            if (typeof call !== "function"){
+                this.syncStatusMessage = "App API bridge failed to load. Hard refresh the page."
+                if (typeof M !== "undefined" && M && M.toast){
+                    M.toast({html: this.syncStatusMessage, classes: "red darken-2"})
+                }
+                return
+            }
+            call("resetGroupSyncState", [this.profile.email, resourceName])
+                .then(({groups, sharedGroups})=>{
+                    let modal = (typeof M !== "undefined" && M && M.Modal)
+                        ? M.Modal.getInstance(document.getElementById("popup-reset-sync-confirm"))
+                        : null
+                    if (modal){
+                        modal.close()
+                    }
+                    this.groupsById = groups || {}
+                    this.groupsList = Object.values(this.groupsById).sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, {sensitivity: "base"}))
+                    if (Array.isArray(sharedGroups)){
+                        this.sharedGroups = filterDismissedSharedGroups(
+                            sharedGroups,
+                            this.dismissedSharedGroupKeys
+                        )
+                    }
+                    this.syncingGroups = {}
+                    this.activeOwnerSyncResourceName = ""
+                    this.ownerSyncLabels = {}
+                    this.ownerSyncPollErrors = {}
+                    this.ownerProgressProbeAt = {}
+                    this.ownerSyncInFlight = {}
+                    this.ownerSyncRequiredMessage = ""
+                    this.syncStatusMessage = `Sync state reset for ${groupName}.`
+                    if (typeof M !== "undefined" && M && M.toast){
+                        M.toast({html: this.syncStatusMessage})
+                    }
+                })
+                .catch((error)=>{
+                    let modal = (typeof M !== "undefined" && M && M.Modal)
+                        ? M.Modal.getInstance(document.getElementById("popup-reset-sync-confirm"))
+                        : null
+                    if (modal){
+                        modal.close()
+                    }
+                    this.syncStatusMessage = formatClientError(error)
+                    if (typeof M !== "undefined" && M && M.toast){
+                        M.toast({html: this.syncStatusMessage, classes: "red darken-2"})
+                    }
+                })
+        },
+        refreshAppData,
+        refreshSharedPage,
+        syncSharedGroup: function(resourceName, groupName){
+            this.syncStatusMessage = `Starting sync for ${groupName}...`
+            if (typeof M !== "undefined" && M && M.toast){
+                M.toast({html: `Starting sync: ${groupName}`})
+            }
+            let group = this.groupsById ? this.groupsById[resourceName] : null
+            if (!group && Array.isArray(this.groupsList)){
+                group = this.groupsList.find(item=>item && item.resourceName === resourceName) || null
+            }
+            if (!group){
+                this.syncStatusMessage = "Sync failed: group not found in current view."
+                return
+            }
+            let shared = (group && Array.isArray(group.shared)) ? group.shared : []
+            if (!shared.length){
+                this.syncStatusMessage = "This group is not shared yet. Share it first, then sync."
+                if (typeof M !== "undefined" && M && M.toast){
+                    M.toast({html: "Share this group first before syncing.", classes: "amber darken-2"})
+                }
+                return
+            }
+            this.syncConfirm.resourceName = resourceName
+            this.syncConfirm.groupName = groupName
+            this.startOwnerSync(resourceName, false)
+        },
+        confirmSync: function(){
+            let resourceName = this.syncConfirm.resourceName
+            this.startOwnerSync(resourceName, false)
+        },
+        connectAccount: function(){
+            let call = window.appCall
+            if (typeof call !== "function"){
+                if (M && M.toast){
+                    M.toast({html: "App API failed to load. Hard refresh the page."})
+                }
+                return
+            }
+            call("getConnectUrl", [])
+                .then(({authorized, url})=>{
+                    if (authorized){
+                        this.recipientConnected = true
+                        if (M && M.toast){
+                            M.toast({html: "Account connected."})
+                        }
+                        this.resumePendingSharedImports()
+                        this.startRecipientImportWatcher()
+                        return
+                    }
+                    if (url){
+                        window.location.href = url
+                    }
+                })
+                .catch((error)=>{
+                    console.error(error)
+                    if (M && M.toast){
+                        M.toast({html: formatClientError(error)})
+                    }
+                })
+        },
+        reconnectAccount: function(){
+            let call = window.appCall
+            if (typeof call !== "function"){
+                if (M && M.toast){
+                    M.toast({html: "App API failed to load. Hard refresh the page."})
+                }
+                return
+            }
+            call("disconnectRecipient", [])
+                .then(({authorized, url})=>{
+                    this.recipientConnected = !!authorized
+                    if (url){
+                        window.location.href = url
+                        return
+                    }
+                    this.connectAccount()
+                })
+                .catch((error)=>{
+                    console.error(error)
+                    if (M && M.toast){
+                        M.toast({html: formatClientError(error)})
+                    }
+                })
+        },
+    }
+    
+    let initMaterialize = function(){
+        if (typeof M === "undefined" || !M){
+            return
+        }
+        let elems
+        let options
+        
+        // initialize side navbar for mobile
+        elems = document.querySelectorAll('.sidenav')
+        M.Sidenav.init(elems)
+        
+        
+        // initialize modal popups
+        elems = document.querySelectorAll('.modal')
+        M.Modal.init(elems)
+        this.bindDismissModalActions()
+        
+        // initialize share email chip
+        elems = document.querySelectorAll('.chip-share-emails')
+        options = {
+            placeholder: "Add email"
+        }
+        M.Chips.init(elems, options)
+    }
+
+    let applyAppData = function(result){
+        this.isLoading = false
+        this.hasLoadError = false
+        this.profile = (result && result.profile) ? result.profile : { displayName: "", email: "" }
+        this.groupsById = (result && result.groups) ? result.groups : {}
+        this.groupsList = Object.values(this.groupsById).sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, {sensitivity: "base"}))
+        if (Array.isArray(result && result.dismissedSharedGroups)){
+            result.dismissedSharedGroups.forEach((key)=>{
+                let normalized = String(key || "").trim()
+                if (normalized){
+                    this.$set(this.dismissedSharedGroupKeys, normalized, true)
+                }
+            })
+        }
+        this.sharedGroups = filterDismissedSharedGroups(
+            (result && result.sharedGroups) ? result.sharedGroups : [],
+            this.dismissedSharedGroupKeys
+        )
+        this.recipientConnected = !!(result && result.recipientConnected)
+        if (result && result.appConfig){
+            this.sendShareEmailsEnabled = !!result.appConfig.sendShareEmails
+            this.inviteUrl = String(result.appConfig.inviteUrl || "").trim()
+            this.sharedContactsGroupName = String(result.appConfig.sharedContactsGroupName || "").trim()
+            this.sharedContactsGroupResourceName = String(result.appConfig.sharedContactsGroupResourceName || "").trim()
+        }
+        this.sharedGroups.forEach((group)=>{
+            this.updateSharedImportProgressUi(group)
+            let syncKey = this.getSharedGroupSyncKey(group)
+            if (syncKey && !isSharedGroupPending_(group)){
+                this.$delete(this.syncingGroups, syncKey)
+            }
+            this.ensureSharedImportProgressPoll(group)
+        })
+        this.seedOwnerSyncLabelsFromGroups()
+        reconcileOwnerSyncRequiredMessage.call(this)
+        this.bindSharedGroupsTableActions()
+        this.cardRepairStatus = (result && result.cardRepair) ? result.cardRepair : null
+        this.cardRepairSummary = String((result && result.cardRepairSummary) || "")
+        this.ensureCardRepairStatusPoll()
+    }
+
+    let failAppLoad = function(error){
+        this.isLoading = false
+        this.hasLoadError = true
+        this.error = formatClientError(error)
+        console.error("loadApp failed:", this.error)
+        let message = String(this.error || "").toLowerCase()
+        if (
+            message.includes("not signed in") ||
+            message.includes("sign in again") ||
+            message.includes("sign-in expired")
+        ){
+            window.location.href = this.signInAgainUrl || "/auth/owner/login"
+        }
+    }
+
+    let bootstrapApp = function(){
+        let call = window.appCall
+        if (typeof call !== "function"){
+            failAppLoad.call(this, new Error("App API bridge failed to load. Hard refresh the page."))
+            return
+        }
+        call("loadApp", [this.viewMode, false])
+            .then(function(result){
+                applyAppData.call(this, result)
+                initMaterialize.call(this)
+                this.$nextTick(()=>{
+                    if (this.viewMode === "shared" && this.recipientConnected){
+                        this.resumePendingSharedImports()
+                        this.startRecipientImportWatcher()
+                    }
+                })
+            }.bind(this))
+            .catch(function(error){
+                failAppLoad.call(this, error)
+                initMaterialize.call(this)
+            }.bind(this))
+    }
+    
+    
+    window.__appVm = new Vue({
+        el: "#app",
+        data,
+        computed: {
+            accountLabel: function(){
+                let email = String(this.profile.email || "").trim()
+                if (email){
+                    return email
+                }
+                return String(this.profile.displayName || "").trim() || "Signed in"
+            },
+            sharedPageUrl: function(){
+                let email = String(this.inviteRecipientEmail || "").trim()
+                if (email){
+                    return `/?mode=shared&email=${encodeURIComponent(email)}`
+                }
+                return "/?mode=shared"
+            },
+            switchAccountUrl: function(){
+                let email = String(this.inviteRecipientEmail || "").trim()
+                if (email){
+                    return `/auth/logout?mode=shared&email=${encodeURIComponent(email)}`
+                }
+                return "/auth/logout?mode=shared"
+            },
+            signInAgainUrl: function(){
+                let email = String(this.inviteRecipientEmail || "").trim()
+                if (this.viewMode === "shared"){
+                    if (email){
+                        return `/auth/owner/login?mode=shared&email=${encodeURIComponent(email)}`
+                    }
+                    return "/auth/owner/login?mode=shared"
+                }
+                return "/auth/owner/login"
+            },
+            needsRecipientReconnect: function(){
+                if (this.viewMode !== "shared"){
+                    return false
+                }
+                return (this.sharedGroups || []).some((group)=>{
+                    let status = String(group && group.status || "").toLowerCase()
+                    return status.includes("reconnect account") || status.includes("refresh the access token")
+                })
+            },
+        },
+        methods: Object.assign({}, methods, {
+            bootstrapApp,
+        }),
+        mounted: function(){
+            try {
+                this.bootstrapApp()
+            } catch (err) {
+                failAppLoad.call(this, err)
+            }
+        },
+    })
+</script>
+{% endraw %}

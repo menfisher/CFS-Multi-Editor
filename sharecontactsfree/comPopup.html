@@ -1,0 +1,96 @@
+
+<!-- Modal Structure -->
+<div id="popup-share" class="modal">
+    <div class="modal-content">
+      <h4><i class="material-icons left">share</i>{{popupData.title}}</h4>
+      
+      <h5 class="teal-text"><i class="material-icons left">contacts</i>{{popupData.name}}</h5>
+      
+      <!-- Share Emails  -->
+
+      <div class="chips chip-share-emails">
+        <input class="custom-class">
+        <a class="btn waves-effect waves-light right" :class="{disabled: isSharing}" @click="invokePopupCallback">{{isSharing ? "Sharing..." : "Share"}}</a>
+      </div>
+      <p class="share-notify-option">
+        <label class="share-notify-label">
+          <input type="checkbox" class="filled-in" v-model="popupData.notifyByEmail" />
+          <span>Send email notification to recipient(s)</span>
+        </label>
+      </p>
+      
+      <template v-if="popupData.shared">
+      <table class="responsive-table striped" v-if="popupData.shared.length">
+          <tr><th>Collaborators</th><th>Remove</th></tr>
+          
+          <tr v-for="(email, index) in popupData.shared" :key="email + '-' + index">
+              <td><i class="material-icons left">person</i>{{email}}</td>
+              <td>
+                  <button class="btn waves-effect waves-light" @click="stopShareContactGroup(profile.email, email, popupData.resourceName)">
+                      <i class="material-icons">person_remove</i>
+                  </button>
+              </td>
+          </tr>
+      </table>
+      </template>
+    </div>
+    <!-- 
+    <div class="modal-footer">
+      
+      <a class="modal-close btn waves-effect waves-light" @click="popupData.callback">Share</a>
+      
+    </div>
+    -->
+    
+</div>
+
+<!-- Sync Confirm Modal -->
+<div id="popup-sync-confirm" class="modal">
+    <div class="modal-content">
+        <h4><i class="material-icons left">sync</i>Confirm Sync</h4>
+        <p>Sync "<strong>{{syncConfirm.groupName}}</strong>" now? This will replace the shared group for all recipients.</p>
+    </div>
+    <div class="modal-footer">
+        <button class="modal-close btn-flat">Cancel</button>
+        <button class="btn waves-effect waves-light" @click="confirmSync">
+            OK
+        </button>
+    </div>
+</div>
+
+<!-- Skipped Contacts Modal -->
+<div id="popup-skipped-contacts" class="modal">
+    <div class="modal-content">
+        <h4><i class="material-icons left">report_problem</i>Skipped Contacts</h4>
+        <p><strong>{{skippedDialog.groupName}}</strong></p>
+        <p v-if="skippedDialog.loading">Loading...</p>
+        <p v-if="!skippedDialog.loading && skippedDialog.error" class="red-text">{{skippedDialog.error}}</p>
+        <p v-if="!skippedDialog.loading && !skippedDialog.error && !skippedDialog.contacts.length">No skipped contacts found.</p>
+        <table class="responsive-table striped" v-if="!skippedDialog.loading && skippedDialog.contacts.length">
+            <tr><th>Recipient</th><th>Sheet Row</th><th>Index</th><th>Name</th><th>Email</th><th>Owner ID</th></tr>
+            <tr v-for="(item, idx) in skippedDialog.contacts" :key="item.recipientEmail + '-' + item.index + '-' + idx">
+                <td>{{item.recipientEmail}}</td>
+                <td>{{item.sheetRow || "-"}}</td>
+                <td>{{item.index}}</td>
+                <td>{{item.name}}</td>
+                <td>{{item.email}}</td>
+                <td>{{item.ownerPersonId || "-"}}</td>
+            </tr>
+        </table>
+    </div>
+    <div class="modal-footer">
+        <button class="modal-close btn-flat">Close</button>
+    </div>
+</div>
+
+<!-- Reset Sync State Confirm Modal -->
+<div id="popup-reset-sync-confirm" class="modal">
+    <div class="modal-content">
+        <h4><i class="material-icons left">restart_alt</i>Reset Sync State</h4>
+        <p>{{resetConfirm.message}}</p>
+    </div>
+    <div class="modal-footer">
+        <button class="modal-close btn-flat">Cancel</button>
+        <button class="btn waves-effect waves-light modal-close" @click="confirmResetGroupSyncState">OK</button>
+    </div>
+</div>

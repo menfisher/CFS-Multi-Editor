@@ -1,0 +1,23 @@
+{
+  "timeZone": "America/Chicago",
+  "dependencies": {
+    "enabledAdvancedServices": [
+    {
+      "userSymbol": "Gmail",
+      "version": "v1",
+      "serviceId": "gmail"
+    },
+    {
+      "userSymbol": "Docs",
+      "serviceId": "docs",
+      "version": "v1"
+    }, 
+    {
+      "userSymbol": "People",
+      "serviceId": "peopleapi",
+      "version": "v1"
+    }]
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
+}

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share Google Contacts — User Manual</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #5b6770;
+    --accent: #0e7c86;
+    --accent-soft: #e6f4f5;
+    --line: #e3e8ec;
+    --code-bg: #f5f7f9;
+    --warn-bg: #fff7e6;
+    --warn-border: #f0c66b;
+    --tip-bg: #eef7ef;
+    --tip-border: #9ccfa0;
+    --ph-bg: #e9f6f7;
+    --ph-border: #9fd4d9;
+    --ph-ink: #0e6770;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; color: var(--ink); background: #fbfcfd; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 18px; line-height: 1.7; }
+  .page { max-width: 780px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1, h2, h3, .cover-title, nav, .badge, code, pre, table, .callout-label, .fig figcaption, .fig .ph { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .cover { text-align: center; padding: 64px 0 48px; border-bottom: 1px solid var(--line); margin-bottom: 36px; }
+  .cover .badge { display: inline-block; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 6px 14px; border-radius: 999px; margin-bottom: 24px; font-weight: 600; }
+  .cover-title { font-size: 42px; line-height: 1.12; margin: 0 0 14px; font-weight: 700; letter-spacing: -0.5px; }
+  .cover-sub { font-size: 19px; color: var(--muted); margin: 0 auto; max-width: 540px; font-style: italic; }
+  nav.toc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px 28px; margin: 0 0 44px; }
+  nav.toc h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding-left: 22px; }
+  nav.toc li { margin: 7px 0; font-size: 16px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  h2.chapter { font-size: 27px; margin: 56px 0 6px; padding-top: 20px; border-top: 3px solid var(--accent); font-weight: 700; letter-spacing: -0.3px; }
+  h2.chapter .num { display: block; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 2px; }
+  h3 { font-size: 20px; margin: 32px 0 4px; font-weight: 600; }
+  p { margin: 14px 0; }
+  ul, ol.steps { margin: 14px 0; padding-left: 26px; }
+  li { margin: 7px 0; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 14.5px; word-break: break-word; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 14.5px; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; }
+  .callout { border-radius: 10px; padding: 16px 18px; margin: 22px 0; font-size: 16.5px; }
+  .callout p { margin: 8px 0; }
+  .callout .callout-label { display: block; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; }
+  .callout.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .callout.warn .callout-label { color: #9a6700; }
+  .callout.tip  { background: var(--tip-bg);  border: 1px solid var(--tip-border); }
+  .callout.tip .callout-label { color: #2f7d3a; }
+  table { border-collapse: collapse; width: 100%; margin: 22px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; }
+  td code { font-size: 13.5px; }
+  .btn { font-weight: 600; color: var(--accent); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .lead { font-size: 19.5px; color: #33414b; }
+  .footer-note { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; font-style: italic; }
+
+  .fig { margin: 26px 0; }
+  .fig img { width: 100%; border: 1px solid var(--line); border-radius: 10px; display: block; }
+  .fig .ph { border: 2px dashed var(--ph-border); background: var(--ph-bg); border-radius: 10px; padding: 26px 20px; text-align: center; color: var(--ph-ink); font-size: 15px; }
+  .fig .ph .ph-tag { display: inline-block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; background: #fff; border: 1px solid var(--ph-border); border-radius: 999px; padding: 3px 10px; margin-bottom: 10px; }
+  .fig .ph .ph-desc { display: block; margin: 4px 0 10px; }
+  .fig .ph code { background: #fff; }
+  .fig figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; font-style: italic; }
+
+  @media print {
+    body { background: #fff; font-size: 12pt; }
+    .page { max-width: none; padding: 0 6mm; }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: avoid; }
+    nav.toc { page-break-after: always; }
+    pre, table, .callout, .fig { page-break-inside: avoid; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+  @media (max-width: 520px) {
+    body { font-size: 17px; }
+    .cover-title { font-size: 32px; }
+    .page { padding: 32px 18px 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="cover">
+    <span class="badge">User Manual</span>
+    <h1 class="cover-title">Share Google Contacts</h1>
+    <p class="cover-sub">How to share contact groups with other people — and how to receive
+    them — explained in plain language, one screen at a time.</p>
+  </header>
+
+  <p class="lead">The Sharing app is a website with two sides. If you <em>share</em> your
+  contacts with others, you are the <strong>Owner</strong>. If someone shares contacts
+  <em>with you</em>, you are a <strong>Recipient</strong>. This manual covers both. Read the
+  chapters for your role, or all of them if you'll do both. Throughout, <span class="btn">button
+  names</span> appear in color and figures show you where things are.</p>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#ch1">Introduction: the two roles</a></li>
+      <li><a href="#ch2">Owner: getting started</a></li>
+      <li><a href="#ch3">Owner: sharing a group</a></li>
+      <li><a href="#ch4">Owner: syncing contacts to recipients</a></li>
+      <li><a href="#ch5">Owner: managing the people you share with</a></li>
+      <li><a href="#ch6">Recipient: getting started</a></li>
+      <li><a href="#ch7">Recipient: connecting your Google account</a></li>
+      <li><a href="#ch8">Recipient: importing the shared contacts</a></li>
+      <li><a href="#ch9">Recipient: dismissing a shared group</a></li>
+      <li><a href="#ch10">Troubleshooting</a></li>
+      <li><a href="#ch11">Status words, explained</a></li>
+    </ol>
+  </nav>
+
+  <!-- ===================== CHAPTER 1 ===================== -->
+  <h2 class="chapter" id="ch1"><span class="num">Chapter One</span>Introduction: the two roles</h2>
+
+  <p>Everything in the Sharing app happens in your web browser — there's nothing to install.
+  You open a web address, sign in with Google, and the app shows you either your own groups (as
+  an Owner) or the groups others have shared with you (as a Recipient).</p>
+
+  <p>The <strong>Owner</strong> picks one of their Google contact groups, chooses who should
+  receive it, and sends the contacts over. The <strong>Recipient</strong> opens an invite link,
+  connects their Google account, and the shared contacts appear in their own Google Contacts.
+  Updates the Owner makes later can flow to recipients automatically.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: signing in is automatic</span>
+    <p>There is no "Sign in" button to hunt for. When you open the app, it sends you straight
+    to Google to sign in, then brings you back. The app's name shows simply as
+    <strong>Contacts</strong> in the top bar.</p>
+  </div>
+
+  <p>Across the top of every page is a slim bar showing the app name, your signed-in Google
+  email, and a <span class="btn">Refresh</span> link to reload. Recipients also get a
+  <span class="btn">Switch account</span> link there, for when they need to sign in as a
+  different person. At the very bottom, an <strong>App Information</strong> note explains that
+  the app uses your Google Contacts only as needed for sharing and importing.</p>
+
+  <!-- ===================== CHAPTER 2 ===================== -->
+  <h2 class="chapter" id="ch2"><span class="num">Chapter Two</span>Owner: getting started</h2>
+
+  <p>To begin as an Owner, open the app's main web address in your browser and sign in with
+  Google when prompted. The address is:</p>
+  <pre><code>https://share-contacts-7frzetx7sa-uc.a.run.app/</code></pre>
+  <p>(If you run your own Share server, use your own address instead — it ends in
+  <code>.run.app/</code>.)</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: open it straight from ContactsFreeShare</span>
+    <p>You don't have to remember the address. In the ContactsFreeShare desktop app, the
+    <strong>Share Contacts</strong> menu item opens this same Sharing app in a new browser
+    tab. (It appears once you're connected to Google and signed in as the Editor.)</p>
+  </div>
+
+  <p>Once you're signed in, you land on the <strong>Your groups</strong> screen.</p>
+
+  <div class="fig">
+    <img src="share-images/01-owner-groups.png" alt="The owner's Your groups table"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 1 — screenshot needed</span>
+      <span class="ph-desc">The Owner "Your groups" table, ideally with at least one group that
+      is shared and one that is not. Include the top bar showing your signed-in email.</span>
+      <code>share-images/01-owner-groups.png</code>
+    </div>
+    <figcaption>Figure 1. The owner's "Your groups" screen.</figcaption>
+  </div>
+
+  <p>This table lists your Google contact groups (labels). For each one you'll see:</p>
+  <table>
+    <tr><th>Column</th><th>What it shows</th></tr>
+    <tr><td><strong>Group name</strong></td><td>The name of the Google contact group.</td></tr>
+    <tr><td><strong>Status</strong></td><td><strong>Shared (N)</strong> when it's shared with N people, or <strong>Not shared</strong>.</td></tr>
+    <tr><td><strong>Contacts</strong></td><td>How many people are in the group.</td></tr>
+    <tr><td><strong>Share</strong></td><td>A button that opens the sharing window.</td></tr>
+    <tr><td><strong>Sync</strong></td><td>The button that sends contacts to recipients, plus a <strong>Reset</strong> button.</td></tr>
+    <tr><td><strong>Skipped</strong></td><td>A number if any contacts were skipped, otherwise a dash.</td></tr>
+  </table>
+
+  <!-- ===================== CHAPTER 3 ===================== -->
+  <h2 class="chapter" id="ch3"><span class="num">Chapter Three</span>Owner: sharing a group</h2>
+
+  <p>Sharing happens in two steps: first you <em>share</em> a group with the people you choose,
+  and then you <em>sync</em> to actually send the contacts (Chapter Four). Start by clicking the
+  <span class="btn">Share</span> button on the group's row. A window titled <strong>Share with
+  people</strong> opens.</p>
+
+  <div class="fig">
+    <img src="share-images/02-share-popup.png" alt="The Share with people window"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 2 — screenshot needed</span>
+      <span class="ph-desc">The "Share with people" pop-up: the group name, the "Add email"
+      box (ideally with one email entered as a chip), the "Send invite email to recipient(s)"
+      checkbox, and the Share button.</span>
+      <code>share-images/02-share-popup.png</code>
+    </div>
+    <figcaption>Figure 2. The "Share with people" window.</figcaption>
+  </div>
+
+  <p>Type a recipient's email address into the <strong>Add email</strong> box and press Enter;
+  it becomes a small chip. Add as many as you like. The <strong>Send invite email to
+  recipient(s)</strong> checkbox is ticked by default. When you're ready, click
+  <span class="btn">Share</span> (it briefly reads <strong>Sharing...</strong>). Anyone you've
+  already shared with appears in a <strong>Collaborators</strong> list inside the same window.</p>
+
+  <h3>Getting the invite link to your recipients</h3>
+  <p>On a server you host yourself, the app does not send the email for you. Instead, when you
+  click Share with the invite box ticked, your computer's email program opens a ready-made
+  draft (subject <strong>Share Google Contacts</strong>) containing the invite link — you just
+  press Send. If you prefer, untick the box and send the link yourself. The link always looks
+  like this, with the recipient's address on the end:</p>
+  <pre><code>https://your-share-app-address/?mode=shared&amp;email=recipient@example.com</code></pre>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: sharing is not sending yet</span>
+    <p>Adding a recipient only puts them on the list. The contacts don't move until you click
+    <strong>Sync</strong>. After you share, the app reminds you with a message like
+    <em>"… was shared. Click Sync to push contacts to recipients."</em></p>
+  </div>
+
+  <div class="fig">
+    <img src="share-images/03-share-banners.png" alt="Banners shown after sharing"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 3 — screenshot needed (optional)</span>
+      <span class="ph-desc">The green "shared with…" confirmation and the amber "Click Sync to
+      push contacts" reminder that appear above the groups table after sharing.</span>
+      <code>share-images/03-share-banners.png</code>
+    </div>
+    <figcaption>Figure 3. The confirmation and reminder shown after sharing.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 4 ===================== -->
+  <h2 class="chapter" id="ch4"><span class="num">Chapter Four</span>Owner: syncing contacts to recipients</h2>
+
+  <p>Once a group has at least one recipient, click the <span class="btn">Sync</span> button on
+  its row to send the contacts. The app prepares your contacts and delivers them to each
+  recipient in the background. While it works, the button shows a running count such as
+  <strong>5/25</strong>, and a green line above the table reports progress like
+  <em>"Syncing... (5/25)."</em></p>
+
+  <div class="fig">
+    <img src="share-images/04-sync-progress.png" alt="A sync in progress"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 4 — screenshot needed</span>
+      <span class="ph-desc">A sync in progress: the Sync button showing a count like 12/25 and
+      the green status line above the table.</span>
+      <code>share-images/04-sync-progress.png</code>
+    </div>
+    <figcaption>Figure 4. Syncing contacts to recipients.</figcaption>
+  </div>
+
+  <p>You can sync again any time you change the group — re-syncing updates the shared copy for
+  everyone. If a recipient hasn't connected their account yet, you'll see a note such as
+  <em>"Ready — waiting for recipient to connect,"</em> which simply means their contacts are
+  staged and will land as soon as they connect (Chapter Seven).</p>
+
+  <h3>Reset and skipped contacts</h3>
+  <p>The grey <span class="btn">Reset</span> button beside Sync clears the sync state for that
+  group (it does <em>not</em> delete anyone's contacts) and asks you to confirm first. If the
+  <strong>Skipped</strong> column shows a number, click it to open a <strong>Skipped
+  Contacts</strong> list explaining which entries couldn't be sent and why.</p>
+
+  <!-- ===================== CHAPTER 5 ===================== -->
+  <h2 class="chapter" id="ch5"><span class="num">Chapter Five</span>Owner: managing the people you share with</h2>
+
+  <p>To change who receives a group, open its <strong>Share with people</strong> window again.
+  Everyone currently on the list appears under <strong>Collaborators</strong>. To stop sharing
+  with someone, click the <span class="btn">Remove</span> button next to their email; the app
+  confirms with <em>"Removed … from this group."</em> When you remove the last person, the
+  group's status returns to <strong>Not shared</strong>.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: removing doesn't delete their contacts</span>
+    <p>Taking someone off the list stops future updates, but it does not reach into their
+    Google account to delete contacts they already received.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 6 ===================== -->
+  <h2 class="chapter" id="ch6"><span class="num">Chapter Six</span>Recipient: getting started</h2>
+
+  <p>If someone has shared contacts with you, you'll receive an invite link. Open it in your web
+  browser. It looks like this, usually with your email address on the end:</p>
+  <pre><code>https://their-share-app-address/?mode=shared&amp;email=you@example.com</code></pre>
+
+  <p>When you open the link, the app sends you to Google to sign in. <strong>Sign in with the
+  same Google account the invite was sent to</strong> — this is the most common point of
+  confusion. After signing in, you land on the <strong>Groups shared with you</strong>
+  screen.</p>
+
+  <div class="fig">
+    <img src="share-images/07-recipient-groups.png" alt="The Groups shared with you screen"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 5 — screenshot needed</span>
+      <span class="ph-desc">The recipient "Groups shared with you" screen with the help text
+      and the table (Group name, Owner, Contacts, Status, Actions).</span>
+      <code>share-images/07-recipient-groups.png</code>
+    </div>
+    <figcaption>Figure 5. The recipient's "Groups shared with you" screen.</figcaption>
+  </div>
+
+  <p>The table lists each shared group, who it's from, how many contacts it holds, its current
+  status, and two action buttons: <span class="btn">Retry</span> and
+  <span class="btn">Dismiss</span> (covered in the next chapters).</p>
+
+  <div class="callout warn">
+    <span class="callout-label">Heads-up: signed in as the wrong person?</span>
+    <p>If you signed in with a different account than the invite, the app shows a red notice
+    like <em>"This invite is for … but you are signed in as …,"</em> with a
+    <strong>Switch account</strong> link. Click it, sign in with the correct account, and open
+    the invite link again.</p>
+  </div>
+
+  <div class="fig">
+    <img src="share-images/09-wrong-account.png" alt="The wrong-account warning"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 6 — screenshot needed (optional)</span>
+      <span class="ph-desc">The red "This invite is for … but you are signed in as …" warning
+      with the Switch account link.</span>
+      <code>share-images/09-wrong-account.png</code>
+    </div>
+    <figcaption>Figure 6. The wrong-account warning.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 7 ===================== -->
+  <h2 class="chapter" id="ch7"><span class="num">Chapter Seven</span>Recipient: connecting your Google account</h2>
+
+  <p>Before contacts can be added to your address book, you give the app permission to write to
+  your Google Contacts. If a yellow banner appears reading <strong>Connect your Google
+  account</strong>, click the <span class="btn">Connect account</span> button and approve
+  access on the Google screen that follows. When you return, you'll see <em>"Account
+  connected,"</em> and the import usually starts on its own.</p>
+
+  <div class="fig">
+    <img src="share-images/08-connect-account.png" alt="The Connect account banner"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 7 — screenshot needed</span>
+      <span class="ph-desc">The amber "Connect your Google account" banner with the "Connect
+      account" button.</span>
+      <code>share-images/08-connect-account.png</code>
+    </div>
+    <figcaption>Figure 7. Connecting your Google account.</figcaption>
+  </div>
+
+  <p>If you connected a while ago and permission has lapsed, you may instead see a red
+  <strong>Reconnect your Google account</strong> banner; click <span class="btn">Reconnect
+  account</span> and approve again. This is normal and just refreshes the permission.</p>
+
+  <!-- ===================== CHAPTER 8 ===================== -->
+  <h2 class="chapter" id="ch8"><span class="num">Chapter Eight</span>Recipient: importing the shared contacts</h2>
+
+  <p>Once you're connected, the app adds the shared contacts to your Google account
+  automatically. The <strong>Status</strong> column tells you where things stand and shows a
+  progress bar with a running count such as <strong>5/25</strong>.</p>
+
+  <div class="fig">
+    <img src="share-images/10-import-progress.png" alt="Contacts importing with a progress bar"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 8 — screenshot needed</span>
+      <span class="ph-desc">A shared group importing, with the progress bar and a count like
+      12/25 in the Status column.</span>
+      <code>share-images/10-import-progress.png</code>
+    </div>
+    <figcaption>Figure 8. Contacts importing.</figcaption>
+  </div>
+
+  <p>You may see the status move through a few stages — <em>Waiting for owner sync</em>,
+  <em>Importing contacts</em> or <em>Pushing contacts</em>, then <em>Adding photos</em> — and
+  finally <strong>Complete</strong> in teal when everything has arrived. At that point the
+  contacts are in your Google Contacts, usually in a group whose name ends with
+  <em>(shared)</em>.</p>
+
+  <div class="fig">
+    <img src="share-images/11-complete.png" alt="A shared group marked Complete"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 9 — screenshot needed</span>
+      <span class="ph-desc">A shared group showing the teal "Complete" status.</span>
+      <code>share-images/11-complete.png</code>
+    </div>
+    <figcaption>Figure 9. A finished import.</figcaption>
+  </div>
+
+  <p>If progress seems stuck, or you've just reconnected your account, click
+  <span class="btn">Retry</span> on that group's row to nudge the import along. It's safe to
+  press more than once.</p>
+
+  <!-- ===================== CHAPTER 9 ===================== -->
+  <h2 class="chapter" id="ch9"><span class="num">Chapter Nine</span>Recipient: dismissing a shared group</h2>
+
+  <p>If you no longer want a shared group cluttering your list, click
+  <span class="btn">Dismiss</span> on its row. A window titled <strong>Dismiss shared
+  group</strong> asks you to confirm. Dismissing only hides the row from this list — it
+  <em>does not</em> delete the contacts already imported into your Google Contacts.</p>
+
+  <div class="fig">
+    <img src="share-images/12-dismiss.png" alt="The Dismiss shared group window"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 10 — screenshot needed (optional)</span>
+      <span class="ph-desc">The "Dismiss shared group" confirmation window with its note that
+      imported contacts are not deleted, and the Cancel / Dismiss buttons.</span>
+      <code>share-images/12-dismiss.png</code>
+    </div>
+    <figcaption>Figure 10. Dismissing a shared group.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 10 ===================== -->
+  <h2 class="chapter" id="ch10"><span class="num">Chapter Ten</span>Troubleshooting</h2>
+
+  <p>Most snags are about signing in or which account you used.</p>
+
+  <p>If the page shows an error and a <strong>Sign in again</strong> link, click it — your
+  session likely expired. If the app says you're <em>"viewing your own contact groups instead
+  of shared invites,"</em> you opened the plain address instead of the invite link; reopen the
+  link that ends in <code>?mode=shared</code>. If nothing is shared with you and you expected
+  something, make sure you signed in with the exact account the invite was sent to — use
+  <strong>Switch account</strong>, then open the invite again (an incognito or private browser
+  window helps avoid signing in as the wrong person).</p>
+
+  <p>After Google sign-in, you might occasionally land on a plain page titled <strong>Login
+  failed</strong>, <strong>Wrong Google account</strong>, or <strong>Connect failed</strong>.
+  Each offers a <strong>Try sign-in again</strong> link; follow it and sign in carefully with
+  the right account. And whenever the screen looks out of date, the <span class="btn">Refresh</span>
+  link in the top bar reloads the latest status.</p>
+
+  <!-- ===================== CHAPTER 11 ===================== -->
+  <h2 class="chapter" id="ch11"><span class="num">Chapter Eleven</span>Status words, explained</h2>
+
+  <p>Here's what the words in the <strong>Status</strong> column mean.</p>
+
+  <table>
+    <tr><th>Status</th><th>Meaning</th></tr>
+    <tr><td><strong>Not shared</strong></td><td>(Owner) The group hasn't been shared with anyone yet.</td></tr>
+    <tr><td><strong>Shared (N)</strong></td><td>(Owner) The group is shared with N people.</td></tr>
+    <tr><td><strong>Waiting for owner sync</strong></td><td>(Recipient) The owner shared the group but hasn't pressed Sync yet.</td></tr>
+    <tr><td><strong>Connect account to import</strong></td><td>(Recipient) You need to connect your Google account first.</td></tr>
+    <tr><td><strong>Ready to import / Queued</strong></td><td>Contacts are staged and lined up to be added.</td></tr>
+    <tr><td><strong>Importing / Pushing contacts</strong></td><td>Contacts are being added to the account right now.</td></tr>
+    <tr><td><strong>Adding photos</strong></td><td>The contacts are in; their photos are being added.</td></tr>
+    <tr><td><strong>Complete</strong></td><td>Everything has arrived in Google Contacts.</td></tr>
+    <tr><td><strong>Up to date</strong></td><td>Nothing new to send; the shared copy already matches.</td></tr>
+  </table>
+
+  <p class="footer-note">That's the whole Sharing app. Owners share and sync; recipients
+  connect and import — and the app keeps the two in step.</p>
+
+</div>
+</body>
+</html>

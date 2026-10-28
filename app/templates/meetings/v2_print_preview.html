@@ -1,0 +1,587 @@
+{% extends "base.html" %}
+
+{% block title %}Meeting Print Preview | Contacts Website{% endblock %}
+
+{% block content %}
+  <style>
+    @page {
+      size: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+      margin: 0;
+    }
+
+    .print-preview-shell {
+      display: grid;
+      gap: 18px;
+    }
+
+    .print-preview-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .print-preview-meta {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .print-preview-actions {
+      display: inline-flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .print-preview-stage {
+      display: inline-grid;
+      grid-template-columns: 28px auto;
+      grid-template-rows: 28px auto;
+      gap: 10px;
+      width: fit-content;
+      margin: 0 auto;
+      align-items: start;
+    }
+
+    .print-preview-corner {
+      border-right: 1px solid rgba(90, 76, 55, 0.22);
+      border-bottom: 1px solid rgba(90, 76, 55, 0.22);
+      border-radius: 6px 0 0 0;
+      background:
+        linear-gradient(to right, rgba(90, 76, 55, 0.18), rgba(90, 76, 55, 0.18)) 100% 0 / 1px 100% no-repeat,
+        linear-gradient(to bottom, rgba(90, 76, 55, 0.18), rgba(90, 76, 55, 0.18)) 0 100% / 100% 1px no-repeat,
+        #f7f1e5;
+    }
+
+    .print-preview-ruler-horizontal {
+      position: relative;
+      width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+      max-width: 100%;
+      height: 28px;
+      justify-self: center;
+      border: 1px solid rgba(90, 76, 55, 0.22);
+      border-radius: 8px;
+      box-sizing: border-box;
+      background:
+        repeating-linear-gradient(
+          to right,
+          transparent 0,
+          transparent calc(0.25in - 1px),
+          rgba(90, 76, 55, 0.16) calc(0.25in - 1px),
+          rgba(90, 76, 55, 0.16) 0.25in
+        ),
+        #f7f1e5;
+      overflow: hidden;
+    }
+
+    .print-preview-ruler-vertical {
+      position: relative;
+      width: 28px;
+      min-height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+      border: 1px solid rgba(90, 76, 55, 0.22);
+      border-radius: 8px;
+      box-sizing: border-box;
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          transparent 0,
+          transparent calc(0.25in - 1px),
+          rgba(90, 76, 55, 0.16) calc(0.25in - 1px),
+          rgba(90, 76, 55, 0.16) 0.25in
+        ),
+        #f7f1e5;
+      overflow: hidden;
+    }
+
+    .print-preview-ruler-label {
+      position: absolute;
+      font-size: 11px;
+      line-height: 1;
+      color: #6f6659;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .print-preview-ruler-label-horizontal {
+      top: 6px;
+      transform: translateX(-50%);
+    }
+
+    .print-preview-ruler-label-horizontal.is-edge-start {
+      transform: none;
+    }
+
+    .print-preview-ruler-label-horizontal.is-edge-end {
+      transform: translateX(-100%);
+    }
+
+    .print-preview-ruler-label-vertical {
+      left: 5px;
+      transform: translateY(-50%);
+    }
+
+    .print-preview-page {
+      width: min(100%, {{ "%.2f"|format(section.print_preview.trim_width_in) }}in);
+      height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+      justify-self: center;
+      margin: 0;
+      padding:
+        {{ "%.2f"|format(section.print_preview.margin_top_in) }}in
+        {{ "%.2f"|format(section.print_preview.margin_right_in) }}in
+        {{ "%.2f"|format(section.print_preview.margin_bottom_in) }}in
+        {{ "%.2f"|format(section.print_preview.margin_left_in) }}in;
+      background: #fffdf9;
+      border: 1px solid rgba(90, 76, 55, 0.18);
+      border-radius: 18px;
+      box-shadow: 0 22px 48px rgba(54, 41, 17, 0.12);
+      box-sizing: border-box;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
+
+    .print-preview-paper {
+      width: 100%;
+      min-height: {{ "%.2f"|format(section.print_preview.printable_height_in) }}in;
+      font-family: {{ section.print_preview.font_family }};
+      font-size: {{ "%.2f"|format(section.print_preview.base_font_size_pt) }}pt;
+      line-height: {{ section.print_preview.line_height }};
+      color: #221b12;
+      overflow: visible;
+    }
+
+    .print-preview-heading {
+      margin-bottom: 0.04in;
+      text-align: center;
+    }
+
+    .print-preview-title {
+      margin: 0;
+      font-size: 1.05em;
+      font-weight: 700;
+    }
+
+    .print-preview-stack {
+      display: grid;
+      gap: 0;
+    }
+
+    .print-preview-group {
+      display: grid;
+      gap: 0;
+    }
+
+    .print-preview-group-keep,
+    .print-preview-table {
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+
+    .print-preview-table {
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+      background: transparent;
+    }
+
+    .print-preview-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      font-size: var(--row-font-size-pt, inherit);
+      border-bottom: 0;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+
+    .print-preview-row:last-child {
+      border-bottom: 0;
+    }
+
+    .print-preview-row-underlined {
+      position: relative;
+      padding-bottom: 0.015in;
+      margin-bottom: 0.02in;
+    }
+
+    .print-preview-row-underlined::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-bottom: 1px solid rgba(83, 73, 58, 0.72);
+    }
+
+    .print-preview-grid {
+      display: grid;
+      grid-template-columns: repeat({{ section.print_preview.column_count }}, minmax(0, 1fr));
+      gap: {{ section.print_preview.column_gap_px }}px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0;
+    }
+
+    .print-preview-cell {
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-sizing: border-box;
+    }
+
+    .print-preview-text {
+      white-space: normal;
+    }
+
+    .print-preview-flow-text {
+      white-space: pre-line;
+    }
+
+    .print-preview-flow-grid {
+      display: grid;
+      grid-template-columns: repeat({{ section.print_preview.column_count }}, minmax(0, 1fr));
+      gap: {{ section.print_preview.column_gap_px }}px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .print-preview-text div,
+    .print-preview-text p,
+    .print-preview-flow-text div,
+    .print-preview-flow-text p {
+      margin: 0;
+    }
+
+    .print-preview-text br,
+    .print-preview-flow-text br {
+      line-height: 1;
+    }
+
+    .print-preview-cell-bold {
+      font-weight: 700;
+    }
+
+    .print-preview-cell-italic {
+      font-style: italic;
+    }
+
+    .print-preview-text em,
+    .print-preview-text i,
+    .print-preview-flow-text em,
+    .print-preview-flow-text i {
+      font-style: italic;
+    }
+
+    .print-preview-cell-underlined {
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.08em;
+    }
+
+    .print-preview-align-left {
+      text-align: left;
+    }
+
+    .print-preview-align-center {
+      text-align: center;
+    }
+
+    .print-preview-align-right {
+      text-align: right;
+    }
+
+    .print-preview-spacer-blank {
+      min-height: 0.12in;
+    }
+
+    .print-preview-spacer-divider {
+      position: relative;
+      min-height: 0.12in;
+    }
+
+    .print-preview-spacer-divider::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      border-top: 1.5px solid #2d2418;
+      transform: translateY(-50%);
+    }
+
+    .print-preview-flow-column {
+      background: transparent;
+    }
+
+    @media print {
+      html,
+      body {
+        width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        min-width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        max-width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+        min-height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+        max-height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+      }
+
+      body {
+        margin: 0;
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .site-header,
+      .print-preview-toolbar,
+      .crumb,
+      .print-preview-corner,
+      .print-preview-ruler-horizontal,
+      .print-preview-ruler-vertical {
+        display: none !important;
+      }
+
+      main.wrap {
+        max-width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        min-width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        margin: 0 auto;
+        padding: 0;
+        overflow: visible;
+      }
+
+      .print-preview-shell {
+        display: block;
+        width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        margin: 0;
+      }
+
+      .print-preview-stage {
+        display: block;
+        width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        margin: 0;
+      }
+
+      .panel {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .print-preview-page {
+        width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        min-width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        max-width: {{ "%.2f"|format(section.print_preview.trim_width_in) }}in;
+        height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+        min-height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+        max-height: {{ "%.2f"|format(section.print_preview.trim_height_in) }}in;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: #fff;
+        overflow: hidden;
+        padding:
+          {{ "%.2f"|format(section.print_preview.margin_top_in) }}in
+          {{ "%.2f"|format(section.print_preview.margin_right_in) }}in
+          {{ "%.2f"|format(section.print_preview.margin_bottom_in) }}in
+          {{ "%.2f"|format(section.print_preview.margin_left_in) }}in;
+      }
+
+      .print-preview-paper {
+        width: {{ "%.2f"|format(section.print_preview.printable_width_in) }}in;
+        min-height: {{ "%.2f"|format(section.print_preview.printable_height_in) }}in;
+        max-height: {{ "%.2f"|format(section.print_preview.printable_height_in) }}in;
+        height: {{ "%.2f"|format(section.print_preview.printable_height_in) }}in;
+        overflow: hidden;
+      }
+    }
+  </style>
+
+  <section class="panel print-preview-shell">
+    <div class="print-preview-toolbar">
+      <div>
+        <h2>Meeting Print Preview</h2>
+        <div class="print-preview-meta">
+          {{ section.field_name }} / {{ section.meeting_name }}
+          {% if section.print_preview.preset_name %} · {{ section.print_preview.preset_name }}{% endif %}
+          · page {{ "%.2f"|format(section.print_preview.trim_width_in) }}" x {{ "%.2f"|format(section.print_preview.trim_height_in) }}"
+          · font {{ "%.1f"|format(section.print_preview.base_font_size_pt) }}pt
+          · printable {{ "%.2f"|format(section.print_preview.printable_width_in) }}" x {{ "%.2f"|format(section.print_preview.printable_height_in) }}"
+        </div>
+      </div>
+      <div class="print-preview-actions">
+        <button type="button" onclick="window.print()">Open Browser Print Preview</button>
+        <a class="map-link" href="/meetings/v2/sections/{{ section.id }}/editor">Back to Editor</a>
+      </div>
+    </div>
+
+    <div class="print-preview-stage">
+      <div class="print-preview-corner" aria-hidden="true"></div>
+      <div class="print-preview-ruler-horizontal" aria-hidden="true">
+        {% set horizontal_label_step = 1.0 if section.print_preview.trim_width_in <= 4.25 else 0.5 %}
+        {% set horizontal_label_ticks = (section.print_preview.trim_width_in / horizontal_label_step)|round(0, 'ceil')|int %}
+        {% for tick in range(0, horizontal_label_ticks + 1) %}
+          {% set pos = tick * horizontal_label_step %}
+          {% if pos <= section.print_preview.trim_width_in + 0.001 %}
+            <span
+              class="print-preview-ruler-label print-preview-ruler-label-horizontal{% if tick == 0 %} is-edge-start{% elif pos + 0.001 >= section.print_preview.trim_width_in %} is-edge-end{% endif %}"
+              style="left: {{ "%.3f"|format((pos / section.print_preview.trim_width_in) * 100) }}%;"
+            >{{ "%.1f"|format(pos) }}"</span>
+          {% endif %}
+        {% endfor %}
+        {% if (section.print_preview.trim_width_in % horizontal_label_step) > 0.001 %}
+          <span
+            class="print-preview-ruler-label print-preview-ruler-label-horizontal is-edge-end"
+            style="left: 100%;"
+          >{{ "%.1f"|format(section.print_preview.trim_width_in) }}"</span>
+        {% endif %}
+      </div>
+      <div class="print-preview-ruler-vertical" aria-hidden="true">
+        {% for tick in range(0, 11) %}
+          {% set pos = tick * 0.5 %}
+          {% if pos <= section.print_preview.trim_height_in + 0.001 %}
+            <span class="print-preview-ruler-label print-preview-ruler-label-vertical" style="top: {{ "%.3f"|format((pos / section.print_preview.trim_height_in) * 100) }}%;">{{ "%.1f"|format(pos) }}"</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <div class="print-preview-page">
+        <div class="print-preview-paper">
+        <div class="print-preview-heading">
+          <h1 class="print-preview-title">{{ section.meeting_name }}</h1>
+        </div>
+
+        <div class="print-preview-stack">
+          {% for preview_block in section.print_blocks %}
+            <section class="print-preview-group {% if preview_block.keep_together %}print-preview-group-keep{% endif %}">
+              {% for item in preview_block["items"] %}
+                {% if item["kind"] == "table" %}
+                  <article class="print-preview-table">
+                    {% for row in item["rows"] %}
+                      <div class="print-preview-row {% if row.is_underlined_row %}print-preview-row-underlined{% endif %}" style="--row-font-size-pt: {{ "%.1f"|format(row.effective_font_size_pt) }}pt;">
+                        {% if row.is_blank_row %}
+                          <div class="print-preview-grid">
+                            <div class="print-preview-spacer-blank" style="grid-column: 1 / -1;"></div>
+                          </div>
+                        {% elif row.is_divider_row %}
+                          <div class="print-preview-grid">
+                            <div class="print-preview-spacer-divider" style="grid-column: 1 / -1;"></div>
+                          </div>
+                        {% elif row.is_column_flow_row %}
+                          {% set layout = row.flow_print_layout %}
+                          <div class="print-preview-flow-grid" style="grid-template-rows: repeat({{ layout.flow_row_line_count }}, auto);">
+                            {% for band_key in ['columns', 'stacked_columns'] %}
+                              {% for column in layout[band_key] %}
+                                {% set segment = (column.segments or [{}])[0] %}
+                                {% if segment.html %}
+                                  {% set flow_align = segment.align or '' %}
+                                  {% if flow_align == 'right' %}
+                                    {% set flow_align_class = 'print-preview-align-right' %}
+                                  {% elif flow_align == 'center' or flow_align == 'auto' %}
+                                    {% set flow_align_class = 'print-preview-align-center' %}
+                                  {% else %}
+                                    {% set flow_align_class = 'print-preview-align-left' %}
+                                  {% endif %}
+                                  <div
+                                    class="print-preview-cell print-preview-flow-column {{ flow_align_class }}"
+                                    style="grid-column: {{ column.col_start }} / span {{ column.col_span }}; grid-row: {{ column.grid_row_start }} / span {{ column.grid_row_span }};"
+                                  >
+                                    <div class="print-preview-flow-text {{ flow_align_class }}">{{ segment.html|safe }}</div>
+                                  </div>
+                                {% endif %}
+                              {% endfor %}
+                            {% endfor %}
+                          </div>
+                        {% else %}
+                          <div class="print-preview-grid">
+                            {% for cell in row.cells %}
+                              {% set stored_align = cell.text_align or '' %}
+                              {% if stored_align == 'right' %}
+                                {% set align_class = 'print-preview-align-right' %}
+                              {% elif stored_align == 'center' or stored_align == 'auto' %}
+                                {% set align_class = 'print-preview-align-center' %}
+                              {% else %}
+                                {% set align_class = 'print-preview-align-left' %}
+                              {% endif %}
+                              <div
+                                class="print-preview-cell {{ align_class }} {% if cell.is_title %}print-preview-cell-title{% endif %} {% if cell.is_bold %}print-preview-cell-bold{% endif %} {% if cell.is_italic %}print-preview-cell-italic{% endif %} {% if cell.is_underlined %}print-preview-cell-underlined{% endif %}"
+                                style="grid-column: {{ cell.col_start }} / span {{ cell.col_span }};"
+                              >
+                                <div class="print-preview-text">{{ cell.text_value|safe }}</div>
+                              </div>
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </article>
+                {% else %}
+                  {% set row = item["rows"][0] %}
+                  <article class="print-preview-table">
+                    <div class="print-preview-row {% if row.is_underlined_row %}print-preview-row-underlined{% endif %}" style="--row-font-size-pt: {{ "%.1f"|format(row.effective_font_size_pt) }}pt;">
+                      {% if row.is_blank_row %}
+                        <div class="print-preview-grid">
+                          <div class="print-preview-spacer-blank" style="grid-column: 1 / -1;"></div>
+                        </div>
+                      {% elif row.is_divider_row %}
+                        <div class="print-preview-grid">
+                          <div class="print-preview-spacer-divider" style="grid-column: 1 / -1;"></div>
+                        </div>
+                      {% elif row.is_column_flow_row %}
+                        {% set layout = row.flow_print_layout %}
+                        <div class="print-preview-flow-grid" style="grid-template-rows: repeat({{ layout.flow_row_line_count }}, auto);">
+                          {% for band_key in ['columns', 'stacked_columns'] %}
+                            {% for column in layout[band_key] %}
+                              {% set segment = (column.segments or [{}])[0] %}
+                              {% if segment.html %}
+                                {% set flow_align = segment.align or '' %}
+                                {% if flow_align == 'right' %}
+                                  {% set flow_align_class = 'print-preview-align-right' %}
+                                {% elif flow_align == 'center' or flow_align == 'auto' %}
+                                  {% set flow_align_class = 'print-preview-align-center' %}
+                                {% else %}
+                                  {% set flow_align_class = 'print-preview-align-left' %}
+                                {% endif %}
+                                <div
+                                  class="print-preview-cell print-preview-flow-column {{ flow_align_class }}"
+                                  style="grid-column: {{ column.col_start }} / span {{ column.col_span }}; grid-row: {{ column.grid_row_start }} / span {{ column.grid_row_span }};"
+                                >
+                                  <div class="print-preview-flow-text {{ flow_align_class }}">{{ segment.html|safe }}</div>
+                                </div>
+                              {% endif %}
+                            {% endfor %}
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <div class="print-preview-grid">
+                          {% for cell in row.cells %}
+                            {% set stored_align = cell.text_align or '' %}
+                            {% if stored_align == 'right' %}
+                              {% set align_class = 'print-preview-align-right' %}
+                            {% elif stored_align == 'center' or stored_align == 'auto' %}
+                              {% set align_class = 'print-preview-align-center' %}
+                            {% else %}
+                              {% set align_class = 'print-preview-align-left' %}
+                            {% endif %}
+                            <div
+                              class="print-preview-cell {{ align_class }} {% if cell.is_title %}print-preview-cell-title{% endif %} {% if cell.is_bold %}print-preview-cell-bold{% endif %} {% if cell.is_italic %}print-preview-cell-italic{% endif %} {% if cell.is_underlined %}print-preview-cell-underlined{% endif %}"
+                              style="grid-column: {{ cell.col_start }} / span {{ cell.col_span }};"
+                            >
+                              <div class="print-preview-text">{{ cell.text_value|safe }}</div>
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </div>
+                  </article>
+                {% endif %}
+              {% endfor %}
+            </section>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+{% endblock %}

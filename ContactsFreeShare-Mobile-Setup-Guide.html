@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ContactsFreeShare Mobile — Setup Guide</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #5b6770;
+    --accent: #3a7d44;
+    --accent-soft: #eaf4ec;
+    --line: #e3e8ec;
+    --code-bg: #f5f7f9;
+    --warn-bg: #fff7e6;
+    --warn-border: #f0c66b;
+    --tip-bg: #eef7ef;
+    --tip-border: #9ccfa0;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: #fbfcfd;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.7;
+  }
+  .page { max-width: 760px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1, h2, h3, .cover-title, nav, .badge, code, pre, table, .callout-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .cover { text-align: center; padding: 60px 0 48px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+  .cover .badge {
+    display: inline-block; font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); padding: 6px 14px; border-radius: 999px;
+    margin-bottom: 24px; font-weight: 600;
+  }
+  .cover-title { font-size: 40px; line-height: 1.15; margin: 0 0 14px; font-weight: 700; letter-spacing: -0.5px; }
+  .cover-sub { font-size: 19px; color: var(--muted); margin: 0 auto; max-width: 520px; font-style: italic; }
+  nav.toc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px 26px; margin: 0 0 48px; }
+  nav.toc h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding-left: 22px; }
+  nav.toc li { margin: 7px 0; font-size: 16px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  h2.chapter {
+    font-size: 27px; margin: 56px 0 6px; padding-top: 20px; border-top: 3px solid var(--accent);
+    font-weight: 700; letter-spacing: -0.3px;
+  }
+  h2.chapter .num {
+    display: block; font-size: 13px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: 2px;
+  }
+  h3 { font-size: 20px; margin: 34px 0 4px; font-weight: 600; }
+  p { margin: 14px 0; }
+  ul, ol.steps { margin: 14px 0; padding-left: 26px; }
+  li { margin: 8px 0; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 14.5px; word-break: break-word; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 14.5px; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; }
+  .callout { border-radius: 10px; padding: 16px 18px; margin: 22px 0; font-size: 16.5px; }
+  .callout p { margin: 8px 0; }
+  .callout .callout-label { display: block; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; }
+  .callout.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .callout.warn .callout-label { color: #9a6700; }
+  .callout.tip  { background: var(--tip-bg);  border: 1px solid var(--tip-border); }
+  .callout.tip .callout-label { color: #2f7d3a; }
+  table { border-collapse: collapse; width: 100%; margin: 22px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; }
+  td code { font-size: 13.5px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .lead { font-size: 19.5px; color: #33414b; }
+  .footer-note { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; font-style: italic; }
+  @media print {
+    body { background: #fff; font-size: 12pt; }
+    .page { max-width: none; padding: 0 6mm; }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: avoid; }
+    nav.toc { page-break-after: always; }
+    pre, table, .callout { page-break-inside: avoid; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+  @media (max-width: 520px) {
+    body { font-size: 17px; }
+    .cover-title { font-size: 31px; }
+    .page { padding: 32px 18px 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="cover">
+    <span class="badge">Setup Handbook</span>
+    <h1 class="cover-title">ContactsFreeShare&nbsp;Mobile</h1>
+    <p class="cover-sub">A friendly, step-by-step guide to running the phone version on your
+    own Google account — and adding it to your phone like a regular app.</p>
+  </header>
+
+  <p class="lead">This handbook walks you through everything from start to finish. You do not
+  need to be a programmer. Read it like a short book: most chapters are easy, and the one
+  technical chapter is broken into small, copy-and-paste steps you can follow slowly. Don't
+  skip the boxes labeled <em>Heads-up</em> and <em>Tip</em> — they save you the most
+  trouble.</p>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#ch1">What the mobile app is, and what you'll need</a></li>
+      <li><a href="#ch2">Create a Google Cloud project and turn on billing</a></li>
+      <li><a href="#ch3">Create the permission slip (OAuth client)</a></li>
+      <li><a href="#ch4">Install the Google Cloud tool (gcloud)</a></li>
+      <li><a href="#ch5">Get the code and publish the app</a></li>
+      <li><a href="#ch6">Finish the Google permission settings</a></li>
+      <li><a href="#ch7">Add it to your phone</a></li>
+      <li><a href="#ch8">Daily use, costs, updates, and trouble</a></li>
+      <li><a href="#ch9">Quick reference</a></li>
+    </ol>
+  </nav>
+
+  <!-- ===================== CHAPTER 1 ===================== -->
+  <h2 class="chapter" id="ch1"><span class="num">Chapter One</span>What the mobile app is, and what you'll need</h2>
+
+  <p>The mobile version of ContactsFreeShare is a little different from the desktop app.
+  There is <strong>nothing to download from an app store</strong>. Instead, the mobile app
+  is a small private website that you publish into <em>your own</em> Google Cloud account.
+  You then open it in your phone's web browser and "add it to your home screen," where it
+  behaves just like a normal app with its own icon.</p>
+
+  <p>Once it's running, you simply sign in with your Google account, and the app lets you
+  view and edit your contacts and pending changes right from your phone. If other family
+  members sign in, each person sees only their own contacts — one published app can serve
+  several people.</p>
+
+  <div class="callout warn">
+    <span class="callout-label">Heads-up: difficulty and cost</span>
+    <p>Publishing the app (Chapters Two through Six) is the technical part. It involves
+    Google Cloud, a credit card to switch on billing, and copying a few commands into a
+    terminal window. Set aside one to two hours the first time. If you've never used a
+    terminal, it's perfectly fine to ask a more technical friend to sit with you for those
+    chapters.</p>
+    <p>The good news on cost: unlike the sharing server, the mobile app is allowed to
+    "sleep" when no one is using it, so for personal and family use it usually stays within
+    Google's free allowance — often costing little or nothing. You still must enable billing
+    with a card for Google to allow it to run, and the very first open after it has been
+    idle may take a few extra seconds to wake up.</p>
+  </div>
+
+  <h3>What to have ready</h3>
+  <p>You'll need a Google account, a computer (Mac or Windows) to do the one-time publishing,
+  a smartphone to use the app on, and — to switch on Google Cloud — a credit or debit card.
+  You'll also need the project's <strong>source code folder</strong> from the person who
+  sent you this guide: the folder that contains a sub-folder named
+  <code>mobilecontacts</code>.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: already set up the desktop or sharing app?</span>
+    <p>If you already created a Google Cloud project and an OAuth "permission slip" for the
+    desktop or sharing app, you can reuse the very same project and client here. Just
+    <em>add</em> the mobile app's web addresses to your existing client (Chapter Six) rather
+    than creating new ones — and you can skip ahead to Chapter Four.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 2 ===================== -->
+  <h2 class="chapter" id="ch2"><span class="num">Chapter Two</span>Create a Google Cloud project and turn on billing</h2>
+
+  <p>Go to <a href="https://console.cloud.google.com/">console.cloud.google.com</a> and sign
+  in with your Google account. Near the top of the page, open the project dropdown and choose
+  <strong>New Project</strong>. Give it a simple name like <code>my-contacts</code> and click
+  <strong>Create</strong>. Make a note of the <strong>Project ID</strong> shown under the
+  name — it looks something like <code>my-contacts-123456</code> and you'll need it later.</p>
+
+  <p>Next, use the search bar at the top to find <strong>Billing</strong>, and link a billing
+  account by adding a card. Google Cloud will not run the app without billing switched on,
+  even though light personal use typically stays free.</p>
+
+  <p>Finally, search for <strong>Google People API</strong>, open it, and click
+  <strong>Enable</strong>. This is what lets the app read and update your contacts.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: cap your spending</span>
+    <p>Under <strong>Billing → Budgets &amp; alerts</strong> you can set a small monthly
+    budget — say five dollars — so Google emails you if costs ever climb unexpectedly.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 3 ===================== -->
+  <h2 class="chapter" id="ch3"><span class="num">Chapter Three</span>Create the permission slip (OAuth client)</h2>
+
+  <p>Before the app can touch your contacts, Google needs you to create a small permission
+  slip called an <strong>OAuth client</strong>. It's free and you only do it once.</p>
+
+  <ol class="steps">
+    <li>In the Console, search for <strong>OAuth consent screen</strong>. Choose
+    <strong>External</strong>, click <strong>Create</strong>, then fill in an app name and
+    your own email where asked (support email and developer contact). Click through the
+    <strong>Scopes</strong> page without changes, and on the <strong>Test users</strong> page
+    add your own Google email address (and the emails of any family members who'll use it).</li>
+    <li>Search for <strong>Credentials</strong>, click <strong>Create Credentials</strong>,
+    and choose <strong>OAuth client ID</strong>. Pick <strong>Web application</strong> as the
+    type, and give it a name like <code>Mobile app</code>.</li>
+    <li>You'll fill in the web addresses in Chapter Six, after you know your app's real
+    address. For now just click <strong>Create</strong>. A window shows your
+    <strong>Client ID</strong> and <strong>Client secret</strong> — copy both somewhere
+    safe.</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="callout-label">Heads-up: the seven-day limit</span>
+    <p>While the consent screen is in <strong>Testing</strong> mode, Google makes everyone
+    sign in again every seven days. For smoother day-to-day use, open the
+    <strong>OAuth consent screen</strong> later and click <strong>Publish App</strong> to
+    move it to <strong>In production</strong>. You can do this without formal Google
+    verification — you'll just click past an "unverified app" notice the first time — and it
+    removes the weekly sign-in. It supports about a hundred users, which is plenty for a
+    family.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 4 ===================== -->
+  <h2 class="chapter" id="ch4"><span class="num">Chapter Four</span>Install the Google Cloud tool (gcloud)</h2>
+
+  <p>This is a small program that lets your computer talk to Google Cloud so it can publish
+  the app for you.</p>
+
+  <p>On a Mac, open the <strong>Terminal</strong> app and run:</p>
+  <pre><code>curl https://sdk.cloud.google.com | bash</code></pre>
+  <p>Then close and reopen Terminal. (If you prefer a clickable installer, follow the steps
+  at <a href="https://cloud.google.com/sdk/docs/install">cloud.google.com/sdk/docs/install</a>.)</p>
+
+  <p>On Windows, download and run the installer from that same page (look for the Windows
+  installer). When it finishes, open the <strong>Google Cloud SDK Shell</strong> from the
+  Start menu — use that window for every command in this guide.</p>
+
+  <p>Confirm it works by running:</p>
+  <pre><code>gcloud --version</code></pre>
+  <p>You should see version numbers rather than an error. Then sign in and choose your
+  project, replacing <code>YOUR_PROJECT_ID</code> with the ID you noted in Chapter Two:</p>
+  <pre><code>gcloud auth login
+gcloud config set project YOUR_PROJECT_ID</code></pre>
+  <p>The first command opens a browser to confirm — sign in with the same Google account.</p>
+
+  <!-- ===================== CHAPTER 5 ===================== -->
+  <h2 class="chapter" id="ch5"><span class="num">Chapter Five</span>Get the code and publish the app</h2>
+
+  <h3>Step 1 — Put the source code on your computer</h3>
+  <p>You need the project's source folder — the one that contains the
+  <code>mobilecontacts</code> sub-folder. The person sharing this guide will give it to you
+  as a <code>.zip</code> to unzip or a link to download. Put it somewhere easy to reach, such
+  as your home folder, then move into the mobile sub-folder in the terminal. For example:</p>
+  <pre><code>cd ~/PythonDB4-3-26/mobilecontacts</code></pre>
+  <p>Use the actual name and location of the folder where you placed it.</p>
+
+  <h3>Step 2 — Create the app's settings file</h3>
+  <p>The app reads its settings from <code>python/.env</code>. Create it from the included
+  example:</p>
+  <pre><code>cd python
+cp .env.example .env</code></pre>
+  <p>Now generate a random secret key. On Mac or Linux run the first command; on Windows (in
+  the Google Cloud SDK Shell) run the second:</p>
+  <pre><code>openssl rand -hex 32</code></pre>
+  <pre><code>python -c "import secrets; print(secrets.token_hex(32))"</code></pre>
+  <p>Copy the long random string it prints. Then open <code>python/.env</code> in a plain
+  text editor (TextEdit on Mac, Notepad on Windows) and fill in these three lines:</p>
+  <pre><code>GOOGLE_CLIENT_ID=paste-your-client-id-here
+GOOGLE_CLIENT_SECRET=paste-your-client-secret-here
+APP_SECRET_KEY=paste-the-random-string-you-generated</code></pre>
+  <div class="callout warn">
+    <span class="callout-label">Heads-up</span>
+    <p>Keep <code>APP_SECRET_KEY</code> safe and don't change it later — changing it signs
+    everyone out. Leave the rest of the file as it is; the publishing script fills in the
+    other settings automatically.</p>
+  </div>
+
+  <h3>Step 3 — Publish (deploy) the app</h3>
+  <p>Go back up to the <code>mobilecontacts</code> folder and run the deploy script. The
+  extra <code>MOBILE_CUSTOM_DOMAIN=""</code> part is important — it tells the script to use
+  <em>your</em> Google Cloud web address instead of a special domain you don't own:</p>
+  <pre><code>cd ..
+MOBILE_CUSTOM_DOMAIN="" bash scripts/deploy_cloud_run.sh</code></pre>
+  <div class="callout warn">
+    <span class="callout-label">Heads-up: don't skip MOBILE_CUSTOM_DOMAIN=""</span>
+    <p>If you run the script without that part, it will try to use the address
+    <code>mobile.contactsfreeshare.org</code>, which belongs to the original author — and
+    sign-in will fail for you. Typing <code>MOBILE_CUSTOM_DOMAIN=""</code> in front of the
+    command (exactly as shown) avoids this.</p>
+  </div>
+  <p>The first run takes several minutes. It switches on the Google Cloud services it needs,
+  creates a storage area for everyone's data, and builds and publishes the app. If it asks
+  you to confirm enabling anything, say <strong>yes</strong>. When it finishes, it prints
+  something like:</p>
+  <pre><code>Public URL: https://mobile-contacts-xxxxxxxx-uc.a.run.app
+Mobile UI:  https://mobile-contacts-xxxxxxxx-uc.a.run.app/</code></pre>
+  <p><strong>Copy that <code>https://…run.app</code> address.</strong> It is the link you'll
+  open on your phone, and you'll also paste it into Google's settings in the next chapter.</p>
+
+  <!-- ===================== CHAPTER 6 ===================== -->
+  <h2 class="chapter" id="ch6"><span class="num">Chapter Six</span>Finish the Google permission settings</h2>
+
+  <p>Now that you know your app's real address, tell Google about it. In the Console, go to
+  <strong>Credentials</strong> and click the Web-application OAuth client you made in Chapter
+  Three. You need to add the address in <em>two</em> places on that page, replacing the
+  example with <em>your</em> real address from Chapter Five:</p>
+
+  <p>Under <strong>Authorized redirect URIs</strong>, click <strong>Add URI</strong> and
+  add:</p>
+  <pre><code>https://mobile-contacts-xxxxxxxx-uc.a.run.app/auth/callback</code></pre>
+
+  <p>Under <strong>Authorized JavaScript origins</strong>, click <strong>Add URI</strong> and
+  add the address with no path on the end:</p>
+  <pre><code>https://mobile-contacts-xxxxxxxx-uc.a.run.app</code></pre>
+
+  <p>Click <strong>Save</strong>. If you're reusing a client that already has desktop,
+  sharing, or other addresses listed, leave those in place — just add these two.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip</span>
+    <p>Web addresses must match exactly, character for character — including
+    <code>https</code> and the <code>/auth/callback</code> path. The most common sign-in
+    error comes from a small typo here.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 7 ===================== -->
+  <h2 class="chapter" id="ch7"><span class="num">Chapter Seven</span>Add it to your phone</h2>
+
+  <p>Open your phone's web browser and go to your app's address (the
+  <code>https://…run.app/</code> link from Chapter Five). Sign in with your Google account.
+  Because this is a personal app you published yourself, Google shows an "unverified app"
+  notice — that's expected; tap <strong>Advanced</strong>, then <strong>Go to (your app
+  name)</strong>, and allow access.</p>
+
+  <p>Once it loads, add it to your home screen so it gets its own icon and opens full-screen
+  like a normal app.</p>
+
+  <h3>On an iPhone (Safari)</h3>
+  <p>Make sure you're using <strong>Safari</strong>. Tap the <strong>Share</strong> button
+  (the square with an upward arrow at the bottom of the screen), scroll down, and tap
+  <strong>Add to Home Screen</strong>. Confirm the name and tap <strong>Add</strong>. A new
+  icon appears on your home screen.</p>
+
+  <h3>On an Android phone (Chrome)</h3>
+  <p>Tap the <strong>three-dot menu</strong> in the top right, then tap <strong>Add to Home
+  screen</strong> (or <strong>Install app</strong>). Confirm, and the icon appears among your
+  apps.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip</span>
+    <p>From now on, open the app from that home-screen icon. The first time you open it after
+    it's been idle for a while, it may take a few seconds to wake up — that's normal and only
+    happens occasionally.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 8 ===================== -->
+  <h2 class="chapter" id="ch8"><span class="num">Chapter Eight</span>Daily use, costs, updates, and trouble</h2>
+
+  <h3>Everyday use and family members</h3>
+  <p>Anyone you added as a Test user (or anyone at all, once you've published the app to
+  production) can open the same link, sign in with their own Google account, and manage their
+  own contacts. Each person's data is kept separate.</p>
+
+  <h3>Watching the cost</h3>
+  <p>Because the app sleeps when idle, personal use usually stays within Google's free
+  allowance. Keep the budget alert from Chapter Two switched on so you're notified if that
+  ever changes.</p>
+
+  <h3>Updating later</h3>
+  <p>When you receive a newer version of the source code, republish with the same command
+  from the <code>mobilecontacts</code> folder:</p>
+  <pre><code>MOBILE_CUSTOM_DOMAIN="" bash scripts/deploy_cloud_run.sh</code></pre>
+
+  <h3>Pausing or shutting down</h3>
+  <p>To stop the app entirely, open <strong>Cloud Run</strong> in the Console, click the
+  <strong>mobile-contacts</strong> service, and choose <strong>Delete</strong>. You can
+  always republish later.</p>
+
+  <h3>When something goes wrong</h3>
+  <p>If the terminal says <strong>"gcloud: command not found,"</strong> the Google Cloud tool
+  isn't installed or you didn't reopen the terminal afterward — redo Chapter Four with a
+  fresh window. If the deploy script complains that <strong>APP_SECRET_KEY</strong> or
+  <strong>GOOGLE_CLIENT_ID</strong> is required, the matching line in
+  <code>mobilecontacts/python/.env</code> is still blank; fill it in and rerun.</p>
+
+  <p>If sign-in shows <strong>"redirect_uri_mismatch,"</strong> the address isn't listed
+  correctly under your OAuth client — re-check Chapter Six, and make sure you used
+  <code>MOBILE_CUSTOM_DOMAIN=""</code> when deploying so the app's address matches the one
+  you added. An <strong>"unverified app"</strong> warning is normal for a personal build;
+  tap <strong>Advanced</strong> and continue. And if everyone is asked to sign in again about
+  once a week, publish the consent screen to production as described in Chapter Three.</p>
+
+  <!-- ===================== CHAPTER 9 ===================== -->
+  <h2 class="chapter" id="ch9"><span class="num">Chapter Nine</span>Quick reference</h2>
+
+  <p>Keep this table handy — it collects every address and file path used in the guide.</p>
+
+  <table>
+    <tr><th>What</th><th>Value</th></tr>
+    <tr><td>Deploy command (from <code>mobilecontacts/</code>)</td><td><code>MOBILE_CUSTOM_DOMAIN="" bash scripts/deploy_cloud_run.sh</code></td></tr>
+    <tr><td>Settings file</td><td><code>mobilecontacts/python/.env</code></td></tr>
+    <tr><td>Required settings</td><td><code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>APP_SECRET_KEY</code></td></tr>
+    <tr><td>App address (after deploy)</td><td><code>https://mobile-contacts-xxxxxxxx-uc.a.run.app/</code></td></tr>
+    <tr><td>OAuth redirect URI</td><td><code>&lt;app-url&gt;/auth/callback</code></td></tr>
+    <tr><td>OAuth JavaScript origin</td><td><code>&lt;app-url&gt;</code> (no path)</td></tr>
+    <tr><td>Local testing address</td><td><code>http://127.0.0.1:8090</code></td></tr>
+    <tr><td>iPhone install</td><td>Safari → Share → Add to Home Screen</td></tr>
+    <tr><td>Android install</td><td>Chrome → menu → Add to Home screen</td></tr>
+  </table>
+
+  <p class="footer-note">You did it. Keep this guide somewhere handy in case you ever need to
+  republish, update, or help a friend through the same steps.</p>
+
+</div>
+</body>
+</html>

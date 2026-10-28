@@ -1,0 +1,1222 @@
+{% extends "base.html" %}
+
+{% block title %}Google Connect Settings | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set selected_access_role = state.access_role or "editor" %}
+  {% if selected_access_role in ["field_list_creation", "address_book_creation", "changes_contributor", "non_editor"] %}
+    {% set selected_access_role = "non_editor" %}
+  {% endif %}
+  {% set editor_is_signed_in = (state.multi_editor_enabled|default(false)) and (account.status|default('') == 'connected') and (state.editor_mode|default('') == 'edit') and (selected_access_role == "editor") %}
+  {% set selected_access_name = state.access_name or state.editor_name or state.pending_editor_name or "" %}
+  {% set access_is_signed_in = (state.multi_editor_enabled|default(false)) and ((state.access_name|default('')) or editor_is_signed_in) %}
+  {% set can_upload_shared_data = (account.status|default('') == 'connected') and (not (state.multi_editor_enabled|default(false)) or editor_is_signed_in) %}
+  {% set flash_google_signin = request.query_params.get("notice", "") == "changes_list_connect_google_before_signout" %}
+  {% set shared_drive_pending = state.shared_drive_needs_export or state.settings_needs_drive_export or state.contact_records_needs_drive_export or state.contacts_manifest_needs_drive_export or state.book_layouts_needs_drive_export or state.meetingdata_needs_drive_export or state.field_list_needs_drive_export or state.changes_list_needs_drive_export %}
+  {% set upload_pending = shared_drive_pending or state.pending_upload_count or state.bootstrap_status in ["running", "failed"] %}
+  {% set blocked_remaining_seconds = editor_lock_status.remaining_seconds|default(0)|int %}
+  {% set blocked_remaining_label = ((blocked_remaining_seconds // 60)|string) ~ ":" ~ ("%02d"|format(blocked_remaining_seconds % 60)) if blocked_remaining_seconds > 0 else "unknown" %}
+  {% set editor_remaining_label = ((blocked_remaining_seconds // 60)|string) ~ ":" ~ ("%02d"|format(blocked_remaining_seconds % 60)) if blocked_remaining_seconds > 0 else "ending" %}
+  <div class="google-connect-page">
+  <section class="panel page-top-panel meetingdata-filter-panel contacts-filter-panel google-connect-title-panel" style="--meetingdata-title-bar-color: #c8f0cb;">
+    <div class="editor-actions google-connect-title-row">
+      <div>
+        <h2>Google Connect Settings</h2>
+        <p class="muted">Connect a Google account, import contacts into the app, and prepare local changes for upload back to Google.</p>
+      </div>
+      <div class="google-connect-title-tools">
+        {% if account.status == 'connected' and not editor_is_signed_in %}
+          <div class="editor-top-button-stack google-connect-top-actions">
+            <a class="contact-card-button contact-card-button-edit" href="/google/connect/start">Reconnect / Switch Account</a>
+            <form method="post" action="/google/connect/disconnect">
+              <button type="submit" class="contact-card-button contact-card-button-delete">Disconnect</button>
+            </form>
+          </div>
+        {% elif account.status != 'connected' and not editor_is_signed_in %}
+          <div class="editor-top-button-stack google-connect-top-actions">
+            <a
+              class="contact-card-button contact-card-button-edit {% if flash_google_signin %}google-connect-attention{% endif %}"
+              href="/google/connect/start"
+              data-busy-modal-title="Signing in"
+              data-busy-modal-copy="Connecting your Google account and preparing shared Drive data."
+            >Sign In With Google</a>
+          </div>
+        {% endif %}
+        <div class="google-connection-pill {% if account.status == 'connected' %}is-connected{% else %}is-disconnected{% endif %}">
+          {% if account.status == 'connected' %}
+            <span class="google-connection-pill-stack" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%;">
+              <span class="google-connection-status-label">Connected</span>
+              {% if editor_lock_status.active %}
+                <span
+                  class="google-connection-session-time"
+                  id="google-editor-session-time"
+                  data-remaining-seconds="{{ editor_lock_status.remaining_seconds|default(0)|int }}"
+                >
+                  {{ editor_remaining_label }} left
+                </span>
+              {% endif %}
+            </span>
+          {% else %}
+            Not Connected
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% if notice_message %}
+    {% set update_available_notice = notice_key == "editor_signed_in_update_available" %}
+    <section
+      class="panel google-sync-banner {% if update_available_notice %}google-sync-banner-warn{% else %}google-sync-banner-info{% endif %}"
+      id="google-connect-temporary-notice"
+      {% if not update_available_notice %}data-auto-hide-ms="3600"{% endif %}
+    >
+      <div>{{ notice_message }}</div>
+      {% if update_available_notice %}
+        <p style="margin: 0.65rem 0 0;">
+          <a class="contact-card-button contact-card-button-edit" href="/app-revisions?update_checked=1&amp;notice=app_update_available">
+            Open App Revisions to download update
+          </a>
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if state.bootstrap_status == "running" %}
+    <section class="panel google-sync-banner google-sync-banner-warn" id="google-bootstrap-status-banner">
+      Drive bootstrap in progress. Editing is temporarily unavailable. {{ state.bootstrap_processed_contacts }} processed, {{ state.bootstrap_remaining_contacts }} remaining.
+    </section>
+  {% elif state.bootstrap_status == "failed" %}
+    <section class="panel google-sync-banner google-sync-banner-warn" id="google-bootstrap-status-banner">
+      Drive bootstrap did not finish. Resume Upload before editing. {{ state.bootstrap_processed_contacts }} processed, {{ state.bootstrap_remaining_contacts }} remaining.
+    </section>
+  {% endif %}
+  <section
+    class="panel google-sync-banner {% if state.signin_sync_error %}google-sync-banner-warn{% else %}google-sync-banner-progress google-sync-banner-processing{% endif %}"
+    id="google-signin-sync-panel"
+    {% if not state.signin_sync_in_progress and not state.signin_sync_error %}hidden{% endif %}
+  >
+    <div class="editor-actions">
+      <div class="google-signin-sync-message">
+        {% if state.signin_sync_error %}
+          {{ state.signin_sync_error }}
+        {% else %}
+          Processing shared app data...
+        {% endif %}
+      </div>
+      <form
+        method="post"
+        action="/google/signin-sync/retry"
+        class="google-signin-sync-retry-form"
+        {% if not state.signin_sync_error or not (account.status == 'connected' and state.editor_mode == "edit" and state.editor_session_id and not state.upload_in_progress and state.bootstrap_status != "running") %}hidden{% endif %}
+      >
+        <button type="submit" class="contact-card-button contact-card-button-edit">Retry Drive Sync</button>
+      </form>
+    </div>
+  </section>
+
+  <section
+    class="panel google-sync-banner google-sync-banner-progress"
+    id="google-upload-progress-panel"
+    role="status"
+    aria-live="polite"
+    {% if not state.upload_in_progress %}hidden{% endif %}
+  >
+    Uploading local changes to Google and Drive.
+  </section>
+
+  <section class="detail-grid google-connect-detail-grid">
+    <article class="panel">
+      <h3>Connection</h3>
+      <section class="google-editor-mode-card">
+        <div>
+          <strong>Multi-Editor mode</strong>
+          <p class="muted">
+            {% if editor_is_signed_in %}
+              {{ state.editor_name or state.pending_editor_name or "Editor" }} signed in
+            {% elif access_is_signed_in %}
+              {{ selected_access_name }} signed in
+            {% elif state.multi_editor_account_locked %}
+              Enabled for this Google account. Contact and Meeting edits require Editor sign in below.
+            {% elif state.multi_editor_enabled %}
+              Enabled. Contact and Meeting edits require Editor sign in below.
+            {% else %}
+              Disabled. The app is using the normal single-editor workflow.
+            {% endif %}
+          </p>
+        </div>
+        <a class="contact-card-button contact-card-button-cancel" href="/presets/app-settings">Change Setting</a>
+      </section>
+      <form method="post" action="/presets/google-connect/save" class="form-grid google-connect-form">
+        <div class="google-connect-auth-grid">
+          <div class="google-connected-account-field">
+            <span>Connected Google account</span>
+            <div class="google-connected-account-value">{{ account.email or "Not connected" }}</div>
+            <input type="hidden" name="account_email" value="{{ account.email or '' }}">
+          </div>
+          {% if state.multi_editor_enabled %}
+            <label class="google-access-role-field">
+              <span>Access role</span>
+              <select name="access_role" id="google-access-role">
+                <option value="editor" {% if selected_access_role == "editor" %}selected{% endif %}>Editor</option>
+                <option value="non_editor" {% if selected_access_role == "non_editor" %}selected{% endif %}>Field List/Address Book/Pending Edits</option>
+              </select>
+            </label>
+            <div class="google-connect-signin-fields">
+              <label class="google-access-name-field{% if selected_access_role == 'non_editor' %} is-non-editor-initials{% endif %}">
+                <span id="google-access-name-label">Editor initials</span>
+                <input
+                  type="text"
+                  id="google-access-name-input"
+                  name="editor_name"
+                  value="{{ selected_access_name }}"
+                  placeholder="FL"
+                  {% if not access_is_signed_in %}maxlength="2" autocapitalize="characters"{% endif %}
+                  spellcheck="false"
+                  {% if access_is_signed_in %}readonly{% endif %}
+                >
+              </label>
+              <label class="google-editor-secret-inline" id="google-editor-secret-field"{% if editor_is_signed_in %} hidden{% endif %}>
+                <span>Password</span>
+                <input
+                  type="password"
+                  id="google-editor-secret-input"
+                  name="editor_secret"
+                  value=""
+                  placeholder="Editor password"
+                  autocomplete="new-password"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
+                  data-1p-ignore
+                  data-lpignore="true"
+                >
+              </label>
+              {% if access_is_signed_in %}
+                {% if editor_is_signed_in %}
+                  <button
+                    type="button"
+                    id="google-editor-sign-out-button"
+                    class="contact-card-button contact-card-button-cancel google-connect-signin-button"
+                  >
+                    Sign out
+                  </button>
+                {% else %}
+                  <button
+                    type="submit"
+                    id="google-access-sign-out-button"
+                    class="contact-card-button contact-card-button-cancel google-connect-signin-button"
+                    formaction="/google/access/sign-out"
+                    formmethod="post"
+                  >
+                    Sign out
+                  </button>
+                {% endif %}
+              {% else %}
+                <button
+                  type="submit"
+                  id="google-access-sign-in-button"
+                  class="contact-card-button contact-card-button-edit google-connect-signin-button"
+                  formaction="/google/editor/sign-in"
+                  formmethod="post"
+                  data-busy-modal-title="Signing in"
+                  data-busy-modal-copy="Taking the Editor lock on Google Drive."
+                >
+                  Sign in
+                </button>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+        {% if not state.multi_editor_enabled and account.email %}
+          <div class="google-connect-inline-action">
+            <button
+              type="submit"
+              class="contact-card-button contact-card-button-edit"
+            >
+              Save Google Account
+            </button>
+          </div>
+        {% endif %}
+        <div class="google-sync-status-columns">
+          <dl class="meta-list google-sync-state-list">
+            <div><dt>OAuth configured</dt><dd>{{ "Yes" if account.oauth_configured else "No" }}</dd></div>
+            <div><dt>Drive scope granted</dt><dd>{{ "Yes" if account.drive_scope_ready else "No" }}</dd></div>
+          </dl>
+          <dl class="meta-list google-sync-state-list">
+            <div><dt>Sync Enabled</dt><dd>{{ "Yes" if state.sync_enabled else "No" }}</dd></div>
+            <div><dt>Editor mode</dt><dd>{{ state.editor_mode|replace('_', ' ') if state.multi_editor_enabled else "normal" }}</dd></div>
+            <div><dt>Multi-Editor account</dt><dd>{{ "Yes" if state.multi_editor_account_locked else "No" }}</dd></div>
+          </dl>
+        </div>
+      </form>
+      <form
+        method="post"
+        action="/google/editor/sign-out"
+        id="google-editor-sign-out-form"
+        hidden
+      ></form>
+    </article>
+
+    <article class="panel">
+      <h3>Sync State</h3>
+      <div class="google-sync-state-grid">
+        <dl class="meta-list google-sync-state-list">
+          <div><dt>Connected account</dt><dd>{{ account.email or "Not connected" }}</dd></div>
+          <div><dt>Contact uploads to Google Contacts</dt><dd>{{ state.pending_upload_count }}</dd></div>
+          <div>
+            <dt>App data save to Drive</dt>
+            <dd>
+              <span>{{ "Waiting to save" if shared_drive_pending else "Saved" }}</span>
+            </dd>
+          </div>
+          <div><dt>Bootstrap</dt><dd>{{ state.bootstrap_status|replace('_', ' ') }}</dd></div>
+          {% if upload_pending %}
+            <div>
+              <dt>Upload action</dt>
+              <dd class="google-sync-state-with-action">
+                <span>{{ "Uploading now" if state.upload_in_progress else "Ready to upload" }}</span>
+              {% if can_upload_shared_data and not state.upload_in_progress %}
+                <button
+                  type="button"
+                  class="google-connect-upload-button contacts-upload-reminder"
+                  id="google-connect-upload-button"
+                  {% if state.bootstrap_status == "running" %}disabled{% endif %}
+                >
+                  Upload
+                </button>
+              {% endif %}
+              </dd>
+            </div>
+          {% endif %}
+          <div><dt>Last sync error</dt><dd>{{ state.last_sync_error or "None" }}</dd></div>
+        </dl>
+        <dl class="meta-list google-sync-state-list">
+          <div><dt>Last import</dt><dd>{{ state.last_import_at or "Not yet run" }}</dd></div>
+          <div><dt>Last upload</dt><dd>{{ state.last_upload_at or "Not yet run" }}</dd></div>
+          <div><dt>Last Drive export</dt><dd>{{ state.last_drive_export_at or "Not yet run" }}</dd></div>
+        </dl>
+      </div>
+    </article>
+  </section>
+
+  {% set pending_job_count = pending_queue|length + (1 if shared_drive_pending else 0) %}
+  <section class="panel">
+    <div class="google-sync-queue-header">
+      <div>
+        <h3>Pending Local Changes</h3>
+        {% if pending_job_message %}
+          <p class="muted">{{ pending_job_message }}</p>
+        {% endif %}
+        {% if can_upload_shared_data %}
+          {% if job_title_cleanup_queued %}
+            <button type="button" class="contact-card-button contact-card-button-edit" style="margin-top:0.75rem" disabled>
+              Job Title cleanup queued
+            </button>
+          {% else %}
+            <button type="button" class="contact-card-button contact-card-button-edit" style="margin-top:0.75rem" disabled>
+              Nothing needs to be done
+            </button>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% if pending_job_count %}
+        <div class="google-sync-queue-count">{{ pending_job_count }}</div>
+      {% endif %}
+    </div>
+
+    {% if shared_drive_pending %}
+      <div class="google-sync-queue-list">
+        <article class="google-sync-queue-item">
+          <div class="google-sync-queue-main">
+            <div class="google-sync-queue-name">Shared app data</div>
+            <div class="google-sync-queue-meta">
+              {% if state.settings_needs_drive_export %}<span class="google-sync-queue-badge">Settings</span>{% endif %}
+              {% if state.contact_records_needs_drive_export or state.contacts_manifest_needs_drive_export %}<span class="google-sync-queue-badge">Shared contacts</span>{% endif %}
+              {% if state.book_layouts_needs_drive_export %}<span class="google-sync-queue-badge">Address Book template</span>{% endif %}
+              {% if state.meetingdata_needs_drive_export %}<span class="google-sync-queue-badge">MeetingData</span>{% endif %}
+              {% if state.field_list_needs_drive_export %}<span class="google-sync-queue-badge">Field List</span>{% endif %}
+              {% if state.changes_list_needs_drive_export %}<span class="google-sync-queue-badge">Changes List</span>{% endif %}
+            </div>
+          </div>
+          <div class="google-sync-queue-status">
+            <div class="google-sync-queue-status-block">
+              <strong>Action</strong>
+              <div>Save to Google Drive</div>
+            </div>
+            <div class="google-sync-queue-status-block">
+              <strong>Status</strong>
+              <div>Waiting to upload</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    {% endif %}
+
+    {% if pending_queue %}
+      <div class="google-sync-queue-list">
+        {% for item in pending_queue %}
+          <article class="google-sync-queue-item">
+            <div class="google-sync-queue-main">
+              <div class="google-sync-queue-name">{{ item.contact_name }}</div>
+              <div class="google-sync-queue-meta">
+                <span class="google-sync-queue-badge">{{ item.operation_label }}</span>
+                <span>Queued {{ item.updated_at or item.queued_at or "recently" }}</span>
+                {% if item.google_contact_id %}
+                  <span>ID: {{ item.google_contact_id }}</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="google-sync-queue-status">
+              <div class="google-sync-queue-status-block">
+                <strong>Action</strong>
+                <div>{{ item.action_label }}</div>
+              </div>
+              {% if item.last_error %}
+                <div class="google-sync-queue-status-block google-sync-queue-status-block-full">
+                  <strong>Last error</strong>
+                  <div>{{ item.last_error }}</div>
+                </div>
+              {% else %}
+                <div class="google-sync-queue-status-block">
+                  <strong>Status</strong>
+                  <div>Waiting to upload</div>
+                </div>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% elif not shared_drive_pending %}
+      <p class="muted">No jobs are waiting to run.</p>
+    {% endif %}
+  </section>
+
+  {% if state.multi_editor_enabled and state.editor_mode == "no_edit" %}
+    <section class="panel google-sync-banner google-sync-banner-warn">
+      This app is in NO-EDIT mode. Sign in as an Editor to make changes.
+    </section>
+  {% endif %}
+
+  <dialog class="app-modal" id="google-editor-stale-modal">
+    <form method="post" action="/google/editor/takeover" class="app-modal-panel">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title">Take Over Stale Editor Lock?</h3>
+        <p class="app-modal-copy">
+          The previous Editor session is stale. Take over the editing session now?
+        </p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" data-editor-modal-cancel>Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-edit">Take Over</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="app-modal" id="google-editor-blocked-modal">
+    <form method="dialog" class="app-modal-panel">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title">NO-EDIT Mode</h3>
+        <p class="app-modal-copy">
+          {{ state.editor_lock_owner_name or "Another Editor" }} is already signed in. The Google connection was removed and this app is in NO-EDIT mode.
+        </p>
+        <p class="app-modal-copy">
+          Remaining time: <strong id="google-editor-blocked-countdown" data-remaining-seconds="{{ blocked_remaining_seconds }}">{{ blocked_remaining_label }}</strong>
+        </p>
+        <p class="app-modal-copy">Check back periodically.</p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="submit" class="contact-card-button contact-card-button-edit">OK</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="app-modal" id="google-editor-upload-active-modal">
+    <form method="dialog" class="app-modal-panel">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="google-editor-upload-active-title">Process In Progress</h3>
+        <p class="app-modal-copy" id="google-editor-upload-active-copy">
+          Editor sign-out is disabled until the current Drive process finishes.
+        </p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="submit" class="contact-card-button contact-card-button-edit" id="google-editor-upload-active-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="app-modal" id="google-connect-required-modal">
+    <form method="dialog" class="app-modal-panel">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title">Connect Google Before Signing Out</h3>
+        <p class="app-modal-copy">
+          Changes List edits are waiting to save to Drive. Connect a Google account before signing out so the next person can see those changes on their computer.
+        </p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="submit" class="contact-card-button contact-card-button-edit">OK</button>
+      </div>
+    </form>
+  </dialog>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const progressPanel = document.getElementById("google-upload-progress-panel");
+      const bootstrapStatusBanner = document.getElementById("google-bootstrap-status-banner");
+      const signinSyncPanel = document.getElementById("google-signin-sync-panel");
+      const signinSyncMessage = signinSyncPanel?.querySelector(".google-signin-sync-message") || null;
+      const signinSyncRetryForm = signinSyncPanel?.querySelector(".google-signin-sync-retry-form") || null;
+      const temporaryNotice = document.getElementById("google-connect-temporary-notice");
+      const noticeCode = new URLSearchParams(window.location.search).get("notice") || "";
+      const staleModal = document.getElementById("google-editor-stale-modal");
+      const blockedModal = document.getElementById("google-editor-blocked-modal");
+      const blockedCountdown = document.getElementById("google-editor-blocked-countdown");
+      const editorSessionTime = document.getElementById("google-editor-session-time");
+      const signOutForm = document.getElementById("google-editor-sign-out-form");
+      const signOutButton = document.getElementById("google-editor-sign-out-button");
+      const accessSignOutButton = document.getElementById("google-access-sign-out-button");
+      const accessRoleSelect = document.getElementById("google-access-role");
+      const accessNameLabel = document.getElementById("google-access-name-label");
+      const accessNameInput = document.getElementById("google-access-name-input");
+      const accessNameField = accessNameInput?.closest(".google-access-name-field");
+      const accessSignInButton = document.getElementById("google-access-sign-in-button");
+      const editorSecretField = document.getElementById("google-editor-secret-field");
+      const editorSecretInput = document.getElementById("google-editor-secret-input");
+      const editorIsSignedIn = {{ editor_is_signed_in|default(false)|tojson }};
+      const googleConnectUploadButton = document.getElementById("google-connect-upload-button");
+      const uploadActiveModal = document.getElementById("google-editor-upload-active-modal");
+      const uploadActiveTitle = document.getElementById("google-editor-upload-active-title");
+      const uploadActiveCopy = document.getElementById("google-editor-upload-active-copy");
+      const googleConnectRequiredModal = document.getElementById("google-connect-required-modal");
+      const initialState = {{ state|default({})|tojson }};
+      const accountConnected = {{ ((account.status|default('')) == 'connected')|tojson }};
+      let currentState = { ...initialState };
+      let pollTimer = null;
+      let signinSyncTimer = null;
+      let signinSyncPollFailures = 0;
+      let uploadFailedPollChecks = 0;
+      const accessRoleConfig = {
+        editor: {
+          label: "Editor initials",
+          button: "Sign in",
+          action: "/google/editor/sign-in",
+        },
+        non_editor: {
+          label: "non-Editor initials",
+          button: "Sign in",
+          action: "/google/access/sign-in",
+          busy: "Preparing Field List, Address Book, and Pending Edits access.",
+        },
+      };
+
+      const syncAccessRoleUi = () => {
+        const role = accessRoleSelect?.value || "editor";
+        const config = accessRoleConfig[role] || accessRoleConfig.editor;
+        const isEditorRole = role === "editor";
+        if (accessNameLabel) {
+          accessNameLabel.textContent = config.label;
+        }
+        if (accessNameInput) {
+          accessNameInput.placeholder = "FL";
+        }
+        if (accessSignInButton) {
+          accessSignInButton.textContent = config.button;
+          accessSignInButton.formAction = config.action;
+          accessSignInButton.dataset.busyModalTitle = "Signing in";
+          accessSignInButton.dataset.busyModalCopy = isEditorRole
+            ? "Taking the Editor lock on Google Drive."
+            : (config.busy || "Saving access name for this app.");
+        }
+        if (editorSecretField) {
+          editorSecretField.hidden = !isEditorRole || editorIsSignedIn;
+        }
+        if (accessNameField) {
+          accessNameField.classList.toggle("is-non-editor-initials", !isEditorRole);
+        }
+        if (editorSecretInput) {
+          editorSecretInput.value = "";
+        }
+      };
+
+      syncAccessRoleUi();
+      accessRoleSelect?.addEventListener("change", syncAccessRoleUi);
+      if (editorSecretInput) {
+        editorSecretInput.value = "";
+        window.setTimeout(() => {
+          editorSecretInput.value = "";
+        }, 0);
+      }
+
+      const removeStaleSigninWarnings = () => {
+        if (Boolean(currentState.signin_sync_in_progress) || String(currentState.signin_sync_error || "").trim()) {
+          return;
+        }
+        document.querySelectorAll(".google-sync-banner").forEach((element) => {
+          const text = String(element.textContent || "").trim();
+          if (text.includes("Shared sign-in sync stopped before it finished. Retry Drive sync.")) {
+            element.remove();
+          }
+        });
+      };
+
+      const canShowSigninRetry = () => (
+        initialState
+        && initialState.editor_mode === "edit"
+        && Boolean(initialState.editor_session_id)
+        && !Boolean(currentState.upload_in_progress)
+        && String(currentState.bootstrap_status || initialState.bootstrap_status || "") !== "running"
+      );
+
+      const formatDuration = (seconds) => {
+        const safeSeconds = Math.max(0, Number(seconds || 0));
+        const hours = Math.floor(safeSeconds / 3600);
+        const minutes = Math.floor((safeSeconds % 3600) / 60);
+        const remainder = Math.floor(safeSeconds % 60);
+        if (hours > 0) {
+          return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+        }
+        return `${minutes}:${String(remainder).padStart(2, "0")}`;
+      };
+
+      const updateBlockedCountdown = () => {
+        if (!blockedCountdown) return;
+        if (!initialState.editor_lock_expires_at) {
+          const fallbackSeconds = Number(blockedCountdown.dataset.remainingSeconds || 0);
+          if (fallbackSeconds > 0) {
+            blockedCountdown.textContent = formatDuration(fallbackSeconds);
+            blockedCountdown.dataset.remainingSeconds = String(Math.max(0, fallbackSeconds - 1));
+          } else {
+            blockedCountdown.textContent = "unknown";
+          }
+          return;
+        }
+        const expiresAt = Date.parse(initialState.editor_lock_expires_at);
+        if (!Number.isFinite(expiresAt)) {
+          blockedCountdown.textContent = "unknown";
+          return;
+        }
+        const remainingSeconds = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+        blockedCountdown.textContent = formatDuration(remainingSeconds);
+      };
+
+      const updateEditorSessionTime = (remainingSeconds) => {
+        if (!editorSessionTime) return;
+        const safeSeconds = Math.max(0, Number(remainingSeconds || 0));
+        editorSessionTime.dataset.remainingSeconds = String(safeSeconds);
+        editorSessionTime.textContent = safeSeconds > 0 ? `${formatDuration(safeSeconds)} left` : "ending";
+      };
+
+      const pollEditorSessionTime = async () => {
+        if (!editorSessionTime) return;
+        try {
+          const response = await fetch(`/google/editor/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok || !payload.active) {
+            editorSessionTime.hidden = true;
+            window.refreshShareContactsNav?.();
+            return;
+          }
+          editorSessionTime.hidden = false;
+          updateEditorSessionTime(payload.remaining_seconds || 0);
+          window.refreshShareContactsNav?.();
+        } catch (_error) {
+          return;
+        }
+      };
+
+      const hasBootstrapWork = (status) => {
+        const bootstrapStatus = String(status.bootstrap_status || "").trim();
+        const bootstrapRemaining = Number(status.bootstrap_remaining_contacts ?? status.bootstrap_remaining ?? 0);
+        return bootstrapStatus === "running" || bootstrapStatus === "failed" || bootstrapRemaining > 0;
+      };
+
+      const hasActiveBootstrapWork = (status) => {
+        const bootstrapStatus = String(status.bootstrap_status || "").trim();
+        return bootstrapStatus === "running";
+      };
+
+      const hideBootstrapStatusBanner = () => {
+        if (!bootstrapStatusBanner) return;
+        bootstrapStatusBanner.hidden = true;
+      };
+
+      const hasPendingWork = (status) => (
+        Number(status.pending_upload_count ?? status.pending_count ?? 0) > 0
+        || Boolean(status.shared_drive_needs_export ?? status.needs_drive_export)
+        || Boolean(status.settings_needs_drive_export)
+        || Boolean(status.contact_records_needs_drive_export)
+        || Boolean(status.contacts_manifest_needs_drive_export)
+        || Boolean(status.book_layouts_needs_drive_export)
+        || Boolean(status.meetingdata_needs_drive_export)
+        || Boolean(status.field_list_needs_drive_export)
+        || Boolean(status.changes_list_needs_drive_export)
+        || hasBootstrapWork(status)
+      );
+
+      const hasBlockingSyncProcess = (status) => (
+        Boolean(status.upload_in_progress)
+        || Boolean(status.signin_sync_in_progress)
+      );
+
+      const updateCurrentStateFromStatus = (status) => {
+        currentState = {
+          ...currentState,
+          upload_in_progress: Boolean(status.in_progress),
+          upload_phase: status.phase || "",
+          upload_total_count: Number(status.total_count || 0),
+          upload_processed_count: Number(status.processed_count || 0),
+          upload_remaining_count: Number(status.remaining_count || 0),
+          upload_current_contact: status.current_contact || "",
+          pending_upload_count: Number(status.pending_count ?? currentState.pending_upload_count ?? 0),
+          needs_drive_export: Boolean(status.needs_drive_export),
+          shared_drive_needs_export: Boolean(status.shared_drive_needs_export ?? status.needs_drive_export),
+          settings_needs_drive_export: Boolean(status.settings_needs_drive_export),
+          contact_records_needs_drive_export: Boolean(status.contact_records_needs_drive_export),
+          contacts_manifest_needs_drive_export: Boolean(status.contacts_manifest_needs_drive_export),
+          book_layouts_needs_drive_export: Boolean(status.book_layouts_needs_drive_export),
+          meetingdata_needs_drive_export: Boolean(status.meetingdata_needs_drive_export),
+          field_list_needs_drive_export: Boolean(status.field_list_needs_drive_export),
+          changes_list_needs_drive_export: Boolean(status.changes_list_needs_drive_export),
+          last_sync_error: status.last_error || "",
+          bootstrap_status: status.bootstrap_status || currentState.bootstrap_status || "idle",
+          bootstrap_total_contacts: Number(status.bootstrap_total ?? currentState.bootstrap_total_contacts ?? 0),
+          bootstrap_processed_contacts: Number(status.bootstrap_processed ?? currentState.bootstrap_processed_contacts ?? 0),
+          bootstrap_remaining_contacts: Number(status.bootstrap_remaining ?? currentState.bootstrap_remaining_contacts ?? 0),
+          bootstrap_error: status.bootstrap_error || currentState.bootstrap_error || "",
+          signin_sync_in_progress: Boolean(status.signin_sync_in_progress ?? currentState.signin_sync_in_progress),
+          signin_sync_phase: status.signin_sync_phase ?? currentState.signin_sync_phase ?? "",
+          signin_sync_error: status.signin_sync_error ?? currentState.signin_sync_error ?? "",
+          signin_sync_total_count: Number(status.signin_sync_total_count ?? status.total_count ?? currentState.signin_sync_total_count ?? 0),
+          signin_sync_processed_count: Number(status.signin_sync_processed_count ?? status.processed_count ?? currentState.signin_sync_processed_count ?? 0),
+          signin_sync_current_item: status.signin_sync_current_item ?? status.current_item ?? currentState.signin_sync_current_item ?? "",
+          signin_sync_local_contact_count: Number(
+            status.signin_sync_local_contact_count
+            ?? status.local_contact_count
+            ?? currentState.signin_sync_local_contact_count
+            ?? 0
+          ),
+          signin_sync_drive_manifest_count: Number(
+            status.signin_sync_drive_manifest_count
+            ?? status.drive_manifest_count
+            ?? currentState.signin_sync_drive_manifest_count
+            ?? 0
+          ),
+        };
+      };
+
+      const refreshUploadButtonStatus = async () => {
+        try {
+          const response = await fetch(`/google/upload/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) return null;
+          updateCurrentStateFromStatus(payload);
+          const pending = hasPendingWork(currentState);
+          if (googleConnectUploadButton) {
+            setGoogleConnectUploadButtonState(Boolean(payload.in_progress), pending);
+          }
+          return payload;
+        } catch (_error) {
+          return null;
+        }
+      };
+
+      const renderSigninSync = (status) => {
+        const phase = String(status.phase ?? status.signin_sync_phase ?? "").trim();
+        const error = String(status.error ?? status.signin_sync_error ?? "").trim();
+        const inProgress = Boolean(status.in_progress ?? status.signin_sync_in_progress);
+        if (error) {
+          window.closeBusyModal?.();
+          if (!signinSyncPanel) return;
+          signinSyncPanel.className = "panel google-sync-banner google-sync-banner-warn";
+          if (signinSyncMessage) {
+            signinSyncMessage.textContent = error;
+          } else {
+            signinSyncPanel.textContent = error;
+          }
+          if (signinSyncRetryForm) {
+            signinSyncRetryForm.hidden = !canShowSigninRetry();
+          }
+          signinSyncPanel.hidden = false;
+          signinSyncPanel.style.display = "";
+          return;
+        }
+        if (!inProgress) {
+          window.closeBusyModal?.();
+          if (!signinSyncPanel) return;
+          signinSyncPanel.hidden = true;
+          signinSyncPanel.style.display = "none";
+          if (signinSyncRetryForm) {
+            signinSyncRetryForm.hidden = true;
+          }
+          return;
+        }
+        let message = "Connecting to Google Drive and syncing the latest app data.";
+        if (phase === "shared_settings") {
+          message = "Signing in: loading shared app settings from Drive...";
+        } else if (phase === "book_layouts") {
+          message = "Signing in: loading Address Book templates from Drive...";
+        } else if (phase === "contacts") {
+          const total = Number(status.total_count ?? status.signin_sync_total_count ?? currentState.signin_sync_total_count ?? 0);
+          const processed = Number(status.processed_count ?? status.signin_sync_processed_count ?? currentState.signin_sync_processed_count ?? 0);
+          const currentItem = String(status.current_item ?? status.signin_sync_current_item ?? currentState.signin_sync_current_item ?? "").trim();
+          const localTotal = Number(
+            status.local_contact_count
+            ?? currentState.signin_sync_local_contact_count
+            ?? 0
+          );
+          const driveTotal = Number(
+            status.drive_manifest_count
+            ?? currentState.signin_sync_drive_manifest_count
+            ?? 0
+          );
+          if (total > 0) {
+            message = `Signing in: reconciling ${Math.min(processed, total)} of ${total} shared Drive contacts with revision mismatches.`;
+            if (localTotal > total) {
+              message += ` Your app has ${localTotal} contacts; only shared Drive contacts are checked here.`;
+            } else if (driveTotal > 0 && driveTotal < localTotal) {
+              message += ` ${driveTotal} contacts are stored on Drive.`;
+            }
+            if (currentItem && currentItem !== "Preparing shared Drive contacts") {
+              message += ` Current: ${currentItem}`;
+            }
+          } else {
+            message = "Signing in: checking shared Drive contacts...";
+          }
+        } else if (phase === "meetingdata") {
+          message = "Signing in: loading MeetingData from Drive...";
+        } else if (phase === "field_list") {
+          message = "Signing in: loading Field List from Drive...";
+        } else if (phase === "changes_list") {
+          message = "Signing in: loading Changes List from Drive...";
+        } else if (phase === "connecting") {
+          const currentItem = String(status.current_item ?? status.signin_sync_current_item ?? currentState.signin_sync_current_item ?? "").trim();
+          message = currentItem || "Signing in: connecting to Google Drive...";
+        } else if (phase === "starting") {
+          message = "Signing in: preparing Drive sync...";
+        }
+        if (window.showBusyModal) {
+          window.showBusyModal("Signing in", message);
+        }
+        if (!signinSyncPanel) return;
+        signinSyncPanel.className = "panel google-sync-banner google-sync-banner-progress google-sync-banner-processing";
+        if (signinSyncMessage) {
+          signinSyncMessage.textContent = message;
+        } else {
+          signinSyncPanel.textContent = message;
+        }
+        if (signinSyncRetryForm) {
+          signinSyncRetryForm.hidden = true;
+        }
+        signinSyncPanel.hidden = false;
+        signinSyncPanel.style.display = "";
+      };
+
+      const closeUploadActiveModal = () => {
+        if (uploadActiveModal?.open) {
+          uploadActiveModal.close();
+        }
+      };
+
+      const showBlockingProcessModal = () => {
+        if (!uploadActiveModal || uploadActiveModal.open) return;
+        if (Boolean(currentState.signin_sync_in_progress) && !Boolean(currentState.upload_in_progress)) {
+          if (uploadActiveTitle) {
+            uploadActiveTitle.textContent = "Drive Sync In Progress";
+          }
+          if (uploadActiveCopy) {
+            uploadActiveCopy.textContent = "Editor sign-out is disabled until the current Drive sync finishes.";
+          }
+        } else {
+          if (uploadActiveTitle) {
+            uploadActiveTitle.textContent = "Upload In Progress";
+          }
+          if (uploadActiveCopy) {
+            uploadActiveCopy.textContent = "Editor sign-out is disabled until the current upload finishes.";
+          }
+        }
+        uploadActiveModal.showModal();
+      };
+
+      const buildNoticeUrl = (notice) => {
+        const url = new URL(window.location.href);
+        if (notice) {
+          url.searchParams.set("notice", notice);
+        } else {
+          url.searchParams.delete("notice");
+        }
+        return url.toString();
+      };
+
+      const renderProgress = (status) => {
+        if (!progressPanel) return;
+        hideBootstrapStatusBanner();
+        updateCurrentStateFromStatus(status);
+        const total = Number(status.total_count || 0);
+        const processed = Number(status.processed_count || 0);
+        const remaining = Number(status.remaining_count || Math.max(total - processed, 0));
+        const phase = String(status.phase || "").trim();
+        const bootstrapStatus = String(status.bootstrap_status || "").trim();
+        const bootstrapProcessed = Number(status.bootstrap_processed || processed || 0);
+        const bootstrapRemaining = Number(status.bootstrap_remaining || remaining || 0);
+        const bootstrapActive = bootstrapStatus === "running" || bootstrapStatus === "failed" || (phase === "drive_bootstrap" && bootstrapRemaining > 0);
+        const pendingContacts = Number(status.pending_count || 0);
+        const currentContact = String(status.current_contact || "").trim();
+        const drivePending = Boolean(status.shared_drive_needs_export ?? status.needs_drive_export) || currentContact === "Shared app data" || currentContact.startsWith("Drive:");
+        const contactTotal = Math.max(total - (drivePending ? 1 : 0), 0);
+        const contactProcessed = Math.min(processed, contactTotal);
+        const contactRemaining = Math.max(contactTotal - contactProcessed, 0);
+        let message = "";
+        if (bootstrapActive) {
+          message = `Drive bootstrap in progress. ${bootstrapProcessed} processed, ${bootstrapRemaining} remaining.`;
+        } else if (contactTotal > 0) {
+          message = `Uploading ${contactTotal} queued contact change${contactTotal === 1 ? "" : "s"} to Google. ${contactProcessed} processed, ${contactRemaining} remaining.`;
+        } else if (drivePending) {
+          message = currentContact.startsWith("Drive:") ? currentContact : "Processing shared app data for Drive upload...";
+        } else {
+          message = `Uploading ${pendingContacts} contact${pendingContacts === 1 ? "" : "s"} to Google.`;
+        }
+        progressPanel.textContent = message;
+        progressPanel.classList.toggle("google-sync-banner-processing", drivePending);
+        progressPanel.hidden = false;
+      };
+
+      const showUploadStarting = () => {
+        if (!progressPanel) return;
+        progressPanel.textContent = "Starting upload to Google and Drive...";
+        progressPanel.classList.add("google-sync-banner-processing");
+        progressPanel.hidden = false;
+      };
+
+      const setGoogleConnectUploadButtonState = (isUploading, hasPendingUploadWork = true) => {
+        if (!googleConnectUploadButton) return;
+        googleConnectUploadButton.disabled = isUploading || hasActiveBootstrapWork(currentState);
+        googleConnectUploadButton.textContent = isUploading ? "Uploading..." : "Upload";
+        googleConnectUploadButton.hidden = !isUploading && !hasPendingUploadWork;
+        if (isUploading || !hasPendingUploadWork) {
+          googleConnectUploadButton.classList.remove("contacts-upload-reminder");
+        }
+      };
+
+      const stopPolling = () => {
+        if (!pollTimer) return;
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      };
+
+      const stopSigninSyncPolling = () => {
+        if (!signinSyncTimer) return;
+        window.clearTimeout(signinSyncTimer);
+        signinSyncTimer = null;
+      };
+
+      const refreshPageWithNotice = (notice) => {
+        window.location.href = buildNoticeUrl(notice);
+      };
+
+      const pollSigninSyncStatus = async () => {
+        try {
+          const response = await fetch(`/google/signin-sync/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            signinSyncPollFailures += 1;
+            const retryDelay = signinSyncPollFailures < 4 ? 750 : 2500;
+            signinSyncTimer = window.setTimeout(pollSigninSyncStatus, retryDelay);
+            return;
+          }
+          signinSyncPollFailures = 0;
+          updateCurrentStateFromStatus({
+            signin_sync_in_progress: payload.in_progress,
+            signin_sync_phase: payload.phase ?? "",
+            signin_sync_error: payload.error ?? "",
+            signin_sync_total_count: payload.total_count ?? 0,
+            signin_sync_processed_count: payload.processed_count ?? 0,
+            signin_sync_current_item: payload.current_item ?? "",
+            signin_sync_local_contact_count: payload.local_contact_count ?? 0,
+            signin_sync_drive_manifest_count: payload.drive_manifest_count ?? 0,
+          });
+          renderSigninSync(payload);
+          removeStaleSigninWarnings();
+          if (payload.in_progress) {
+            signinSyncTimer = window.setTimeout(pollSigninSyncStatus, 500);
+            return;
+          }
+          stopSigninSyncPolling();
+          window.refreshShareContactsNav?.();
+        } catch (_error) {
+          signinSyncPollFailures += 1;
+          const retryDelay = signinSyncPollFailures < 4 ? 750 : 2500;
+          signinSyncTimer = window.setTimeout(pollSigninSyncStatus, retryDelay);
+        }
+      };
+
+      window.addEventListener("pageshow", (event) => {
+        if (!event.persisted) return;
+        stopSigninSyncPolling();
+        pollSigninSyncStatus();
+        refreshUploadButtonStatus();
+      });
+
+      const pollStatus = async () => {
+        try {
+          const response = await fetch(`/google/upload/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            stopPolling();
+            return;
+          }
+          if (payload.in_progress) {
+            renderProgress(payload);
+            pollTimer = window.setTimeout(pollStatus, 1000);
+            return;
+          }
+          stopPolling();
+          updateCurrentStateFromStatus(payload);
+          if (progressPanel) {
+            progressPanel.hidden = true;
+            progressPanel.classList.remove("google-sync-banner-processing");
+          }
+          setGoogleConnectUploadButtonState(false, hasPendingWork(currentState));
+          if (payload.notice === "upload_pending" || payload.notice === "upload_queue_empty") {
+            refreshUploadButtonStatus();
+            return;
+          }
+          if (payload.notice === "upload_failed" && uploadFailedPollChecks < 2) {
+            uploadFailedPollChecks += 1;
+            pollTimer = window.setTimeout(pollStatus, 1000);
+            return;
+          }
+          closeUploadActiveModal();
+          refreshPageWithNotice(payload.notice || "upload_success");
+        } catch (_error) {
+          stopPolling();
+        }
+      };
+
+      const startUpload = async (triggerButton = null) => {
+        if (triggerButton) {
+          showUploadStarting();
+          setGoogleConnectUploadButtonState(true);
+        }
+        let uploadStarted = false;
+        try {
+          const response = await fetch("/google/upload/start", {
+            method: "POST",
+            cache: "no-store",
+            headers: {
+              "Accept": "application/json",
+            },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            refreshPageWithNotice(payload.notice || "upload_failed");
+            return;
+          }
+          updateCurrentStateFromStatus(payload);
+          if (payload.in_progress || payload.started) {
+            uploadStarted = true;
+            uploadFailedPollChecks = 0;
+            renderProgress(payload);
+            setGoogleConnectUploadButtonState(true);
+            stopPolling();
+            pollTimer = window.setTimeout(pollStatus, 1000);
+            return;
+          }
+          refreshPageWithNotice(payload.notice || "upload_queue_empty");
+        } catch (_error) {
+          refreshPageWithNotice("upload_failed");
+        } finally {
+          if (triggerButton && !uploadStarted) {
+            setGoogleConnectUploadButtonState(false, hasPendingWork(currentState));
+          }
+        }
+      };
+
+      if (initialState && (initialState.upload_in_progress || hasActiveBootstrapWork(initialState))) {
+        renderProgress({
+          phase: initialState.upload_phase || "",
+          total_count: initialState.upload_total_count || 0,
+          processed_count: initialState.upload_processed_count || 0,
+          remaining_count: initialState.upload_remaining_count || 0,
+          current_contact: initialState.upload_current_contact || "",
+          pending_count: initialState.pending_upload_count || 0,
+          needs_drive_export: initialState.needs_drive_export || false,
+          shared_drive_needs_export: initialState.shared_drive_needs_export || false,
+          settings_needs_drive_export: initialState.settings_needs_drive_export || false,
+          contact_records_needs_drive_export: initialState.contact_records_needs_drive_export || false,
+          contacts_manifest_needs_drive_export: initialState.contacts_manifest_needs_drive_export || false,
+          book_layouts_needs_drive_export: initialState.book_layouts_needs_drive_export || false,
+          bootstrap_status: initialState.bootstrap_status || "idle",
+          bootstrap_processed: initialState.bootstrap_processed_contacts || 0,
+          bootstrap_remaining: initialState.bootstrap_remaining_contacts || 0,
+          meetingdata_needs_drive_export: initialState.meetingdata_needs_drive_export || false,
+          field_list_needs_drive_export: initialState.field_list_needs_drive_export || false,
+          changes_list_needs_drive_export: initialState.changes_list_needs_drive_export || false,
+        });
+        pollTimer = window.setTimeout(pollStatus, 1000);
+      }
+      if (googleConnectUploadButton) {
+        const pending = hasPendingWork(initialState || {});
+        googleConnectUploadButton.hidden = !pending && !Boolean(initialState.upload_in_progress);
+      }
+      refreshUploadButtonStatus().then((payload) => {
+        if (!payload) return;
+        const initialPending = hasPendingWork(initialState || {});
+        const currentPending = hasPendingWork(currentState || {});
+        if (noticeCode === "upload_failed" && !payload.in_progress && !currentPending && !String(payload.last_error || "").trim()) {
+          refreshPageWithNotice(payload.notice || "upload_success");
+          return;
+        }
+        if (initialPending && !payload.in_progress && !currentPending) {
+          refreshPageWithNotice(payload.notice || "upload_queue_empty");
+        }
+      });
+      renderSigninSync({
+        in_progress: initialState.signin_sync_in_progress || false,
+        phase: initialState.signin_sync_phase || "",
+        error: initialState.signin_sync_error || "",
+        total_count: initialState.signin_sync_total_count || 0,
+        processed_count: initialState.signin_sync_processed_count || 0,
+        current_item: initialState.signin_sync_current_item || "",
+      });
+      removeStaleSigninWarnings();
+      if (
+        initialState.signin_sync_in_progress
+        || noticeCode === "editor_signed_in"
+        || noticeCode === "editor_signed_in_update_available"
+        || noticeCode === "signin_sync_retry_started"
+      ) {
+        if (window.showBusyModal && !String(initialState.signin_sync_error || "").trim()) {
+          window.showBusyModal("Signing in", "Connecting to Google Drive and syncing the latest app data.");
+        }
+        signinSyncTimer = window.setTimeout(pollSigninSyncStatus, 250);
+      }
+      if (editorSessionTime) {
+        updateEditorSessionTime(Number(editorSessionTime.dataset.remainingSeconds || 0));
+        window.setInterval(() => {
+          if (editorSessionTime.hidden) return;
+          const remainingSeconds = Math.max(0, Number(editorSessionTime.dataset.remainingSeconds || 0) - 1);
+          updateEditorSessionTime(remainingSeconds);
+        }, 1000);
+        window.setInterval(pollEditorSessionTime, 30000);
+        pollEditorSessionTime();
+      }
+      if (temporaryNotice?.dataset.autoHideMs) {
+        window.setTimeout(() => {
+          temporaryNotice.style.display = "none";
+        }, Number(temporaryNotice.dataset.autoHideMs || 3600));
+      }
+      if (noticeCode === "editor_signed_in" || noticeCode === "editor_signed_in_update_available") {
+        window.refreshShareContactsNav?.();
+      }
+      if (noticeCode === "editor_lock_stale" && staleModal && !staleModal.open) {
+        staleModal.showModal();
+      }
+      if (noticeCode === "editor_lock_blocked" && blockedModal && !blockedModal.open) {
+        updateBlockedCountdown();
+        window.setInterval(updateBlockedCountdown, 1000);
+        blockedModal.showModal();
+      }
+      if (noticeCode === "changes_list_connect_google_before_signout" && googleConnectRequiredModal && !googleConnectRequiredModal.open) {
+        googleConnectRequiredModal.showModal();
+      }
+      if (noticeCode === "google_disconnected" && typeof window.closeContactsFreeShare === "function") {
+        window.setTimeout(() => {
+          window.closeContactsFreeShare();
+        }, 50);
+      }
+      document.querySelector("[data-editor-modal-cancel]")?.addEventListener("click", () => {
+        staleModal?.close();
+      });
+      googleConnectUploadButton?.addEventListener("click", () => {
+        startUpload(googleConnectUploadButton);
+      });
+      const googleConnectForm = document.querySelector(".google-connect-form");
+      const submitGoogleConnectForm = (form, submitter) => {
+        if (!(form instanceof HTMLFormElement)) return;
+        const action = String(submitter?.getAttribute("formaction") || form.getAttribute("action") || "").trim();
+        if (action) {
+          form.setAttribute("action", action);
+        }
+        const method = String(submitter?.getAttribute("formmethod") || form.getAttribute("method") || "post").trim();
+        if (method) {
+          form.setAttribute("method", method);
+        }
+        HTMLFormElement.prototype.submit.call(form);
+      };
+      googleConnectForm?.addEventListener("submit", (event) => {
+        const submitter = event.submitter;
+        if (!(submitter instanceof HTMLElement)) return;
+        if (submitter.id === "google-access-sign-in-button") {
+          event.preventDefault();
+          if (window.showBusyModal) {
+            window.showBusyModal(
+              submitter.dataset.busyModalTitle || "Signing in",
+              submitter.dataset.busyModalCopy || "Connecting to Google Drive and syncing the latest app data.",
+            );
+          }
+          submitGoogleConnectForm(event.currentTarget, submitter);
+          return;
+        }
+        if (submitter.id === "google-access-sign-out-button") {
+          event.preventDefault();
+          if (window.showBusyModal) {
+            if (Boolean(currentState.changes_list_needs_drive_export)) {
+              window.showBusyModal("Saving Changes List", "Saving Changes List edits to Google Drive before signing out.");
+            } else if (
+              Boolean(currentState.field_list_needs_drive_export)
+              || Boolean(currentState.book_layouts_needs_drive_export)
+            ) {
+              window.showBusyModal("Signing out", "Saving Field List and Address Book changes.");
+            } else {
+              window.showBusyModal("Signing out", "Ending this access session.");
+            }
+          }
+          submitGoogleConnectForm(event.currentTarget, submitter);
+        }
+      });
+      signOutForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (window.showBusyModal) {
+          window.showBusyModal("Signing Out Editor", "Uploading pending edits and releasing the Editor lock.");
+        }
+        HTMLFormElement.prototype.submit.call(signOutForm);
+      });
+      signOutButton?.addEventListener("click", () => {
+        signOutForm?.requestSubmit();
+      });
+      accessSignOutButton?.addEventListener("click", () => {
+        if (!accountConnected) {
+          return;
+        }
+        if (Boolean(initialState.changes_list_needs_drive_export)) {
+          accessSignOutButton.textContent = "Saving to Drive...";
+          if (window.showBusyModal) {
+            window.showBusyModal("Saving Changes List", "Saving Changes List edits to Google Drive before signing out.");
+          }
+        } else if (
+          Boolean(initialState.field_list_needs_drive_export)
+          || Boolean(initialState.book_layouts_needs_drive_export)
+        ) {
+          accessSignOutButton.textContent = "Saving to Drive...";
+        } else {
+          accessSignOutButton.textContent = "Signing out...";
+        }
+        window.setTimeout(() => {
+          accessSignOutButton.textContent = "Sign out";
+        }, 12000);
+      });
+    });
+  </script>
+{% endblock %}

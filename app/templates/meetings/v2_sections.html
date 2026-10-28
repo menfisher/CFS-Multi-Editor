@@ -1,0 +1,572 @@
+{% extends "base.html" %}
+
+{% block title %}MeetingData | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set filters = filters|default({"fields": [], "meetings": []}) %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3", "primary": "#f8f3e3", "secondary": "#edf5f7", "highlight": "#ffe3a1"}) %}
+  {% set query = query|default("") %}
+  {% set field_filter = field_filter|default("") %}
+  {% set meeting_filter = meeting_filter|default("") %}
+  <div class="meetingdata-page">
+    <section class="panel page-top-panel meetingdata-filter-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+      <h2>MeetingData</h2>
+      <form method="get" class="search-bar search-bar-meetingdata" id="meetingdata-filter-form">
+        <input type="search" name="q" value="{{ query }}" placeholder="Search by field or meeting name or meeting home name">
+        <select name="field" id="meetingdata-field-filter">
+          <option value="">All fields</option>
+          {% for item in filters.fields %}
+            <option value="{{ item }}" {% if field_filter == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+          <option value="__add_field__">+ Add Field</option>
+          <option value="__delete_field__">- Field</option>
+          <option value="__rename_field__">Rename Field</option>
+        </select>
+        <select name="meeting" id="meetingdata-meeting-filter">
+          <option value="">All meetings</option>
+          {% for item in filters.meetings %}
+            <option value="{{ item }}" {% if meeting_filter == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+          <option value="__add_meeting__">+ Add Meeting</option>
+          <option value="__delete_meeting__">- Meeting</option>
+          <option value="__rename_meeting__">Rename Meeting</option>
+        </select>
+      </form>
+    </section>
+
+    {% if notice_message %}
+      <section class="panel google-sync-banner google-sync-banner-info" id="meetingdata-temporary-notice" data-auto-hide-ms="3600">
+        {{ notice_message }}
+      </section>
+    {% elif google_sync is defined and google_sync.state.bootstrap_status == "running" %}
+      <section class="panel google-sync-banner google-sync-banner-warn">
+        Drive bootstrap in progress. Editing is temporarily unavailable. {{ google_sync.state.bootstrap_processed_contacts }} processed, {{ google_sync.state.bootstrap_remaining_contacts }} remaining.
+      </section>
+    {% elif google_sync is defined and google_sync.state.bootstrap_status == "failed" %}
+      <section class="panel google-sync-banner google-sync-banner-warn">
+        Drive bootstrap did not finish. Resume Upload before editing. {{ google_sync.state.bootstrap_processed_contacts }} processed, {{ google_sync.state.bootstrap_remaining_contacts }} remaining.
+      </section>
+    {% elif google_sync is defined and google_sync.state.multi_editor_enabled and google_sync.state.editor_mode != "edit" %}
+      <section class="panel google-sync-banner google-sync-banner-warn">
+        This app is in NO-EDIT mode. Sign in as an Editor on the <a href="/presets/google-connect">GoogleConnect</a> page to make changes.
+      </section>
+    {% endif %}
+
+    <section class="panel">
+      <table class="data-table meetingdata-table">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Meeting</th>
+            <th>Rows</th>
+            <th>Cells</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(current_field='', band=0) %}
+          {% for section in sections %}
+            {% if ns.current_field != section.field_name %}
+              {% set ns.current_field = section.field_name %}
+              {% set ns.band = ns.band + 1 %}
+            {% endif %}
+            {% set band_color = row_colors.primary if ns.band % 2 == 1 else row_colors.secondary %}
+            <tr class="click-row click-row-banded" style="--row-band-color: {{ band_color }}; --row-hover-color: {{ row_colors.highlight }};" onclick="window.location='/meetings/v2/sections/{{ section.id }}/editor'">
+              <td><a class="row-link" href="/meetings/v2/sections/{{ section.id }}/editor">{{ section.field_name }}</a></td>
+              <td>{{ section.meeting_name }}</td>
+              <td>{{ section.row_count }}</td>
+              <td>{{ section.cell_count }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="4">No meeting sections found.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <dialog class="app-modal" id="meetingdata-option-modal">
+    <form method="dialog" class="app-modal-panel" id="meetingdata-option-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="meetingdata-option-modal-title">MeetingData Option</h3>
+        <p class="app-modal-copy" id="meetingdata-option-modal-copy">Enter a value.</p>
+      </div>
+      <label class="app-modal-field">
+        <span id="meetingdata-option-modal-label">Name</span>
+        <input type="text" id="meetingdata-option-modal-input" autocomplete="off">
+      </label>
+      <div class="app-modal-error" id="meetingdata-option-modal-error" aria-live="polite"></div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="meetingdata-option-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-edit" id="meetingdata-option-modal-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% set script_filters = filters|default({"fields": [], "meetings": [], "meetings_by_field": {}}) %}
+  {% set script_meeting_filter = meeting_filter|default("") %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("meetingdata-filter-form");
+      const searchInput = form?.querySelector('input[name="q"]');
+      const fieldSelect = document.getElementById("meetingdata-field-filter");
+      const meetingSelect = document.getElementById("meetingdata-meeting-filter");
+      const meetingdataPage = document.querySelector(".meetingdata-page");
+      const meetingdataPanel = document.querySelector(".meetingdata-page .meetingdata-filter-panel");
+      const optionModal = document.getElementById("meetingdata-option-modal");
+      const optionModalForm = document.getElementById("meetingdata-option-modal-form");
+      const optionModalTitle = document.getElementById("meetingdata-option-modal-title");
+      const optionModalCopy = document.getElementById("meetingdata-option-modal-copy");
+      const optionModalLabel = document.getElementById("meetingdata-option-modal-label");
+      const optionModalInput = document.getElementById("meetingdata-option-modal-input");
+      const optionModalError = document.getElementById("meetingdata-option-modal-error");
+      const optionModalCancel = document.getElementById("meetingdata-option-modal-cancel");
+      const optionModalSave = document.getElementById("meetingdata-option-modal-save");
+      const temporaryNotice = document.getElementById("meetingdata-temporary-notice");
+      const meetingdataModal = window.AppModal?.create({
+        dialog: optionModal,
+        form: optionModalForm,
+        titleEl: optionModalTitle,
+        copyEl: optionModalCopy,
+        labelEl: optionModalLabel,
+        inputEl: optionModalInput,
+        errorEl: optionModalError,
+        cancelEl: optionModalCancel,
+        saveEl: optionModalSave,
+      });
+      if (!form || !searchInput || !fieldSelect || !meetingSelect) return;
+
+      const syncMeetingdataPanelOffset = () => {
+        if (!meetingdataPage || !meetingdataPanel) return;
+        meetingdataPage.style.setProperty("--meetingdata-filter-panel-space", `${meetingdataPanel.offsetHeight}px`);
+      };
+
+      syncMeetingdataPanelOffset();
+      window.addEventListener("resize", syncMeetingdataPanelOffset);
+
+      if (temporaryNotice) {
+        const hideDelay = Number.parseInt(temporaryNotice.dataset.autoHideMs || "0", 10);
+        if (hideDelay > 0) {
+          window.setTimeout(() => {
+            if (temporaryNotice.isConnected) {
+              temporaryNotice.remove();
+            }
+          }, hideDelay);
+        }
+      }
+
+      const meetingsByField = {{ script_filters.meetings_by_field|default({})|tojson }};
+      const allMeetings = {{ script_filters.meetings|default([])|tojson }};
+      const selectedMeeting = {{ script_meeting_filter|tojson }};
+      const addFieldSentinel = "__add_field__";
+      const deleteFieldSentinel = "__delete_field__";
+      const renameFieldSentinel = "__rename_field__";
+      const addMeetingSentinel = "__add_meeting__";
+      const deleteMeetingSentinel = "__delete_meeting__";
+      const renameMeetingSentinel = "__rename_meeting__";
+
+      const insertSortedOption = (select, value, defaultLabel, sentinelOptions, selectedValue) => {
+        if (!select || !value) return;
+        const options = Array.from(select.options)
+          .map((option) => ({ value: option.value, label: option.textContent || "" }))
+          .filter((option) => !sentinelOptions.some((sentinel) => sentinel.value === option.value));
+
+        if (!options.some((option) => option.value === value)) {
+          options.push({ value, label: value });
+        }
+
+        const defaultOption = options.find((option) => option.value === "");
+        const namedOptions = options
+          .filter((option) => option.value !== "")
+          .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+
+        select.innerHTML = "";
+        const baseOption = document.createElement("option");
+        baseOption.value = "";
+        baseOption.textContent = defaultOption?.label || defaultLabel;
+        if (!selectedValue) {
+          baseOption.selected = true;
+        }
+        select.appendChild(baseOption);
+
+        namedOptions.forEach((option) => {
+          const node = document.createElement("option");
+          node.value = option.value;
+          node.textContent = option.label;
+          if (option.value === selectedValue) {
+            node.selected = true;
+          }
+          select.appendChild(node);
+        });
+
+        sentinelOptions.forEach((sentinel) => {
+          const sentinelOption = document.createElement("option");
+          sentinelOption.value = sentinel.value;
+          sentinelOption.textContent = sentinel.label;
+          select.appendChild(sentinelOption);
+        });
+      };
+
+      const meetingsForField = (fieldName) => {
+        if (!fieldName) {
+          return allMeetings.slice();
+        }
+        return Array.isArray(meetingsByField[fieldName]) ? meetingsByField[fieldName].slice() : [];
+      };
+
+      const renderMeetingOptions = (fieldName, preferredMeeting = null) => {
+        const meetings = meetingsForField(fieldName);
+        const preservedMeeting = preferredMeeting ?? (meetingSelect.value || selectedMeeting);
+        meetingSelect.innerHTML = "";
+
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = "All meetings";
+        meetingSelect.appendChild(defaultOption);
+
+        meetings.forEach((meetingName) => {
+          const option = document.createElement("option");
+          option.value = meetingName;
+          option.textContent = meetingName;
+          if (meetingName === preservedMeeting) {
+            option.selected = true;
+          }
+          meetingSelect.appendChild(option);
+        });
+
+        if (preservedMeeting && !meetings.includes(preservedMeeting)) {
+          meetingSelect.value = "";
+        }
+
+        [
+          { value: addMeetingSentinel, label: "+ Add Meeting" },
+          { value: deleteMeetingSentinel, label: "- Meeting" },
+          { value: renameMeetingSentinel, label: "Rename Meeting" },
+        ].forEach((sentinel) => {
+          const sentinelOption = document.createElement("option");
+          sentinelOption.value = sentinel.value;
+          sentinelOption.textContent = sentinel.label;
+          meetingSelect.appendChild(sentinelOption);
+        });
+      };
+
+      const resetDropdownFilters = () => {
+        fieldSelect.value = "";
+        renderMeetingOptions("");
+        meetingSelect.value = "";
+      };
+
+      const requestOptionDialog = (config) => meetingdataModal?.prompt(config) ?? Promise.resolve("");
+      const showMessageDialog = (config) => meetingdataModal?.message(config) ?? Promise.resolve();
+
+      const callOptionApi = async (url, body) => {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams(body),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to save MeetingData option.");
+        }
+        return payload;
+      };
+
+      renderMeetingOptions(fieldSelect.value);
+      fieldSelect.dataset.previousValue = fieldSelect.value;
+      meetingSelect.dataset.previousValue = meetingSelect.value;
+
+      fieldSelect.addEventListener("change", async () => {
+        const previousValue = fieldSelect.dataset.previousValue ?? "";
+        if (fieldSelect.value === addFieldSentinel) {
+          const nextValue = await requestOptionDialog({
+            title: "Add Field",
+            copy: "Name the new MeetingData Field. It will be inserted alphabetically into the list.",
+            label: "Field name",
+          });
+          if (!nextValue) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const payload = await callOptionApi("/meetings/v2/section-name-options", { kind: "field", value: nextValue });
+            const savedValue = String(payload.value || nextValue).trim();
+            insertSortedOption(fieldSelect, savedValue, "All fields", [
+              { value: addFieldSentinel, label: "+ Add Field" },
+              { value: deleteFieldSentinel, label: "- Field" },
+              { value: renameFieldSentinel, label: "Rename Field" },
+            ], savedValue);
+            meetingsByField[savedValue] = meetingsByField[savedValue] || [];
+            renderMeetingOptions(savedValue, "");
+            fieldSelect.dataset.previousValue = savedValue;
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Add Field",
+              copy: error.message || "Unable to add the MeetingData Field.",
+            });
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (fieldSelect.value === deleteFieldSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Delete Field",
+              copy: "Select a Field before using - Field.",
+            });
+            fieldSelect.value = "";
+            return;
+          }
+          const confirmed = await requestOptionDialog({
+            title: "Delete Field",
+            copy: `Delete the MeetingData Field "${previousValue}"? This only works when no MeetingData sections are assigned to that Field.`,
+            label: "Field name",
+            requireInput: false,
+            submitLabel: "Delete",
+          });
+          if (!confirmed) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            await callOptionApi("/meetings/v2/section-name-options/remove", { kind: "field", value: previousValue });
+            Array.from(fieldSelect.options).filter((option) => option.value === previousValue).forEach((option) => option.remove());
+            delete meetingsByField[previousValue];
+            fieldSelect.value = "";
+            fieldSelect.dataset.previousValue = "";
+            renderMeetingOptions("", "");
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Delete Field",
+              copy: error.message || "Unable to delete the MeetingData Field.",
+            });
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (fieldSelect.value === renameFieldSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Rename Field",
+              copy: "Select a Field before using Rename Field.",
+            });
+            fieldSelect.value = "";
+            return;
+          }
+          const nextValue = await requestOptionDialog({
+            title: "Rename Field",
+            copy: `Current name: ${previousValue}`,
+            label: "New Field name",
+            initialValue: previousValue,
+            submitLabel: "Rename",
+          });
+          if (!nextValue) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const payload = await callOptionApi("/meetings/v2/section-name-options/rename", { kind: "field", old_value: previousValue, new_value: nextValue });
+            const savedValue = String(payload.new_value || nextValue).trim();
+            insertSortedOption(fieldSelect, savedValue, "All fields", [
+              { value: addFieldSentinel, label: "+ Add Field" },
+              { value: deleteFieldSentinel, label: "- Field" },
+              { value: renameFieldSentinel, label: "Rename Field" },
+            ], savedValue);
+            if (meetingsByField[previousValue]) {
+              meetingsByField[savedValue] = [...meetingsByField[previousValue]];
+              delete meetingsByField[previousValue];
+            }
+            fieldSelect.dataset.previousValue = savedValue;
+            form.requestSubmit();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Rename Field",
+              copy: error.message || "Unable to rename the MeetingData Field.",
+            });
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (searchInput.value.trim()) {
+          searchInput.value = "";
+        }
+        renderMeetingOptions(fieldSelect.value);
+        if (!fieldSelect.value) {
+          meetingSelect.value = "";
+        }
+        fieldSelect.dataset.previousValue = fieldSelect.value;
+        meetingSelect.dataset.previousValue = meetingSelect.value;
+        form.requestSubmit();
+      });
+      meetingSelect.addEventListener("change", async () => {
+        const previousValue = meetingSelect.dataset.previousValue ?? "";
+        if (meetingSelect.value === addMeetingSentinel) {
+          if (!fieldSelect.value) {
+            await showMessageDialog({
+              title: "Add Meeting",
+              copy: "Pick a Field first or create a new Field (+ Field) before creating a new Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          const nextValue = await requestOptionDialog({
+            title: "Add Meeting",
+            copy: "Name the new MeetingData Meeting. It will be inserted alphabetically into the list.",
+            label: "Meeting name",
+          });
+          if (!nextValue) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const payload = await callOptionApi("/meetings/v2/sections/create", {
+              field_name: fieldSelect.value,
+              meeting_name: nextValue,
+            });
+            const editorUrl = String(payload.editor_url || "").trim();
+            if (editorUrl) {
+              window.location.href = editorUrl;
+              return;
+            }
+            throw new Error("Unable to open the new MeetingData section.");
+          } catch (error) {
+            await showMessageDialog({
+              title: "Add Meeting",
+              copy: error.message || "Unable to add the MeetingData Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (meetingSelect.value === deleteMeetingSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Delete Meeting",
+              copy: "Select a Meeting before using - Meeting.",
+            });
+            meetingSelect.value = "";
+            return;
+          }
+          const confirmed = await requestOptionDialog({
+            title: "Delete Meeting",
+            copy: `Delete the MeetingData Meeting "${previousValue}"? This only works when no MeetingData sections are assigned to that Meeting.`,
+            label: "Meeting name",
+            requireInput: false,
+            submitLabel: "Delete",
+          });
+          if (!confirmed) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            await callOptionApi("/meetings/v2/section-name-options/remove", { kind: "meeting", value: previousValue });
+            allMeetings.splice(0, allMeetings.length, ...allMeetings.filter((item) => item !== previousValue));
+            Object.keys(meetingsByField).forEach((fieldName) => {
+              meetingsByField[fieldName] = (meetingsByField[fieldName] || []).filter((item) => item !== previousValue);
+            });
+            renderMeetingOptions(fieldSelect.value, "");
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Delete Meeting",
+              copy: error.message || "Unable to delete the MeetingData Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (meetingSelect.value === renameMeetingSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Rename Meeting",
+              copy: "Select a Meeting before using Rename Meeting.",
+            });
+            meetingSelect.value = "";
+            return;
+          }
+          const nextValue = await requestOptionDialog({
+            title: "Rename Meeting",
+            copy: `Current name: ${previousValue}`,
+            label: "New Meeting name",
+            initialValue: previousValue,
+            submitLabel: "Rename",
+          });
+          if (!nextValue) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const payload = await callOptionApi("/meetings/v2/section-name-options/rename", { kind: "meeting", old_value: previousValue, new_value: nextValue });
+            const savedValue = String(payload.new_value || nextValue).trim();
+            if (!allMeetings.includes(savedValue)) {
+              allMeetings.push(savedValue);
+            }
+            const nextMeetings = allMeetings
+              .map((item) => item === previousValue ? savedValue : item)
+              .filter((item, index, items) => items.indexOf(item) === index)
+              .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            allMeetings.splice(0, allMeetings.length, ...nextMeetings);
+            Object.keys(meetingsByField).forEach((fieldName) => {
+              meetingsByField[fieldName] = (meetingsByField[fieldName] || [])
+                .map((item) => item === previousValue ? savedValue : item)
+                .filter((item, index, items) => items.indexOf(item) === index)
+                .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            });
+            insertSortedOption(meetingSelect, savedValue, "All meetings", [
+              { value: addMeetingSentinel, label: "+ Add Meeting" },
+              { value: deleteMeetingSentinel, label: "- Meeting" },
+              { value: renameMeetingSentinel, label: "Rename Meeting" },
+            ], savedValue);
+            meetingSelect.dataset.previousValue = savedValue;
+            form.requestSubmit();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Rename Meeting",
+              copy: error.message || "Unable to rename the MeetingData Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (searchInput.value.trim()) {
+          searchInput.value = "";
+        }
+        meetingSelect.dataset.previousValue = meetingSelect.value;
+        form.requestSubmit();
+      });
+      searchInput.addEventListener("search", () => {
+        if (searchInput.value.trim()) return;
+        resetDropdownFilters();
+        form.requestSubmit();
+      });
+      searchInput.addEventListener("input", () => {
+        if (searchInput.value !== "") return;
+        resetDropdownFilters();
+        form.requestSubmit();
+      });
+      searchInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        if (searchInput.value.trim()) {
+          resetDropdownFilters();
+        }
+        form.requestSubmit();
+      });
+      form.addEventListener("submit", () => {
+        if (searchInput.value.trim()) {
+          resetDropdownFilters();
+        }
+      });
+    });
+  </script>
+{% endblock %}

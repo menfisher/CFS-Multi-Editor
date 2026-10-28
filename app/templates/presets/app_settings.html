@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+
+{% block title %}ContactsFreeShare Settings | Contacts Website{% endblock %}
+{% block body_class %}app-settings-page-body{% endblock %}
+
+{% block content %}
+  {% set timeout_total = state.editor_lock_timeout_minutes|default(60)|int %}
+  {% set timeout_hour = 1 if timeout_total >= 60 else 0 %}
+  {% set timeout_minute = timeout_total - 60 if timeout_total >= 60 else timeout_total %}
+  {% if timeout_minute not in [0, 15, 30, 45] %}
+    {% set timeout_minute = 0 %}
+  {% endif %}
+  {% set app_settings_locked = (state.multi_editor_enabled or state.multi_editor_account_locked) and not (state.editor_mode == "edit" and state.editor_session_id) %}
+
+  <section class="panel page-top-panel app-settings-title-panel">
+    <h2>ContactsFreeShare Settings</h2>
+  </section>
+
+  {% if notice_message %}
+    <section class="panel google-sync-banner google-sync-banner-info" id="contacts-temporary-notice" data-auto-hide-ms="3600">
+      {{ notice_message }}
+    </section>
+  {% endif %}
+
+  <section class="panel app-settings-editor-panel">
+    <h3>Editor Mode</h3>
+    <form
+      method="post"
+      action="/presets/app-settings/save"
+      class="form-grid app-settings-form"
+      data-preset-form
+      data-settings-locked="{{ 1 if app_settings_locked else 0 }}"
+      data-busy-modal-title="Saving Settings"
+      data-busy-modal-copy="Saving ContactsFreeShare settings and syncing them to Google Drive when connected."
+    >
+      {% if app_settings_locked %}
+        <p class="muted app-settings-locked-message">
+          Sign in as an Editor on the Google Connect page before changing Settings.
+        </p>
+      {% endif %}
+      <fieldset class="app-settings-locked-fieldset" {% if app_settings_locked %}disabled{% endif %}>
+      <div class="app-settings-layout">
+        <div class="app-settings-column">
+          <div class="app-settings-field-group">
+            <label>
+              <span>Will this app be used by multiple Editors?</span>
+              <select name="multi_editor_enabled" id="multi-editor-enabled">
+                <option value="0" {% if not state.multi_editor_enabled %}selected{% endif %}>No</option>
+                <option value="1" {% if state.multi_editor_enabled %}selected{% endif %}>Yes</option>
+              </select>
+            </label>
+            <p class="muted app-settings-mode-copy" id="multi-editor-mode-copy">
+              {% if state.multi_editor_account_locked %}
+                This Google account is already set for multiple Editors.
+              {% elif state.multi_editor_enabled %}
+                Requires Editor sign-in. Only 1 active Editor at a time allowed
+              {% else %}
+                No Editor sign-in required
+              {% endif %}
+            </p>
+          </div>
+
+          <fieldset class="app-settings-timeout-fieldset app-settings-single-editor-sync" id="single-editor-sync-options" {% if state.multi_editor_enabled %}hidden{% endif %}>
+            <legend>Single-Editor save location</legend>
+            <label>
+              <input
+                type="radio"
+                name="single_editor_sync_mode"
+                value="local"
+                {% if not state.sync_enabled %}checked{% endif %}
+              >
+              <span>Save changes only on this computer</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="single_editor_sync_mode"
+                value="google"
+                {% if state.sync_enabled %}checked{% endif %}
+              >
+              <span>Save edited contacts to Google Contacts, app settings to Drive, and keep local copies on this computer</span>
+            </label>
+            <p class="muted app-settings-mode-copy">
+              Google saving requires a connected Google account on the Google Connect page. Local saving always remains on.
+            </p>
+          </fieldset>
+
+          <div class="app-settings-field-group app-settings-multi-editor-only" id="editor-secret-options">
+            <label>
+              <span>Editor secret</span>
+              <input
+                type="password"
+                name="editor_secret"
+                value=""
+                placeholder="Leave blank to keep current secret"
+                autocomplete="new-password"
+                {% if not state.multi_editor_enabled %}disabled{% endif %}
+              >
+            </label>
+            <p class="muted app-settings-mode-copy">
+              Used only when signing in with the Editor access role.
+            </p>
+          </div>
+
+          <fieldset class="app-settings-timeout-fieldset app-settings-multi-editor-only" id="editor-lockout-options">
+            <legend>Editor lock-out time</legend>
+            <div class="app-settings-timeout-grid">
+              <label>
+                <span>Hour</span>
+                <select name="editor_timeout_hours" {% if not state.multi_editor_enabled %}disabled{% endif %}>
+                  <option value="0" {% if timeout_hour == 0 %}selected{% endif %}>0</option>
+                  <option value="1" {% if timeout_hour == 1 %}selected{% endif %}>1</option>
+                </select>
+              </label>
+              <label>
+                <span>Minutes</span>
+                <select name="editor_timeout_minutes" {% if not state.multi_editor_enabled %}disabled{% endif %}>
+                  <option value="0" {% if timeout_minute == 0 %}selected{% endif %}>00</option>
+                  <option value="15" {% if timeout_minute == 15 %}selected{% endif %}>15</option>
+                  <option value="30" {% if timeout_minute == 30 %}selected{% endif %}>30</option>
+                  <option value="45" {% if timeout_minute == 45 %}selected{% endif %}>45</option>
+                </select>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="app-settings-timeout-fieldset" id="address-book-pdf-share-options" {% if not (state.multi_editor_enabled or state.sync_enabled or state.address_book_pdf_share_folder_id) %}hidden{% endif %}>
+            <legend>Shared folder</legend>
+            <label class="app-settings-inline-check">
+              <input
+                type="checkbox"
+                name="address_book_pdf_share_enabled"
+                value="1"
+                {% if state.address_book_pdf_share_enabled %}checked{% endif %}
+              >
+              <span>Use a shared Google Drive folder for Address Book PDF sharing</span>
+            </label>
+            <label>
+              <span>Shared folder ID</span>
+              <input
+                type="text"
+                id="address-book-pdf-share-folder-id"
+                name="address_book_pdf_share_folder_id"
+                value="{{ state.address_book_pdf_share_folder_id }}"
+                placeholder="Google Drive folder ID"
+              >
+            </label>
+            <div class="app-settings-picker-row">
+              <button
+                type="button"
+                class="contact-card-button contact-card-button-edit"
+                id="address-book-pdf-share-folder-picker"
+                {% if account.status != "connected" or not account.drive_scope_ready %}disabled{% endif %}
+              >
+                Choose Drive Folder
+              </button>
+              <span class="muted app-settings-picker-status" id="address-book-pdf-share-folder-picker-status"></span>
+            </div>
+            <p class="muted app-settings-mode-copy">
+              Choose a folder to grant ContactsFreeShare access, or paste the long folder ID from Google Drive.
+              Use the Shared with me tab for folders another user shared with you.
+            </p>
+            <div class="app-settings-cookie-help">
+              <strong>If Google shows 403 or cannot access your account:</strong>
+              <span>Reconnect Google on the Google Connect page after updating ContactsFreeShare.</span>
+              <span>In Google Cloud Console, enable the Google Picker API and restrict GOOGLE_PICKER_API_KEY to HTTP referrer <code>http://127.0.0.1:8000/*</code> (plus <code>http://localhost:8000/*</code> if you use localhost).</span>
+              <span>GOOGLE_PICKER_APP_ID must be your Google Cloud project number, not the OAuth client ID.</span>
+              <span>Close the Google window, allow third-party cookies for ContactsFreeShare, then choose the folder again.</span>
+              <span>Chrome or Edge: click the cookie/eye icon in the address bar and allow third-party cookies for this site, or go to Settings &gt; Privacy and security &gt; Third-party cookies &gt; Sites allowed to use third-party cookies and add 127.0.0.1.</span>
+              <span>Safari: go to Safari &gt; Settings &gt; Privacy, turn off Prevent cross-site tracking, and make sure Block all cookies is off.</span>
+              <span>Private or Incognito windows may still block the Google folder picker.</span>
+            </div>
+            <label class="app-settings-field-spaced">
+              <span>Fallback folder name</span>
+              <input
+                type="text"
+                id="address-book-pdf-share-folder-name"
+                name="address_book_pdf_share_folder_name"
+                value="{{ state.address_book_pdf_share_folder_name }}"
+                placeholder="Shared PDF folder"
+              >
+            </label>
+            <p class="muted app-settings-mode-copy">
+              The folder ID is required for folders outside the app-created ContactsFreeShare folder. Name-only lookup is not used with limited Drive file access.
+            </p>
+          </fieldset>
+
+          {% set share_settings_configured = (state.public_web_url or '')|trim != '' %}
+          <fieldset class="app-settings-timeout-fieldset app-settings-share-settings" data-share-configured="{{ 1 if share_settings_configured else 0 }}">
+            <legend>Share web app</legend>
+            {% if share_settings_configured %}
+            <label class="app-settings-inline-check app-settings-share-unlock">
+              <input type="checkbox" id="unlock-share-settings" name="share_settings_unlocked" value="1">
+              <span>Unlock share app connection (URL and API key)</span>
+            </label>
+            <p class="muted app-settings-mode-copy app-settings-share-lock-note">
+              Share connection is locked to prevent accidental changes. Check unlock only if your organization moves to a new Cloud Run URL.
+            </p>
+            {% endif %}
+            <label>
+              <span>Share web app URL</span>
+              <input
+                type="url"
+                id="share-url-input"
+                name="public_web_url"
+                value="{{ state.public_web_url }}"
+                placeholder="https://share-contacts-7frzetx7sa-uc.a.run.app"
+                autocomplete="url"
+                {% if share_settings_configured %}readonly class="app-settings-share-field is-locked"{% endif %}
+              >
+            </label>
+            <p class="muted app-settings-mode-copy">
+              Link to the separate <strong>Share Google Contacts</strong> web app (owner share groups and recipient connect).
+              CFS opens this in your browser from the Share Contacts nav link. Set once per organization when that app is hosted on Cloud Run.
+            </p>
+            <label class="app-settings-field-spaced">
+              <span>Share web API key</span>
+              <input
+                type="password"
+                id="share-api-key-input"
+                name="share_web_api_key"
+                value=""
+                placeholder="{% if state.share_web_api_key_configured %}Leave blank to keep current key{% else %}Same as share app APP_SECRET_KEY{% endif %}"
+                autocomplete="off"
+                {% if share_settings_configured %}disabled class="app-settings-share-field is-locked"{% endif %}
+              >
+            </label>
+            <p class="muted app-settings-mode-copy">
+              Required for automatic recipient updates after Upload.
+              {% if state.share_web_api_key_configured %}Key is configured.{% else %}Not configured yet.{% endif %}
+              {% if state.share_sync_last_message %}
+              Last share sync: {{ state.share_sync_last_message }}
+              {% endif %}
+            </p>
+          </fieldset>
+
+        </div>
+
+        <div class="app-settings-column app-settings-color-panel">
+          <section class="subcard app-settings-color-card">
+            <div class="subcard-title">Contacts Colors</div>
+            <div class="app-settings-color-grid">
+              <div>
+                <label class="form-label" for="contacts_title_bar_color">Title Bar Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_title_bar_color }};">
+                  <input id="contacts_title_bar_color" name="contacts_title_bar_color" type="color" value="{{ selected_preset.contacts_title_bar_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_title_bar_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+              <div>
+                <label class="form-label" for="contacts_primary_row_color">Primary Row Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_primary_row_color }};">
+                  <input id="contacts_primary_row_color" name="contacts_primary_row_color" type="color" value="{{ selected_preset.contacts_primary_row_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_primary_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+              <div>
+                <label class="form-label" for="contacts_secondary_row_color">Secondary Row Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_secondary_row_color }};">
+                  <input id="contacts_secondary_row_color" name="contacts_secondary_row_color" type="color" value="{{ selected_preset.contacts_secondary_row_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_secondary_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+              <div>
+                <label class="form-label" for="contacts_highlight_row_color">Cursor Hover Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.contacts_highlight_row_color }};">
+                  <input id="contacts_highlight_row_color" name="contacts_highlight_row_color" type="color" value="{{ selected_preset.contacts_highlight_row_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.contacts_highlight_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="subcard app-settings-color-card">
+            <div class="subcard-title">MeetingData Colors</div>
+            <div class="app-settings-color-grid">
+              <div>
+                <label class="form-label" for="meetingdata_title_bar_color">Title Bar Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.meetingdata_title_bar_color }};">
+                  <input id="meetingdata_title_bar_color" name="meetingdata_title_bar_color" type="color" value="{{ selected_preset.meetingdata_title_bar_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.meetingdata_title_bar_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+              <div>
+                <label class="form-label" for="meetingdata_primary_row_color">Primary Row Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.meetingdata_primary_row_color }};">
+                  <input id="meetingdata_primary_row_color" name="meetingdata_primary_row_color" type="color" value="{{ selected_preset.meetingdata_primary_row_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.meetingdata_primary_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+              <div>
+                <label class="form-label" for="meetingdata_secondary_row_color">Secondary Row Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.meetingdata_secondary_row_color }};">
+                  <input id="meetingdata_secondary_row_color" name="meetingdata_secondary_row_color" type="color" value="{{ selected_preset.meetingdata_secondary_row_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.meetingdata_secondary_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+              <div>
+                <label class="form-label" for="meetingdata_highlight_row_color">Cursor Hover Color</label>
+                <div class="preset-color-field" data-color-field style="--color-preview: {{ selected_preset.meetingdata_highlight_row_color }};">
+                  <input id="meetingdata_highlight_row_color" name="meetingdata_highlight_row_color" type="color" value="{{ selected_preset.meetingdata_highlight_row_color }}" data-color-input>
+                  <input class="preset-color-value" type="text" value="{{ selected_preset.meetingdata_highlight_row_color }}" maxlength="7" spellcheck="false" autocomplete="off" data-color-value-input>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="subcard app-settings-shared-group-card">
+            <div class="subcard-title">Shared Contacts Group</div>
+            <div class="app-settings-shared-group-field">
+              <label class="form-label" for="shared_contacts_group_name">All-Contacts Shared Group Name</label>
+              <input
+                type="text"
+                id="shared_contacts_group_name"
+                name="shared_contacts_group_name"
+                value="{{ selected_preset.shared_contacts_group_name or 'TriState Separates (Shared)' }}"
+                maxlength="120"
+                spellcheck="false"
+                autocomplete="off"
+                {% if app_settings_locked %}disabled{% endif %}
+              >
+              <p class="muted app-settings-field-help">Used in Google group membership for every Field+Meeting contact, alongside <code>{Field} - {Meeting} (Shared)</code>. Changing this name renames that one Google label in this account and in each account currently sharing it. Existing contacts keep their current labels until you apply the name in this box and Upload.</p>
+              <button
+                type="submit"
+                formaction="/presets/app-settings/apply-shared-group-label"
+                formmethod="post"
+                class="contact-card-button contact-card-button-edit app-settings-shared-group-apply"
+                data-busy-modal-title="Queueing Shared Label"
+                data-busy-modal-copy="Queueing Field+Meeting contacts so Upload can write the name in this box as the Google label."
+                {% if app_settings_locked %}disabled{% endif %}
+              >
+                Apply to Field+Meeting contacts
+              </button>
+            </div>
+          </section>
+          <div class="editor-actions-links app-settings-actions">
+            <button type="submit" class="contact-card-button contact-card-button-edit" {% if app_settings_locked %}disabled{% endif %}>Save Settings</button>
+          </div>
+        </div>
+      </div>
+      </fieldset>
+    </form>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="/static/js/preset_editor.js?v=4"></script>
+  <script src="/static/js/google_drive_folder_picker.js?v=8"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const temporaryNotice = document.getElementById("contacts-temporary-notice");
+      const settingsForm = document.querySelector(".app-settings-form");
+      const settingsLocked = settingsForm?.dataset.settingsLocked === "1";
+      const modeSelect = document.getElementById("multi-editor-enabled");
+      const modeCopy = document.getElementById("multi-editor-mode-copy");
+      const singleEditorSyncOptions = document.getElementById("single-editor-sync-options");
+      const addressBookPdfShareOptions = document.getElementById("address-book-pdf-share-options");
+      const multiEditorOnlyGroups = Array.from(document.querySelectorAll(".app-settings-multi-editor-only"));
+      const singleEditorSyncModeInputs = Array.from(document.querySelectorAll('input[name="single_editor_sync_mode"]'));
+      const copyText = {
+        "1": "Requires Editor sign-in. Only 1 active Editor at a time allowed",
+        "0": "No Editor sign-in required",
+      };
+
+      const lockSettingsControls = () => {
+        if (!settingsLocked || !settingsForm) return false;
+        settingsForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+          control.disabled = true;
+        });
+        settingsForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+        });
+        return true;
+      };
+
+      const syncMultiEditorOnlyControls = () => {
+        if (lockSettingsControls()) return;
+        const enabled = modeSelect?.value === "1";
+        multiEditorOnlyGroups.forEach((group) => {
+          group.classList.toggle("is-disabled", !enabled);
+          group.querySelectorAll("input, select, textarea, button").forEach((control) => {
+            control.disabled = !enabled;
+          });
+        });
+      };
+
+      const syncSharedPdfOptions = () => {
+        if (settingsLocked) return;
+        if (!addressBookPdfShareOptions) return;
+        const singleEditorGoogleSync = singleEditorSyncModeInputs.some((input) => input.value === "google" && input.checked);
+        const savedFolderId = document.getElementById("address-book-pdf-share-folder-id")?.value?.trim();
+        addressBookPdfShareOptions.hidden =
+          modeSelect?.value !== "1" && !singleEditorGoogleSync && !savedFolderId;
+      };
+
+      if (temporaryNotice?.dataset.autoHideMs) {
+        window.setTimeout(() => {
+          temporaryNotice.style.display = "none";
+        }, Number(temporaryNotice.dataset.autoHideMs || 3600));
+      }
+
+      modeSelect?.addEventListener("change", () => {
+        if (modeCopy) {
+          modeCopy.textContent = copyText[modeSelect.value] || copyText["0"];
+        }
+        if (singleEditorSyncOptions) {
+          singleEditorSyncOptions.hidden = modeSelect.value === "1";
+        }
+        syncSharedPdfOptions();
+        syncMultiEditorOnlyControls();
+      });
+      singleEditorSyncModeInputs.forEach((input) => {
+        input.addEventListener("change", syncSharedPdfOptions);
+      });
+      syncSharedPdfOptions();
+      syncMultiEditorOnlyControls();
+
+      const unlockShareSettings = document.getElementById("unlock-share-settings");
+      const shareUrlInput = document.getElementById("share-url-input");
+      const shareApiKeyInput = document.getElementById("share-api-key-input");
+      const shareConfigured = document.querySelector(".app-settings-share-settings")?.dataset.shareConfigured === "1";
+      const setShareSettingsLocked = (locked) => {
+        if (!shareConfigured) return;
+        if (shareUrlInput) {
+          shareUrlInput.readOnly = locked;
+          shareUrlInput.classList.toggle("is-locked", locked);
+        }
+        if (shareApiKeyInput) {
+          shareApiKeyInput.disabled = locked;
+          shareApiKeyInput.classList.toggle("is-locked", locked);
+          if (locked) {
+            shareApiKeyInput.value = "";
+          }
+        }
+      };
+      if (shareConfigured) {
+        setShareSettingsLocked(true);
+        unlockShareSettings?.addEventListener("change", () => {
+          const unlock = Boolean(unlockShareSettings.checked);
+          if (unlock && !window.confirm("Unlock share app connection settings? Only change these if your Cloud Run URL or API key changed.")) {
+            unlockShareSettings.checked = false;
+            setShareSettingsLocked(true);
+            return;
+          }
+          setShareSettingsLocked(!unlock);
+        });
+      }
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "includes/mobile_head.html" %}
+  <title>{{ contact.family_name }}, {{ contact.given_name }}</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=40">
+</head>
+<body class="mobile-shell mobile-detail-page">
+  {% include "includes/mobile_busy_modal.html" %}
+  {% if is_mobile_editor and multi_editor_enabled %}
+    {% include "includes/mobile_editor_timeout_modal.html" %}
+  {% endif %}
+
+  <div class="mobile-app-scroll">
+  {% if request.query_params.get('notice') == 'saved' %}
+    <p class="mobile-notice mobile-notice-success">Contact saved.</p>
+  {% elif request.query_params.get('notice') == 'pending_edits_recorded' %}
+    <p class="mobile-notice mobile-notice-success" id="mobile-pending-edits-notice" hidden>Pending edits recorded.</p>
+  {% elif request.query_params.get('notice') == 'edit_blocked' %}
+    <p class="mobile-notice mobile-notice-error">Editing is temporarily unavailable. Try again after sync finishes.</p>
+  {% endif %}
+  <header class="mobile-header mobile-detail-header">
+    <div class="mobile-detail-topbar">
+      <a class="mobile-back" href="{{ list_url }}">&larr; Back</a>
+      <a class="mobile-detail-edit-link" href="{{ edit_url }}">Edit</a>
+    </div>
+    <div class="mobile-detail-identity" id="mobile-detail-identity">
+      <div id="mobile-detail-photo-slot">
+      {% if contact.photo %}
+        <button
+          type="button"
+          class="mobile-avatar-button"
+          data-mobile-photo-lightbox
+          data-photo-src="{{ contact.photo_large or contact.photo }}"
+          data-photo-alt="{{ contact.family_name }}{% if contact.given_name %}, {{ contact.given_name }}{% endif %}"
+          aria-label="View larger photo"
+        >
+          <img class="mobile-avatar" src="{{ contact.photo }}" alt="" loading="eager" referrerpolicy="no-referrer">
+        </button>
+      {% endif %}
+      </div>
+      <div>
+        <h1>{{ contact.family_name }}{% if contact.given_name %}, {{ contact.given_name }}{% endif %}</h1>
+        {% if contact.do_not_print %}
+          <span class="mobile-badge">Do not print</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if contact.fields_list or contact.meetings_list %}
+      <div class="mobile-chip-row">
+        {% for item in contact.fields_list %}
+          <span class="mobile-chip">{{ item }}</span>
+        {% endfor %}
+        {% for item in contact.meetings_list %}
+          <span class="mobile-chip mobile-chip-muted">{{ item }}</span>
+        {% endfor %}
+      </div>
+    {% elif contact.fields_text or contact.meetings_text %}
+      <p class="mobile-subtitle">{{ contact.fields_text }}{% if contact.fields_text and contact.meetings_text %} · {% endif %}{{ contact.meetings_text }}</p>
+    {% endif %}
+  </header>
+
+  {% if contact.relationships or contact.phones %}
+    <div class="mobile-detail-split-row{% if contact.phones %} mobile-detail-split-row-has-phones{% endif %}">
+      {% if contact.relationships %}
+        <section class="mobile-panel mobile-detail-section mobile-detail-section-compact mobile-detail-col-relationships">
+          <h2>Relationships</h2>
+          <ul class="mobile-detail-list">
+            {% for item in contact.relationships %}
+              {% if item.relation_value %}
+                <li>
+                  <span class="mobile-detail-value">{{ item.relation_value }}</span>
+                  {% if item.relation_type %}
+                    <span class="mobile-detail-type">{{ item.relation_type }}</span>
+                  {% endif %}
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        </section>
+      {% elif contact.phones %}
+        <div class="mobile-detail-split-spacer" aria-hidden="true"></div>
+      {% endif %}
+
+      {% if contact.phones %}
+        <section class="mobile-panel mobile-detail-section mobile-detail-section-compact mobile-detail-col-phones">
+          <h2>Phones</h2>
+          <ul class="mobile-detail-list">
+            {% for phone in contact.phones %}
+              {% if phone.phone_value %}
+                <li>
+                  <a class="mobile-detail-link" href="tel:{{ phone.phone_value }}">{{ phone.phone_value }}</a>
+                  {% if phone.phone_type %}
+                    <span class="mobile-detail-type">{{ phone.phone_type }}</span>
+                  {% endif %}
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if contact.addresses %}
+    <section class="mobile-panel mobile-detail-section">
+      <h2>Addresses</h2>
+      <div class="mobile-address-list">
+        {% for item in contact.addresses %}
+          <article class="mobile-address-card">
+            <div class="mobile-address-type">{{ item.address_type or ("Address " ~ item.position) }}</div>
+            {% if item.formatted_lines %}
+              <div class="mobile-address-lines">
+                {% for line in item.formatted_lines %}
+                  <div>{{ line }}</div>
+                {% endfor %}
+              </div>
+            {% elif item.formatted_address %}
+              <div class="mobile-address-lines preserve-breaks">{{ item.formatted_address }}</div>
+            {% endif %}
+            {% if item.coordinates %}
+              <div class="mobile-muted">Coordinates: {{ item.coordinates }}</div>
+            {% endif %}
+            {% if item.map_url or item.apple_map_url %}
+              <div class="mobile-map-links">
+                {% if item.map_url %}
+                  <a href="{{ item.map_url }}" target="_blank" rel="noreferrer">Google Maps</a>
+                {% endif %}
+                {% if item.apple_map_url %}
+                  <a href="{{ item.apple_map_url }}" target="_blank" rel="noreferrer">Apple Maps</a>
+                {% endif %}
+              </div>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if contact.emails %}
+    <section class="mobile-panel mobile-detail-section">
+      <h2>Email</h2>
+      <ul class="mobile-detail-list">
+        {% for email in contact.emails %}
+          {% if email.email_value %}
+            <li>
+              <a class="mobile-detail-link" href="mailto:{{ email.email_value }}">{{ email.email_value }}</a>
+              {% if email.email_type %}
+                <span class="mobile-detail-type">{{ email.email_type }}</span>
+              {% endif %}
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if contact.notes %}
+    <section class="mobile-panel mobile-detail-section">
+      <h2>Notes</h2>
+      <div class="preserve-breaks">{{ contact.notes }}</div>
+    </section>
+  {% endif %}
+
+  {% if contact.custom_fields %}
+    <section class="mobile-panel mobile-detail-section">
+      <h2>Custom fields</h2>
+      <ul class="mobile-detail-list">
+        {% for item in contact.custom_fields %}
+          <li>
+            <strong>{{ item.field_type }}</strong>
+            {% if item.field_value %} {{ item.field_value }}{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section class="mobile-panel mobile-detail-section" id="mobile-detail-birthday"{% if not contact.birthday %} hidden{% endif %}>
+    <h2>Birthday</h2>
+    <div id="mobile-detail-birthday-value">{{ contact.birthday }}</div>
+  </section>
+
+  <section class="mobile-panel mobile-detail-section" id="mobile-detail-mtg-home-elder"{% if not contact.mtg_home_elder_flag %} hidden{% endif %}>
+    <h2>Meeting home / Elder</h2>
+    <div class="preserve-breaks" id="mobile-detail-mtg-home-elder-value">{{ contact.mtg_home_elder_flag }}</div>
+  </section>
+
+  <section class="mobile-panel mobile-detail-section" id="mobile-detail-meets-in-state"{% if not contact.meets_in_state %} hidden{% endif %}>
+    <h2>Meets in different state</h2>
+    <div class="preserve-breaks" id="mobile-detail-meets-in-state-value">{{ contact.meets_in_state }}</div>
+  </section>
+
+  {% if contact.group_membership %}
+    <section class="mobile-panel mobile-detail-section">
+      <h2>Group membership</h2>
+      <div class="preserve-breaks">{{ contact.group_membership }}</div>
+    </section>
+  {% endif %}
+
+  </div>
+
+  <div class="mobile-app-footer mobile-detail-actions">
+    <a class="mobile-button" href="{{ edit_url }}">Edit Contact</a>
+  </div>
+
+  <script src="/static/js/mobile-photo-lightbox.js?v=1"></script>
+  <script src="/static/js/mobile-detail-drive-sync.js?v=2"></script>
+  <script src="/static/js/mobile-busy.js?v=5"></script>
+  {% if is_mobile_editor and multi_editor_enabled %}
+    <script src="/static/js/mobile-editor-timeout.js?v=1"></script>
+  {% endif %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      if (window.MobileDetailDriveSync) {
+        window.MobileDetailDriveSync.init(
+          {{ contact.id|tojson }},
+          {{ (contact.family_name ~ (', ' ~ contact.given_name if contact.given_name else ''))|tojson }},
+          {{ needs_drive_app_fields_sync|tojson }},
+        );
+      }
+      const notice = {{ request.query_params.get('notice', '')|tojson }};
+      if (notice === "pending_edits_recorded" && window.MobileBusy) {
+        window.MobileBusy.showResult({
+          type: "success",
+          title: "Pending Edits",
+          message: "Your edit was saved to the Pending list. Tap Pending in the bottom bar to review it, then tap Upload to Drive to send it to your Editor.",
+        });
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        window.history.replaceState({}, "", cleanUrl);
+      } else if (notice === "saved") {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        window.history.replaceState({}, "", cleanUrl);
+      }
+    });
+  </script>
+</body>
+</html>

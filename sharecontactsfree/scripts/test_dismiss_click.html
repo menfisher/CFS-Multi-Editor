@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+</head>
+<body>
+<div id="app" class="container">
+  <table class="striped shared-groups-table">
+    <tbody>
+      <tr v-for="(group, index) in sharedGroups" :key="index">
+        <td>{{ group.name }}</td>
+        <td class="shared-col-actions">
+          <button type="button" class="btn shared-action-retry" :data-retry-shared-group-index="index">Retry</button>
+          <button type="button" class="btn red shared-action-dismiss" :data-dismiss-shared-row-index="index">Dismiss</button>
+          <button type="button" class="btn blue" @click.stop.prevent="dismissSharedRecipientGroup(index)">Vue Dismiss</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <pre id="log"></pre>
+</div>
+<script>
+function log(msg){ document.getElementById('log').textContent += msg + '\n'; }
+new Vue({
+  el: '#app',
+  data: { sharedGroups: [{ name: 'Test Group', owner: 'a@b.com', resourceName: 'g1', shareId: 's1' }] },
+  mounted(){
+    const appRoot = document.getElementById('app');
+    appRoot.addEventListener('click', (event) => {
+      const dismissBtn = event.target.closest('[data-dismiss-shared-row-index]');
+      const retryBtn = event.target.closest('[data-retry-shared-group-index]');
+      if (dismissBtn) { log('delegation: dismiss index=' + dismissBtn.getAttribute('data-dismiss-shared-row-index')); this.dismissSharedRecipientGroup(Number(dismissBtn.getAttribute('data-dismiss-shared-row-index'))); return; }
+      if (retryBtn) { log('delegation: retry'); return; }
+    }, true);
+  },
+  methods: {
+    dismissSharedRecipientGroup(index){
+      log('dismissSharedRecipientGroup called index=' + index);
+    }
+  }
+});
+</script>
+</body>
+</html>

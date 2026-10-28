@@ -1,0 +1,214 @@
+/**
+ * Playwright E2E: dismiss via DOM-bound modal confirm (matches production fix).
+ */
+import { chromium } from "playwright";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const htmlPath = path.join(__dirname, "test_dismiss_e2e_page.html");
+
+const sampleGroup = {
+  owner: "al.ms.lacontacts@gmail.com",
+  name: "AL South - Birmingham (GRAHAM)",
+  resourceName: "recovered/abc-123",
+  shareId: "share-uuid-1",
+  created: "contactGroups/old-google-id",
+  memberCount: 4,
+  status: "Shared (recovered)",
+};
+
+const html = `<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+</head>
+<body>
+<div id="app" class="container">
+  <table class="striped shared-groups-table" v-if="sharedGroups.length">
+    <tbody>
+      <tr v-for="(group, index) in sharedGroups" :key="index">
+        <td>{{ group.name }}</td>
+        <td class="shared-col-actions">
+          <button type="button" class="btn red" @click.stop.prevent="promptDismissSharedGroup(index)">Dismiss</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <p id="row-count">rows={{ sharedGroups.length }}</p>
+  <pre id="log"></pre>
+  <div id="popup-dismiss-shared-confirm" class="modal">
+    <div class="modal-content"><p>Dismiss "<strong>{{dismissConfirm.groupName}}</strong>"?</p></div>
+    <div class="modal-footer">
+      <button class="modal-close btn-flat">Cancel</button>
+      <button id="btn-confirm-dismiss-shared" type="button" class="btn red">Dismiss</button>
+    </div>
+  </div>
+</div>
+<script>
+function log(msg){ document.getElementById('log').textContent += msg + '\\n'; }
+// minimal helpers copied from production js.html
+let normalizeOwnerEmail = (email)=> String(email || '').trim().toLowerCase();
+let sharedGroupOwnersCompatible = (left, right)=>{
+  let a = normalizeOwnerEmail(left), b = normalizeOwnerEmail(right);
+  if (!a || !b || a === b) return true;
+  return a === 'unknown' || b === 'unknown';
+};
+let dismissalOwnerKey = (email)=>{
+  let owner = normalizeOwnerEmail(email);
+  return owner && owner !== 'unknown' ? owner : '';
+};
+let sharedGroupMatches = (group, ownerKey, resourceName)=>{
+  if (!group) return false;
+  return sharedGroupOwnersCompatible(group.owner, ownerKey) &&
+    String(group.resourceName || '').trim() === String(resourceName || '').trim();
+};
+let sharedGroupSameAs = (candidate, reference)=>{
+  if (!candidate || !reference) return false;
+  let shareA = String(candidate.shareId || '').trim();
+  let shareB = String(reference.shareId || '').trim();
+  if (shareA && shareB && shareA === shareB) return true;
+  let createdA = String(candidate.created || '').trim();
+  let createdB = String(reference.created || '').trim();
+  if (createdA && createdB && createdA === createdB) return true;
+  if (sharedGroupMatches(candidate, reference.owner, reference.resourceName)) return true;
+  let name = String(reference.name || '').trim().toLowerCase();
+  if (name && String(candidate.name || '').trim().toLowerCase() === name &&
+      sharedGroupOwnersCompatible(candidate.owner, reference.owner)) return true;
+  return false;
+};
+let sharedGroupDismissalKeys = (group)=>{
+  if (!group) return [];
+  let owner = dismissalOwnerKey(group.owner);
+  let resource = String(group.resourceName || '').trim();
+  let shareId = String(group.shareId || '').trim();
+  let created = String(group.created || '').trim();
+  let name = String(group.name || '').trim().toLowerCase();
+  let keys = [];
+  if (created) keys.push('created:' + created);
+  if (shareId) {
+    keys.push('share-id:' + shareId);
+    keys.push(owner ? ('share:' + owner + '|' + shareId) : ('share:|' + shareId));
+  }
+  if (resource) keys.push(owner ? ('group:' + owner + '|' + resource) : ('group:|' + resource));
+  if (name) {
+    keys.push('name:' + name);
+    if (owner) keys.push('name:' + owner + '|' + name);
+  }
+  return keys.filter((k,i,a)=> k && a.indexOf(k) === i);
+};
+let isSharedGroupDismissed = (group, dismissedMap)=>{
+  if (!group || !dismissedMap || !Object.keys(dismissedMap).length) return false;
+  return sharedGroupDismissalKeys(group).some(key=> dismissedMap[key]);
+};
+let filterDismissedSharedGroups = (groups, dismissedMap)=>{
+  if (!dismissedMap || !Object.keys(dismissedMap).length) return groups || [];
+  return (groups || []).filter(group=> !isSharedGroupDismissed(group, dismissedMap));
+};
+let dismissSharedGroupLocally = (vm, group)=>{
+  sharedGroupDismissalKeys(group).forEach(key=> vm.$set(vm.dismissedSharedGroupKeys, key, true));
+};
+let resolveSharedGroupIdentity = (group)=> group ? {
+  owner: String(group.owner || '').trim(),
+  resourceName: String(group.resourceName || '').trim(),
+  shareId: String(group.shareId || '').trim(),
+  created: String(group.created || '').trim(),
+  name: String(group.name || '').trim(),
+} : null;
+
+window.appCall = function(method, args){
+  log('appCall ' + method);
+  return Promise.resolve({
+    sharedGroups: [],
+    dismissedSharedGroups: ['share-id:share-uuid-1', 'name:al south - birmingham (graham)'],
+  });
+};
+
+window.__appVm = new Vue({
+  el: '#app',
+  data: {
+    sharedGroups: [${JSON.stringify(sampleGroup)}],
+    dismissConfirm: { groupName: '', groupSnapshot: null, identity: null },
+    pendingDismissGroup: null,
+    dismissedSharedGroupKeys: {},
+    dismissModalBound: false,
+  },
+  mounted(){
+    M.Modal.init(document.querySelectorAll('.modal'));
+    this.bindDismissModalActions();
+  },
+  methods: {
+    openDismissSharedModal(){
+      return M.Modal.getInstance(document.getElementById('popup-dismiss-shared-confirm'));
+    },
+    bindDismissModalActions(){
+      if (this.dismissModalBound) return;
+      let confirmBtn = document.getElementById('btn-confirm-dismiss-shared');
+      if (!confirmBtn) return;
+      let vm = this;
+      confirmBtn.addEventListener('click', function(event){
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        vm.confirmDismissSharedGroup();
+      }, true);
+      this.dismissModalBound = true;
+    },
+    promptDismissSharedGroup(index){
+      let group = this.sharedGroups[index];
+      let identity = resolveSharedGroupIdentity(group);
+      let pending = { index, groupSnapshot: Object.assign({}, group), identity };
+      this.pendingDismissGroup = pending;
+      this.dismissConfirm = { groupName: group.name, groupSnapshot: pending.groupSnapshot, identity };
+      this.openDismissSharedModal().open();
+    },
+    confirmDismissSharedGroup(){
+      let pending = this.pendingDismissGroup;
+      this.openDismissSharedModal().close();
+      this.performDismissSharedGroup(pending.groupSnapshot, pending.identity, pending.index);
+    },
+    removeSharedGroupFromList(group, index){
+      if (typeof index === 'number' && index >= 0 && index < this.sharedGroups.length) {
+        this.sharedGroups.splice(index, 1);
+        return true;
+      }
+      return false;
+    },
+    performDismissSharedGroup(group, identity, index){
+      dismissSharedGroupLocally(this, group);
+      this.removeSharedGroupFromList(group, index);
+      log('after optimistic rows=' + this.sharedGroups.length);
+      return window.appCall('dismissSharedRecipientGroup', []).then((result)=>{
+        let next = filterDismissedSharedGroups(result.sharedGroups || [], this.dismissedSharedGroupKeys);
+        this.sharedGroups = next;
+        log('after api rows=' + this.sharedGroups.length);
+      });
+    },
+  },
+});
+</script>
+</body>
+</html>`;
+
+fs.writeFileSync(htmlPath, html);
+
+for (const browserType of [chromium]) {
+  const browser = await browserType.launch();
+  const page = await browser.newPage();
+  await page.goto("file://" + htmlPath);
+  await page.click(".btn.red");
+  await page.waitForSelector("#popup-dismiss-shared-confirm", { state: "visible" });
+  await page.click("#btn-confirm-dismiss-shared");
+  await page.waitForFunction(() => document.getElementById("row-count").textContent.includes("rows=0"));
+  const rowCount = await page.textContent("#row-count");
+  const log = await page.textContent("#log");
+  console.log(browserType.name(), rowCount, log);
+  if (!String(rowCount).includes("rows=0")) {
+    console.error("FAIL");
+    process.exit(1);
+  }
+  await browser.close();
+}
+console.log("PASS");

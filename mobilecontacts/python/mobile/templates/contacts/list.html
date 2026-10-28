@@ -1,0 +1,646 @@
+{% from "includes/filter_option_label.html" import filter_option_label %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "includes/mobile_head.html" %}
+  <title>Contacts</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=48">
+</head>
+<body class="mobile-shell">
+  {% include "includes/mobile_busy_modal.html" %}
+  {% if is_mobile_editor and multi_editor_enabled %}
+    {% include "includes/mobile_editor_timeout_modal.html" %}
+  {% endif %}
+
+  <header class="mobile-header mobile-list-header">
+    <div class="mobile-list-title-row">
+      <h1>Contacts</h1>
+      <a class="mobile-clear-filters{% if not filters_active %} is-disabled{% endif %}" href="/m/contacts/"{% if not filters_active %} aria-disabled="true" tabindex="-1"{% endif %}>Clear</a>
+    </div>
+    <p class="mobile-subtitle">{{ owner_email }}</p>
+
+    <form class="mobile-list-filters" method="get" action="/m/contacts/" id="mobile-contacts-filter-form">
+      <input type="search" name="q" value="{{ q }}" placeholder="Search contacts" enterkeyhint="search">
+
+      <div class="mobile-filter-row">
+        <label class="mobile-filter-field">
+          <span class="mobile-filter-label">Field</span>
+          <div class="mobile-filter-picker" id="mobile-field-picker">
+            <input type="hidden" name="field" id="mobile-field-value" value="{{ field_filter }}">
+            <button
+              type="button"
+              class="mobile-filter-picker-trigger"
+              id="mobile-field-picker-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+            >
+              <span class="mobile-filter-picker-trigger-label" id="mobile-field-picker-trigger-label">
+                {{ filter_option_label(field_filter, "All fields") }}
+              </span>
+            </button>
+            <div class="mobile-filter-picker-menu" id="mobile-field-picker-menu" hidden role="listbox">
+              <button
+                type="button"
+                class="mobile-filter-picker-option{% if not field_filter %} is-selected{% endif %}"
+                data-value=""
+              >
+                {{ filter_option_label("", "All fields") }}
+              </button>
+              {% if field_filter and field_filter not in filters.fields %}
+                <button
+                  type="button"
+                  class="mobile-filter-picker-option is-selected"
+                  data-value="{{ field_filter }}"
+                >
+                  {{ filter_option_label(field_filter) }}
+                </button>
+              {% endif %}
+              {% for item in filters.fields %}
+                <button
+                  type="button"
+                  class="mobile-filter-picker-option{% if field_filter == item %} is-selected{% endif %}"
+                  data-value="{{ item }}"
+                >
+                  {{ filter_option_label(item) }}
+                </button>
+              {% endfor %}
+            </div>
+          </div>
+        </label>
+
+        <label class="mobile-filter-field">
+          <span class="mobile-filter-label">Meeting</span>
+          {% set scoped_meetings = filters.meetings %}
+          {% if field_filter and filters.meetings_by_field.get(field_filter) %}
+            {% set scoped_meetings = filters.meetings_by_field[field_filter] %}
+          {% endif %}
+          <div class="mobile-filter-picker" id="mobile-meeting-picker">
+            <input type="hidden" name="meeting" id="mobile-meeting-value" value="{{ meeting_filter }}">
+            <button
+              type="button"
+              class="mobile-filter-picker-trigger"
+              id="mobile-meeting-picker-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+            >
+              <span class="mobile-filter-picker-trigger-label" id="mobile-meeting-picker-trigger-label">
+                {{ filter_option_label(meeting_filter, "All meetings") }}
+              </span>
+            </button>
+            <div class="mobile-filter-picker-menu" id="mobile-meeting-picker-menu" hidden role="listbox">
+              <button
+                type="button"
+                class="mobile-filter-picker-option{% if not meeting_filter %} is-selected{% endif %}"
+                data-value=""
+              >
+                {{ filter_option_label("", "All meetings") }}
+              </button>
+              {% if meeting_filter and meeting_filter not in scoped_meetings %}
+                <button
+                  type="button"
+                  class="mobile-filter-picker-option is-selected"
+                  data-value="{{ meeting_filter }}"
+                >
+                  {{ filter_option_label(meeting_filter) }}
+                </button>
+              {% endif %}
+              {% for item in scoped_meetings %}
+                <button
+                  type="button"
+                  class="mobile-filter-picker-option{% if meeting_filter == item %} is-selected{% endif %}"
+                  data-value="{{ item }}"
+                >
+                  {{ filter_option_label(item) }}
+                </button>
+              {% endfor %}
+            </div>
+          </div>
+        </label>
+      </div>
+    </form>
+  </header>
+
+  <ul class="mobile-contact-list">
+    {% for contact in contacts %}
+      <li>
+        <a class="mobile-list-link" href="/m/contacts/{{ contact.id }}{% if list_query %}?{{ list_query }}{% endif %}">
+          {% if contact.list_photo_url %}
+            <img
+              class="mobile-list-avatar mobile-list-avatar-photo"
+              src="{{ contact.list_photo_url }}"
+              data-photo-large="{{ contact.list_photo_large_url or contact.list_photo_url }}"
+              data-photo-label="{{ contact.family_name }}{% if contact.given_name %}, {{ contact.given_name }}{% endif %}"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              referrerpolicy="no-referrer"
+            >
+          {% else %}
+            <span class="mobile-list-avatar mobile-list-avatar-placeholder" aria-hidden="true">
+              {{- contact.list_avatar_initial -}}
+            </span>
+          {% endif %}
+          <span class="mobile-list-body">
+            <strong>{{ contact.family_name }}, {{ contact.given_name }}</strong>
+            {% if contact.fields_text or contact.meetings_text %}
+              <span class="mobile-list-chip">{{ contact.fields_text }}{% if contact.fields_text and contact.meetings_text %} · {% endif %}{{ contact.meetings_text }}</span>
+            {% endif %}
+          </span>
+        </a>
+      </li>
+    {% else %}
+      <li class="mobile-empty">No contacts match these filters.</li>
+    {% endfor %}
+  </ul>
+
+  {% include "includes/mobile_bottom_nav.html" %}
+
+  <script src="/static/js/mobile-shell.js?v=3"></script>
+  <script src="/static/js/mobile-busy.js?v=7"></script>
+  {% if is_mobile_editor and multi_editor_enabled %}
+    <script src="/static/js/mobile-editor-timeout.js?v=1"></script>
+  {% endif %}
+  <script src="/static/js/mobile-photo-lightbox.js?v=1"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", async () => {
+      const notice = {{ request.query_params.get('notice', '')|tojson }};
+      const syncMessage = {{ request.query_params.get('message', '')|tojson }};
+      const refreshed = {{ (request.query_params.get('refreshed') == '1')|tojson }};
+      const needsGoogleRefresh = {{ needs_google_refresh|default(false)|tojson }};
+      const hasCachedContacts = {{ ((contacts|default([]))|length > 0)|tojson }};
+
+      if (refreshed && window.MobileBusy) {
+        window.MobileBusy.showResult({
+          type: "success",
+          title: "Contacts updated",
+          message: syncMessage || "Your contacts are up to date with Google.",
+        });
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("refreshed");
+        cleanUrl.searchParams.delete("downloaded");
+        cleanUrl.searchParams.delete("message");
+        window.history.replaceState({}, "", cleanUrl);
+      } else if (notice === "synced" && window.MobileBusy) {
+        window.MobileBusy.showResult({
+          type: "success",
+          title: "Sync complete",
+          message: syncMessage || "Already up to date with Google Contacts.",
+        });
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        cleanUrl.searchParams.delete("uploaded");
+        cleanUrl.searchParams.delete("downloaded");
+        cleanUrl.searchParams.delete("message");
+        window.history.replaceState({}, "", cleanUrl);
+      } else if (notice === "sync_failed" && window.MobileBusy) {
+        const syncError = {{ request.query_params.get('error', '')|tojson }};
+        window.MobileBusy.showResult({
+          type: "error",
+          title: "Sync failed",
+          message: syncError || "Could not finish syncing with Google. Try again in a moment.",
+          autoHideMs: 0,
+        });
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        cleanUrl.searchParams.delete("error");
+        window.history.replaceState({}, "", cleanUrl);
+      } else if (notice === "pending_edits_recorded" && window.MobileBusy) {
+        window.MobileBusy.showResult({
+          type: "success",
+          title: "Pending Edits",
+          message: "Your edit was saved to the Pending list. Tap Pending in the bottom bar to review it, then tap Upload to Drive to send it to your Editor.",
+        });
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        window.history.replaceState({}, "", cleanUrl);
+      } else if (notice === "saved" && window.MobileBusy) {
+        window.MobileBusy.showResult({
+          type: "success",
+          title: "Saved",
+          message: "Contact saved.",
+        });
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        window.history.replaceState({}, "", cleanUrl);
+      } else if (notice === "saved") {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        window.history.replaceState({}, "", cleanUrl);
+      }
+
+      const progressLabel = (downloaded, total, extra) => {
+        let text;
+        if (total > 0) {
+          text = `Downloaded ${downloaded} of ${total} contacts.`;
+        } else if (downloaded > 0) {
+          text = `Downloaded ${downloaded} contacts.`;
+        } else {
+          text = "Still fetching the first batch from Google. 0 contacts saved so far.";
+        }
+        if (extra) {
+          text += ` ${extra}`;
+        }
+        return text;
+      };
+
+      const pollDownloadStatus = async () => {
+        const response = await fetch("/m/contacts/download-status", {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+        });
+        return response.json().catch(() => null);
+      };
+
+      let downloadCancelled = false;
+      const downloadContacts = async (busy) => {
+        const progress = { downloaded: 0, total: 0 };
+        const showProgress = (extra) => {
+          busy.updateMessage(progressLabel(progress.downloaded, progress.total, extra));
+        };
+        showProgress();
+        let consecutiveErrors = 0;
+        for (let page = 1; page <= 80; page += 1) {
+          if (downloadCancelled) {
+            return;
+          }
+          const pollId = window.setInterval(async () => {
+            const status = await pollDownloadStatus().catch(() => null);
+            if (!status?.ok) {
+              return;
+            }
+            progress.downloaded = Number(status.downloaded || 0);
+            progress.total = Number(status.total || 0);
+            showProgress();
+          }, 2000);
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+          try {
+            const response = await fetch("/m/contacts/refresh-from-google", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                "Accept": "application/json",
+                "X-Mobile-Sync": "1",
+              },
+              signal: controller.signal,
+            });
+            window.clearTimeout(timeoutId);
+            const payload = await response.json().catch(() => null);
+            if (response.status === 502 || response.status === 503 || response.status === 504) {
+              consecutiveErrors += 1;
+              if (consecutiveErrors > 3) {
+                throw new Error("Download timed out on the network. Try Contacts again in a moment.");
+              }
+              showProgress("Still working on this batch.");
+              await new Promise((resolve) => window.setTimeout(resolve, 1500));
+              continue;
+            }
+            if (!response.ok || !payload?.ok) {
+              throw new Error(payload?.error || `Download failed (${response.status}).`);
+            }
+            consecutiveErrors = 0;
+            progress.downloaded = Number(payload.downloaded || progress.downloaded);
+            progress.total = Number(payload.total || progress.total);
+            showProgress();
+            if (payload.done === false) {
+              continue;
+            }
+            if (downloadCancelled) {
+              return;
+            }
+            const params = new URLSearchParams({ refreshed: "1" });
+            if (progress.downloaded > 0) {
+              params.set("downloaded", String(progress.downloaded));
+            }
+            if (payload.message) {
+              params.set("message", payload.message);
+            }
+            window.location.replace(`/m/contacts/?${params.toString()}`);
+            return;
+          } catch (error) {
+            window.clearTimeout(timeoutId);
+            if (error?.name === "AbortError") {
+              const status = await pollDownloadStatus().catch(() => null);
+              const saved = Number(status?.downloaded || 0);
+              if (saved > 0) {
+                window.location.replace(`/m/contacts/?refreshed=1&downloaded=${saved}`);
+                return;
+              }
+              busy.fail("Google did not return contacts in time. Tap Dismiss, then open Contacts again.");
+              return;
+            }
+            let errorMessage = error?.message || "Try again in a moment.";
+            if (
+              !errorMessage ||
+              errorMessage === "Load failed" ||
+              errorMessage === "Failed to fetch"
+            ) {
+              consecutiveErrors += 1;
+              if (consecutiveErrors <= 2) {
+                showProgress("Connection dropped. Checking how many contacts are saved…");
+                continue;
+              }
+              errorMessage =
+                "The connection dropped before contacts finished downloading. Check your signal and try again.";
+            }
+            busy.fail(errorMessage);
+            return;
+          } finally {
+            window.clearInterval(pollId);
+          }
+        }
+        busy.fail("Download is still working through a large address book. Try Contacts again to continue.");
+      };
+
+      if (needsGoogleRefresh && window.MobileBusy) {
+        const busy = window.MobileBusy.show({
+          title: "Downloading contacts",
+          message: "Still fetching the first batch from Google. 0 contacts saved so far.",
+          allowDismiss: true,
+          onDismiss: () => {
+            downloadCancelled = true;
+          },
+        });
+        downloadContacts(busy);
+        return;
+      }
+
+      const syncForm = document.getElementById("mobile-contacts-sync-form");
+      if (syncForm && window.MobileBusy) {
+        syncForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const busy = window.MobileBusy.show({
+            title: hasCachedContacts ? "Syncing" : "Downloading contacts",
+            message: hasCachedContacts
+              ? "Uploading your changes, then downloading updates from Google…"
+              : "Still fetching the first batch from Google. 0 contacts saved so far.",
+          });
+          const syncButton = syncForm.querySelector('button[type="submit"]');
+          if (syncButton) {
+            syncButton.disabled = true;
+            syncButton.classList.remove("mobile-sync-reminder");
+            syncButton.dataset.syncPending = "false";
+          }
+          if (!hasCachedContacts) {
+            await downloadContacts(busy);
+            if (syncButton) {
+              syncButton.disabled = false;
+            }
+            return;
+          }
+
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 600000);
+
+          try {
+            const response = await fetch(syncForm.action, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                "Accept": "application/json",
+                "X-Mobile-Sync": "1",
+              },
+              signal: controller.signal,
+            });
+            window.clearTimeout(timeoutId);
+            const payload = await response.json().catch(() => null);
+            if (!response.ok || !payload?.ok) {
+              let httpError = payload?.error || "";
+              if (!httpError) {
+                if (response.status === 503 || response.status === 502) {
+                  httpError =
+                    "The mobile server restarted or is briefly unavailable. Wait a few seconds and tap Sync again.";
+                } else if (response.status === 504) {
+                  httpError = "Sync timed out on the network. Check your connection and try again.";
+                } else {
+                  httpError = `Sync request failed (${response.status}).`;
+                }
+              }
+              throw new Error(httpError);
+            }
+            if (syncButton) {
+              syncButton.disabled = false;
+            }
+            const params = new URLSearchParams({ notice: "synced" });
+            if (payload.message) {
+              params.set("message", payload.message);
+            }
+            if (Number(payload.downloaded || 0) > 0) {
+              params.set("downloaded", String(payload.downloaded));
+            }
+            window.location.replace(`/m/contacts/?${params.toString()}`);
+          } catch (error) {
+            window.clearTimeout(timeoutId);
+            if (syncButton) {
+              syncButton.disabled = false;
+            }
+            let errorMessage = error?.message || "Try again in a moment.";
+            if (error?.name === "AbortError") {
+              errorMessage = "Sync is taking too long. Check your connection and try again.";
+            } else if (
+              !errorMessage ||
+              errorMessage === "Load failed" ||
+              errorMessage === "Failed to fetch"
+            ) {
+              errorMessage =
+                "The connection dropped before sync finished. Check your signal and try again.";
+            }
+            busy.fail(errorMessage);
+          }
+        });
+      }
+    });
+  </script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("mobile-contacts-filter-form");
+      const fieldPicker = document.getElementById("mobile-field-picker");
+      const fieldValue = document.getElementById("mobile-field-value");
+      const fieldTrigger = document.getElementById("mobile-field-picker-trigger");
+      const fieldTriggerLabel = document.getElementById("mobile-field-picker-trigger-label");
+      const fieldMenu = document.getElementById("mobile-field-picker-menu");
+      const meetingPicker = document.getElementById("mobile-meeting-picker");
+      const meetingValue = document.getElementById("mobile-meeting-value");
+      const meetingTrigger = document.getElementById("mobile-meeting-picker-trigger");
+      const meetingTriggerLabel = document.getElementById("mobile-meeting-picker-trigger-label");
+      const meetingMenu = document.getElementById("mobile-meeting-picker-menu");
+      if (
+        !form ||
+        !fieldPicker ||
+        !fieldValue ||
+        !fieldTrigger ||
+        !fieldTriggerLabel ||
+        !fieldMenu ||
+        !meetingPicker ||
+        !meetingValue ||
+        !meetingTrigger ||
+        !meetingTriggerLabel ||
+        !meetingMenu
+      ) {
+        return;
+      }
+
+      const allFields = {{ filters.fields|default([])|tojson }};
+      const meetingsByField = {{ filters.meetings_by_field|default({})|tojson }};
+      const allMeetings = {{ filters.meetings|default([])|tojson }};
+      const selectedField = {{ field_filter|default("")|tojson }};
+      const selectedMeeting = {{ meeting_filter|default("")|tojson }};
+
+      const appendPickerLabel = (container, value, emptyLabel) => {
+        container.replaceChildren();
+        const span = document.createElement("span");
+        span.className = "mobile-filter-picker-label";
+        span.textContent = value || emptyLabel;
+        container.appendChild(span);
+      };
+
+      const meetingsForField = (fieldName) => {
+        if (!fieldName) {
+          return allMeetings.slice();
+        }
+        return Array.isArray(meetingsByField[fieldName]) ? meetingsByField[fieldName].slice() : [];
+      };
+
+      const setupFilterPicker = ({
+        root,
+        valueInput,
+        trigger,
+        triggerLabel,
+        menu,
+        emptyLabel,
+        onChange,
+      }) => {
+        const close = () => {
+          menu.hidden = true;
+          trigger.setAttribute("aria-expanded", "false");
+        };
+
+        const open = () => {
+          menu.hidden = false;
+          trigger.setAttribute("aria-expanded", "true");
+        };
+
+        const setValue = (value, submit = true) => {
+          valueInput.value = value;
+          appendPickerLabel(triggerLabel, value, emptyLabel);
+          menu.querySelectorAll(".mobile-filter-picker-option").forEach((option) => {
+            option.classList.toggle("is-selected", option.dataset.value === value);
+          });
+          close();
+          if (submit) {
+            onChange(value);
+          }
+        };
+
+        const renderOptions = (options, selectedValue, extraSelected = "") => {
+          menu.replaceChildren();
+
+          const allOption = document.createElement("button");
+          allOption.type = "button";
+          allOption.className = "mobile-filter-picker-option";
+          allOption.dataset.value = "";
+          appendPickerLabel(allOption, "", emptyLabel);
+          menu.appendChild(allOption);
+
+          if (extraSelected && !options.includes(extraSelected)) {
+            const extraOption = document.createElement("button");
+            extraOption.type = "button";
+            extraOption.className = "mobile-filter-picker-option";
+            extraOption.dataset.value = extraSelected;
+            appendPickerLabel(extraOption, extraSelected, emptyLabel);
+            menu.appendChild(extraOption);
+          }
+
+          options.forEach((optionValue) => {
+            const option = document.createElement("button");
+            option.type = "button";
+            option.className = "mobile-filter-picker-option";
+            option.dataset.value = optionValue;
+            appendPickerLabel(option, optionValue, emptyLabel);
+            menu.appendChild(option);
+          });
+
+          let nextValue = selectedValue;
+          if (nextValue && !options.includes(nextValue) && nextValue !== extraSelected) {
+            nextValue = "";
+          }
+          setValue(nextValue, false);
+        };
+
+        trigger.addEventListener("click", () => {
+          if (menu.hidden) {
+            open();
+          } else {
+            close();
+          }
+        });
+
+        menu.addEventListener("click", (event) => {
+          const option = event.target.closest(".mobile-filter-picker-option");
+          if (!option) {
+            return;
+          }
+          setValue(option.dataset.value || "");
+        });
+
+        return { close, open, renderOptions, setValue };
+      };
+
+      let closeFieldMenu = () => {};
+      let closeMeetingMenu = () => {};
+
+      const meetingPickerApi = setupFilterPicker({
+        root: meetingPicker,
+        valueInput: meetingValue,
+        trigger: meetingTrigger,
+        triggerLabel: meetingTriggerLabel,
+        menu: meetingMenu,
+        emptyLabel: "All meetings",
+        onChange: () => {
+          form.requestSubmit();
+        },
+      });
+      closeMeetingMenu = meetingPickerApi.close;
+
+      const fieldPickerApi = setupFilterPicker({
+        root: fieldPicker,
+        valueInput: fieldValue,
+        trigger: fieldTrigger,
+        triggerLabel: fieldTriggerLabel,
+        menu: fieldMenu,
+        emptyLabel: "All fields",
+        onChange: (value) => {
+          meetingPickerApi.renderOptions(meetingsForField(value), "", "");
+          form.requestSubmit();
+        },
+      });
+      closeFieldMenu = fieldPickerApi.close;
+
+      fieldTrigger.addEventListener("click", () => {
+        if (fieldMenu.hidden) {
+          closeMeetingMenu();
+        }
+      });
+
+      meetingTrigger.addEventListener("click", () => {
+        if (meetingMenu.hidden) {
+          closeFieldMenu();
+        }
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!fieldPicker.contains(event.target)) {
+          closeFieldMenu();
+        }
+        if (!meetingPicker.contains(event.target)) {
+          closeMeetingMenu();
+        }
+      });
+
+      fieldPickerApi.renderOptions(allFields, selectedField, selectedField);
+      meetingPickerApi.renderOptions(meetingsForField(selectedField), selectedMeeting, selectedMeeting);
+    });
+  </script>
+</body>
+</html>

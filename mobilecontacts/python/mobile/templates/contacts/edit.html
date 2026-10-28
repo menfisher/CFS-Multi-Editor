@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "includes/mobile_head.html" %}
+  <title>Edit {{ contact.family_name }}{% if contact.given_name %}, {{ contact.given_name }}{% endif %}</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=46">
+</head>
+<body class="mobile-shell mobile-edit-page">
+  {% include "includes/mobile_busy_modal.html" %}
+  {% if is_mobile_editor and multi_editor_enabled %}
+    {% include "includes/mobile_editor_timeout_modal.html" %}
+  {% endif %}
+
+  {% set current_field_value = contact.fields_list[0] if contact.fields_list else (contact.fields_text or "") %}
+  {% set current_meeting_value = contact.meetings_list[0] if contact.meetings_list else (contact.meetings_text or "") %}
+  {% set phone_label_options = ["Mobile", "Home", "Work", "Nursing Home", "Custom"] %}
+  {% set email_label_options = ["Home", "Work", "School", "Other", "Custom"] %}
+  {% set address_label_options = ["Home", "Work", "Mail", "NH", "Custom"] %}
+  {% set relationship_label_options = ["Husband", "Wife", "Child", "Father", "Mother", "Brother", "Sister", "Friend", "Relative", "Partner", "Custom"] %}
+  {% macro label_select(name, options, value="") -%}
+    {% set current_value = value or "" %}
+    {% if current_value|lower in ["no label", "—", "-", "–", "__blank__"] %}
+      {% set current_value = "" %}
+    {% endif %}
+    {% for option in options %}
+      {% if current_value and current_value|lower == option|lower %}
+        {% set current_value = option %}
+      {% endif %}
+    {% endfor %}
+    {% if name == "phone_type" and current_value|lower == "nh" %}
+      {% set current_value = "Nursing Home" %}
+    {% endif %}
+    {% set is_custom_value = current_value and current_value not in options %}
+    <div class="mobile-edit-type-control" data-contact-type-control>
+      <input type="hidden" name="{{ name }}" value="{{ current_value }}" data-contact-type-hidden>
+      <select data-contact-type-select>
+        <option value="" data-blank-label="1" {% if not current_value %}selected{% endif %}></option>
+        {% for option in options %}
+          <option value="{{ option }}" {% if current_value == option or (option == "Custom" and is_custom_value) %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <div class="mobile-edit-custom-type-wrap" data-contact-type-custom-wrap>
+        <input
+          type="text"
+          class="mobile-edit-custom-type-input"
+          value="{% if is_custom_value %}{{ current_value }}{% endif %}"
+          placeholder="Custom label"
+          autocomplete="off"
+          data-contact-type-custom
+          {% if not is_custom_value %}disabled{% endif %}
+        >
+      </div>
+    </div>
+  {%- endmacro %}
+
+  <div class="mobile-app-scroll">
+  <form method="post" action="{{ edit_action_url }}" class="mobile-edit-form" id="mobile-contact-edit-form" enctype="multipart/form-data">
+    <input type="hidden" name="selected" value="{{ contact.selected or '' }}">
+    <input type="hidden" name="google_contact_id" value="{{ contact.google_contact_id or '' }}">
+    <input type="hidden" name="etag" value="{{ contact.etag or '' }}">
+    <input type="hidden" name="last_updated" value="{{ contact.last_updated or '' }}">
+    <input type="hidden" name="status" value="{{ contact.status or '' }}">
+    <input type="hidden" name="photo" value="{{ contact.photo or '' }}">
+    <input type="hidden" name="cropped_contact_photo" id="mobile-cropped-contact-photo" value="">
+
+    <header class="mobile-header mobile-edit-header">
+      <a class="mobile-back" href="{{ detail_url }}">&larr; Cancel</a>
+      <h1>Edit Contact</h1>
+      <p class="mobile-subtitle">{{ contact.family_name }}{% if contact.given_name %}, {{ contact.given_name }}{% endif %}</p>
+      {% if request.query_params.get('notice') == 'photo_error' %}
+        <p class="mobile-notice mobile-notice-error">{{ request.query_params.get('error') or 'Could not save the photo.' }}</p>
+      {% elif request.query_params.get('notice') == 'photo_removed' %}
+        <p class="mobile-notice mobile-notice-success">Photo removed. Google’s default letter avatar is now saved in the app.</p>
+      {% elif request.query_params.get('notice') == 'photo_removed_local' %}
+        <p class="mobile-notice mobile-notice-error">Photo updated in the app, but Google Contacts could not be updated. Try again when connected, or Sync.</p>
+      {% elif request.query_params.get('notice') == 'photo_already_clear' %}
+        <p class="mobile-notice">This contact already has no custom photo.</p>
+      {% endif %}
+    </header>
+
+    <section class="mobile-panel mobile-edit-section">
+      <h2>Photo</h2>
+      <div class="mobile-edit-photo-block">
+        <div class="mobile-edit-photo-preview" id="mobile-edit-photo-preview">
+          {% if contact.photo %}
+            <button
+              type="button"
+              class="mobile-edit-photo-button"
+              data-mobile-photo-lightbox
+              data-photo-src="{{ contact.photo_large or contact.photo }}"
+              data-photo-alt="{{ contact.family_name }}{% if contact.given_name %}, {{ contact.given_name }}{% endif %}"
+              aria-label="View larger photo"
+            >
+              <img class="mobile-edit-photo-image" src="{{ contact.photo }}" alt="" loading="eager" referrerpolicy="no-referrer">
+            </button>
+          {% else %}
+            <div class="mobile-list-avatar mobile-list-avatar-placeholder mobile-edit-photo-placeholder" aria-hidden="true">
+              {{ (contact.given_name or contact.family_name or "?")[:1]|upper }}
+            </div>
+          {% endif %}
+        </div>
+        <div class="mobile-edit-photo-upload">
+          <span class="mobile-edit-label">Upload photo</span>
+          <small>JPG, PNG, GIF, or WebP up to 8 MB. Pinch and drag to crop.</small>
+          <div class="mobile-edit-photo-file-row">
+            <input type="file" name="contact_photo_upload" accept="image/*">
+            {% if contact.photo %}
+              <button
+                type="submit"
+                class="mobile-button mobile-button-secondary mobile-edit-photo-remove"
+                formaction="{{ remove_photo_action_url }}"
+                formmethod="post"
+              >Remove</button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <h2>Identity</h2>
+      <div class="mobile-edit-fields">
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">Family name</span>
+          <input type="text" name="family_name" value="{{ contact.family_name or '' }}">
+        </label>
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">Given name</span>
+          <input type="text" name="given_name" value="{{ contact.given_name or '' }}">
+        </label>
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">Birthday</span>
+          <input type="text" name="birthday" value="{{ contact.birthday or '' }}" placeholder="MM/DD/YYYY or MM/DD" inputmode="numeric">
+        </label>
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">1 - Meeting home, 2 - Elder</span>
+          <input type="text" name="mtg_home_elder_flag" value="{{ contact.mtg_home_elder_flag or '' }}">
+        </label>
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">Meets in different state</span>
+          <select name="meets_in_state">
+            <option value="" {% if not contact.meets_in_state %}selected{% endif %}>None</option>
+            {% set contact_state_options = filters.states|default([]) %}
+            {% if contact.meets_in_state and contact.meets_in_state not in contact_state_options %}
+              <option value="{{ contact.meets_in_state }}" selected>{{ contact.meets_in_state }}</option>
+            {% endif %}
+            {% for item in contact_state_options %}
+              <option value="{{ item }}" {% if contact.meets_in_state == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="mobile-edit-checkbox">
+          <input type="checkbox" name="do_not_print" value="1" {% if contact.do_not_print %}checked{% endif %}>
+          <span>Do not print</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <h2>Assignments</h2>
+      <div class="mobile-edit-fields">
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">Field</span>
+          <select name="fields_text" id="mobile-edit-field">
+            <option value=""></option>
+            {% for item in filters.fields %}
+              <option value="{{ item }}" {% if current_field_value == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+            {% if current_field_value and current_field_value not in filters.fields %}
+              <option value="{{ current_field_value }}" selected>{{ current_field_value }}</option>
+            {% endif %}
+            <option value="__add_field__">+ Add Field</option>
+            <option value="__delete_field__">- Field</option>
+            <option value="__rename_field__">Rename Field</option>
+          </select>
+        </label>
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">Meeting</span>
+          <select name="meetings_text" id="mobile-edit-meeting">
+            <option value=""></option>
+            {% for item in filters.meetings %}
+              <option value="{{ item }}" {% if current_meeting_value == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+            {% if current_meeting_value and current_meeting_value not in filters.meetings %}
+              <option value="{{ current_meeting_value }}" selected>{{ current_meeting_value }}</option>
+            {% endif %}
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <div class="mobile-edit-section-header">
+        <h2>Phones</h2>
+        <button type="button" class="mobile-edit-add" data-add-row="phones">+ Add</button>
+      </div>
+      <div class="mobile-edit-repeatable" data-row-list="phones">
+        {% if contact.phones %}
+          {% for item in contact.phones %}
+            <div class="mobile-edit-row">
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Phone</span>
+                <input type="text" name="phone_value" value="{{ item.phone_value or '' }}" inputmode="tel">
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Label</span>
+                {{ label_select("phone_type", phone_label_options, item.phone_type) }}
+              </label>
+              <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="mobile-edit-row">
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Phone</span>
+              <input type="text" name="phone_value" value="" inputmode="tel">
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Label</span>
+              {{ label_select("phone_type", phone_label_options) }}
+            </label>
+            <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <div class="mobile-edit-section-header">
+        <h2>Emails</h2>
+        <button type="button" class="mobile-edit-add" data-add-row="emails">+ Add</button>
+      </div>
+      <div class="mobile-edit-repeatable" data-row-list="emails">
+        {% if contact.emails %}
+          {% for item in contact.emails %}
+            <div class="mobile-edit-row">
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Email</span>
+                <input type="email" name="email_value" value="{{ item.email_value or '' }}" inputmode="email">
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Label</span>
+                {{ label_select("email_type", email_label_options, item.email_type) }}
+              </label>
+              <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="mobile-edit-row">
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Email</span>
+              <input type="email" name="email_value" value="" inputmode="email">
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Label</span>
+              {{ label_select("email_type", email_label_options) }}
+            </label>
+            <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <div class="mobile-edit-section-header">
+        <h2>Relationships</h2>
+        <button type="button" class="mobile-edit-add" data-add-row="relationships">+ Add</button>
+      </div>
+      <div class="mobile-edit-repeatable" data-row-list="relationships">
+        {% if contact.relationships %}
+          {% for item in contact.relationships %}
+            <div class="mobile-edit-row">
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Name</span>
+                <input type="text" name="relationship_value" value="{{ item.relation_value or '' }}">
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Type</span>
+                {{ label_select("relationship_type", relationship_label_options, item.relation_type) }}
+              </label>
+              <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="mobile-edit-row">
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Name</span>
+              <input type="text" name="relationship_value" value="">
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Type</span>
+              {{ label_select("relationship_type", relationship_label_options) }}
+            </label>
+            <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <div class="mobile-edit-section-header">
+        <h2>Addresses</h2>
+        <button type="button" class="mobile-edit-add" data-add-row="addresses">+ Add</button>
+      </div>
+      <div class="mobile-edit-repeatable" data-row-list="addresses">
+        {% if contact.addresses %}
+          {% for item in contact.addresses %}
+            <div class="mobile-edit-row mobile-edit-row-address">
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Label</span>
+                {{ label_select("address_type", address_label_options, item.address_type) }}
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Coordinates</span>
+                <input type="text" name="coordinates" value="{{ item.coordinates or '' }}">
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Street address</span>
+                <input type="text" name="street_address" value="{{ item.street_address or '' }}">
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Street address 2</span>
+                <input type="text" name="extended_address" value="{{ item.extended_address or '' }}">
+              </label>
+              <div class="mobile-edit-address-city-row">
+                <label class="mobile-edit-field">
+                  <span class="mobile-edit-label">City</span>
+                  <input type="text" name="city" value="{{ item.city or '' }}">
+                </label>
+                <label class="mobile-edit-field mobile-edit-address-state">
+                  <span class="mobile-edit-label">State</span>
+                  <input type="text" name="region" value="{{ item.region or '' }}" maxlength="2" autocomplete="address-level1">
+                </label>
+                <label class="mobile-edit-field mobile-edit-address-zip">
+                  <span class="mobile-edit-label">ZIP</span>
+                  <input type="text" name="postal_code" value="{{ item.postal_code or '' }}" autocomplete="postal-code">
+                </label>
+              </div>
+              <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="mobile-edit-row mobile-edit-row-address">
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Label</span>
+              {{ label_select("address_type", address_label_options) }}
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Coordinates</span>
+              <input type="text" name="coordinates" value="">
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Street address</span>
+              <input type="text" name="street_address" value="">
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Street address 2</span>
+              <input type="text" name="extended_address" value="">
+            </label>
+            <div class="mobile-edit-address-city-row">
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">City</span>
+                <input type="text" name="city" value="">
+              </label>
+              <label class="mobile-edit-field mobile-edit-address-state">
+                <span class="mobile-edit-label">State</span>
+                <input type="text" name="region" value="" maxlength="2" autocomplete="address-level1">
+              </label>
+              <label class="mobile-edit-field mobile-edit-address-zip">
+                <span class="mobile-edit-label">ZIP</span>
+                <input type="text" name="postal_code" value="" autocomplete="postal-code">
+              </label>
+            </div>
+            <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <div class="mobile-edit-section-header">
+        <h2>Notes</h2>
+        <button type="button" class="contact-notes-info-button" id="contact-notes-info-button" aria-label="Notes print codes" title="Notes print codes">
+          <span aria-hidden="true">i</span>
+        </button>
+      </div>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Notes</span>
+        <textarea name="notes" rows="4" data-autogrow>{{ contact.notes or '' }}</textarea>
+      </label>
+    </section>
+
+    <section class="mobile-panel mobile-edit-section">
+      <div class="mobile-edit-section-header">
+        <h2>Custom fields</h2>
+        <button type="button" class="mobile-edit-add" data-add-row="custom-fields">+ Add</button>
+      </div>
+      <div class="mobile-edit-repeatable" data-row-list="custom-fields">
+        {% if contact.custom_fields %}
+          {% for item in contact.custom_fields %}
+            <div class="mobile-edit-row">
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Field</span>
+                <input type="text" name="custom_field_type" value="{{ item.field_type or '' }}">
+              </label>
+              <label class="mobile-edit-field">
+                <span class="mobile-edit-label">Value</span>
+                <textarea name="custom_field_value" rows="1" data-autogrow>{{ item.field_value or '' }}</textarea>
+              </label>
+              <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="mobile-edit-row">
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Field</span>
+              <input type="text" name="custom_field_type" value="">
+            </label>
+            <label class="mobile-edit-field">
+              <span class="mobile-edit-label">Value</span>
+              <textarea name="custom_field_value" rows="1" data-autogrow></textarea>
+            </label>
+            <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+  </form>
+  </div>
+
+  {% include "includes/mobile_assignment_modal.html" %}
+
+  <div class="mobile-app-footer mobile-edit-actions">
+    <a class="mobile-button mobile-button-secondary" href="{{ detail_url }}">Cancel</a>
+    <button type="submit" class="mobile-button" form="mobile-contact-edit-form">Save Contact</button>
+  </div>
+
+  <template id="mobile-edit-template-phones">
+    <div class="mobile-edit-row">
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Phone</span>
+        <input type="text" name="phone_value" value="" inputmode="tel">
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Label</span>
+        {{ label_select("phone_type", phone_label_options) }}
+      </label>
+      <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+    </div>
+  </template>
+
+  <template id="mobile-edit-template-emails">
+    <div class="mobile-edit-row">
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Email</span>
+        <input type="email" name="email_value" value="" inputmode="email">
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Label</span>
+        {{ label_select("email_type", email_label_options) }}
+      </label>
+      <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+    </div>
+  </template>
+
+  <template id="mobile-edit-template-relationships">
+    <div class="mobile-edit-row">
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Name</span>
+        <input type="text" name="relationship_value" value="">
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Type</span>
+        {{ label_select("relationship_type", relationship_label_options) }}
+      </label>
+      <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+    </div>
+  </template>
+
+  <template id="mobile-edit-template-addresses">
+    <div class="mobile-edit-row mobile-edit-row-address">
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Label</span>
+        {{ label_select("address_type", address_label_options) }}
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Coordinates</span>
+        <input type="text" name="coordinates" value="">
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Street address</span>
+        <input type="text" name="street_address" value="">
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Street address 2</span>
+        <input type="text" name="extended_address" value="">
+      </label>
+      <div class="mobile-edit-address-city-row">
+        <label class="mobile-edit-field">
+          <span class="mobile-edit-label">City</span>
+          <input type="text" name="city" value="">
+        </label>
+        <label class="mobile-edit-field mobile-edit-address-state">
+          <span class="mobile-edit-label">State</span>
+          <input type="text" name="region" value="" maxlength="2" autocomplete="address-level1">
+        </label>
+        <label class="mobile-edit-field mobile-edit-address-zip">
+          <span class="mobile-edit-label">ZIP</span>
+          <input type="text" name="postal_code" value="" autocomplete="postal-code">
+        </label>
+      </div>
+      <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+    </div>
+  </template>
+
+  <template id="mobile-edit-template-custom-fields">
+    <div class="mobile-edit-row">
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Field</span>
+        <input type="text" name="custom_field_type" value="">
+      </label>
+      <label class="mobile-edit-field">
+        <span class="mobile-edit-label">Value</span>
+        <textarea name="custom_field_value" rows="1" data-autogrow></textarea>
+      </label>
+      <button type="button" class="mobile-edit-remove" data-remove-row>Remove</button>
+    </div>
+  </template>
+
+  <dialog class="mobile-assignment-modal" id="contact-notes-info-modal" aria-labelledby="contact-notes-info-title">
+    <form method="dialog" class="mobile-assignment-modal-panel">
+      <h2 class="mobile-assignment-modal-title" id="contact-notes-info-title">Notes print codes</h2>
+      <p class="mobile-assignment-modal-copy">Additional info can be printed with the contact with these codes: <strong>pb/</strong> or <strong>pa/</strong>.</p>
+      <p class="mobile-assignment-modal-copy"><strong>pb/</strong> = print before address (same line as name if room)</p>
+      <p class="mobile-assignment-modal-copy"><strong>pa/</strong> = print after address</p>
+      <p class="mobile-assignment-modal-copy">Example: <code>pb/ Tom is son</code> will print (Tom is son) before the address lines.</p>
+      <div class="mobile-assignment-modal-actions">
+        <button type="submit" class="mobile-button" value="close">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="mobile-photo-crop-modal" id="mobile-contact-photo-crop-modal" aria-label="Crop contact photo">
+    <div class="mobile-photo-crop-panel">
+      <h2>Crop photo</h2>
+      <div class="mobile-photo-crop-stage">
+        <canvas id="mobile-contact-photo-crop-canvas" width="320" height="320"></canvas>
+        <div class="mobile-photo-crop-mask" aria-hidden="true"></div>
+      </div>
+      <label class="mobile-photo-crop-zoom">
+        <span>Zoom</span>
+        <input type="range" id="mobile-contact-photo-crop-zoom" min="1" max="3" step="0.01" value="1">
+      </label>
+      <div class="mobile-photo-crop-actions">
+        <button type="button" class="mobile-button mobile-button-secondary" id="mobile-contact-photo-crop-cancel">Cancel</button>
+        <button type="button" class="mobile-button" id="mobile-contact-photo-crop-apply">Use Crop</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/static/js/mobile-photo-lightbox.js?v=1"></script>
+  <script src="/static/js/mobile-edit-photo.js?v=1"></script>
+  <script src="/static/js/mobile-edit-assignments.js?v=1"></script>
+  <script>
+    document.getElementById("contact-notes-info-button")?.addEventListener("click", () => {
+      const notesInfoModal = document.getElementById("contact-notes-info-modal");
+      if (typeof notesInfoModal?.showModal === "function") notesInfoModal.showModal();
+    });
+    const MOBILE_BLANK_LABELS = new Set(["", "__blank__", "no label", "—", "-", "–"]);
+
+    function mobileIsBlankLabelValue(value) {
+      return MOBILE_BLANK_LABELS.has(String(value || "").trim().toLowerCase());
+    }
+
+    function mobileSelectedOption(select) {
+      if (!select || select.selectedIndex < 0) return null;
+      return select.options[select.selectedIndex] || null;
+    }
+
+    function mobileIsBlankOption(option) {
+      if (!option) return true;
+      if (option.getAttribute("data-blank-label") === "1") return true;
+      if (option.index === 0) return true;
+      return mobileIsBlankLabelValue(option.value) || mobileIsBlankLabelValue(option.textContent);
+    }
+
+    function mobileSyncTypeControl(control) {
+      const select = control?.querySelector("[data-contact-type-select]");
+      const customWrap = control?.querySelector("[data-contact-type-custom-wrap]");
+      const customInput = control?.querySelector("[data-contact-type-custom]");
+      const hiddenInput = control?.querySelector("[data-contact-type-hidden]");
+      if (!select || !customWrap || !customInput || !hiddenInput) return;
+
+      const option = mobileSelectedOption(select);
+      const isBlank = mobileIsBlankOption(option);
+      const isCustom = Boolean(option && !isBlank && option.value === "Custom");
+
+      customWrap.style.setProperty("display", isCustom ? "block" : "none", "important");
+
+      if (isCustom) {
+        customInput.disabled = false;
+        hiddenInput.value = customInput.value.trim() || "Custom";
+        return;
+      }
+
+      customInput.disabled = true;
+      customInput.value = "";
+      hiddenInput.value = isBlank ? "" : String(option?.value || "").trim();
+    }
+
+    function mobileBindTypeControl(control) {
+      if (!control || control.dataset.contactTypeBound === "true") return;
+      control.dataset.contactTypeBound = "true";
+
+      const select = control.querySelector("[data-contact-type-select]");
+      const customInput = control.querySelector("[data-contact-type-custom]");
+
+      const handleSelectUpdate = () => {
+        const option = mobileSelectedOption(select);
+        if (mobileIsBlankOption(option) && select?.options[0]) {
+          select.options[0].selected = true;
+        }
+        mobileSyncTypeControl(control);
+        window.setTimeout(() => mobileSyncTypeControl(control), 50);
+        window.setTimeout(() => mobileSyncTypeControl(control), 200);
+        if (mobileSelectedOption(select)?.value === "Custom") {
+          customInput?.focus();
+        }
+      };
+
+      select?.addEventListener("change", handleSelectUpdate);
+      select?.addEventListener("blur", handleSelectUpdate);
+      customInput?.addEventListener("input", () => mobileSyncTypeControl(control));
+      mobileSyncTypeControl(control);
+    }
+
+    function mobileBindTypeControls(root = document) {
+      root.querySelectorAll("[data-contact-type-control]").forEach(mobileBindTypeControl);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const editForm = document.querySelector(".mobile-edit-form");
+      const fieldSelect = document.getElementById("mobile-edit-field");
+      const meetingSelect = document.getElementById("mobile-edit-meeting");
+      const meetingsByField = {{ filters.meetings_by_field|default({})|tojson }};
+      const allMeetings = {{ filters.meetings|default([])|tojson }};
+      const initialMeetingValue = {{ current_meeting_value|tojson }};
+
+      window.MobileEditAssignments?.init({
+        fieldSelect,
+        meetingSelect,
+        meetingsByField,
+        allMeetings,
+        initialMeetingValue,
+      });
+
+      const autoGrow = (textarea) => {
+        if (!textarea) return;
+        textarea.style.height = "auto";
+        textarea.style.height = `${textarea.scrollHeight}px`;
+      };
+
+      document.querySelectorAll("textarea[data-autogrow]").forEach((textarea) => {
+        autoGrow(textarea);
+        textarea.dataset.autogrowBound = "true";
+        textarea.addEventListener("input", () => autoGrow(textarea));
+      });
+
+      const syncTypeControl = mobileSyncTypeControl;
+      const bindTypeControls = mobileBindTypeControls;
+
+      bindTypeControls();
+
+      document.querySelectorAll("[data-add-row]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.addRow;
+          const template = document.getElementById(`mobile-edit-template-${key}`);
+          const target = document.querySelector(`[data-row-list="${key}"]`);
+          if (!template || !target) return;
+          const fragment = template.content.cloneNode(true);
+          target.appendChild(fragment);
+          target.querySelectorAll("textarea[data-autogrow]").forEach((textarea) => {
+            autoGrow(textarea);
+            if (!textarea.dataset.autogrowBound) {
+              textarea.dataset.autogrowBound = "true";
+              textarea.addEventListener("input", () => autoGrow(textarea));
+            }
+          });
+          bindTypeControls(target);
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        const removeButton = event.target.closest("[data-remove-row]");
+        if (!removeButton) return;
+        const row = removeButton.closest(".mobile-edit-row");
+        if (!row) return;
+        const list = row.closest("[data-row-list]");
+        row.remove();
+        if (list && list.children.length === 0) {
+          const addButton = document.querySelector(`[data-add-row="${list.dataset.rowList}"]`);
+          addButton?.click();
+        }
+      });
+
+      editForm?.addEventListener("submit", () => {
+        bindTypeControls();
+        document.querySelectorAll("[data-contact-type-control]").forEach(syncTypeControl);
+      });
+    });
+  </script>
+  <script src="/static/js/mobile-busy.js?v=5"></script>
+  {% if is_mobile_editor and multi_editor_enabled %}
+    <script src="/static/js/mobile-editor-timeout.js?v=1"></script>
+  {% endif %}
+</body>
+</html>

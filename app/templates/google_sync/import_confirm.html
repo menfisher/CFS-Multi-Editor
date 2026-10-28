@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Import | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set backup_files = backup_files|default({"contacts": [], "meetingdata": []}) %}
+  <div class="import-page">
+    {% if notice_message %}
+      <section class="panel google-sync-banner google-sync-banner-warn" id="import-temporary-notice" data-auto-hide-ms="4200">
+        {{ notice_message }}
+      </section>
+    {% endif %}
+
+    <div class="import-card-grid">
+      <section class="panel import-card">
+        <div class="import-card-title" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+          <h2>Sync from Google Contacts</h2>
+        </div>
+        <div class="import-card-body">
+          <p class="google-import-warning-copy">
+            Merge only contacts that changed in Google into the app. Local contacts stay in place and Drive bootstrap flags are preserved. Use this after phone edits.
+          </p>
+          <div class="editor-actions-links">
+            <a class="contact-card-button contact-card-button-cancel" href="{{ return_to }}">Cancel</a>
+            <form method="post" action="/google/sync-changes" data-busy-modal-title="Syncing from Google Contacts" data-busy-modal-copy="Merging Google contact changes. This can take several minutes. Leave this window open until the browser tab spinner stops.">
+              <input type="hidden" name="return_to" value="{{ return_to }}">
+              <button type="submit" class="contact-card-button contact-card-button-edit">Sync from Google</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel import-card">
+        <div class="import-card-title" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+          <h2>Import from Google Contacts</h2>
+        </div>
+        <div class="import-card-body">
+          <h3>Warning</h3>
+          <p class="google-import-warning-copy">
+            This will erase all contacts currently stored in the app and replace them with contacts from the Google account that is signed in.
+          </p>
+          <dl class="meta-list">
+            <div><dt>Current contacts in app</dt><dd>{{ contact_count }}</dd></div>
+            <div><dt>Configured Google account</dt><dd>{{ account.email or "Not configured yet" }}</dd></div>
+            <div><dt>Connection status</dt><dd>{{ account.status|replace('_', ' ') }}</dd></div>
+          </dl>
+          <div class="editor-actions-links">
+            <a class="contact-card-button contact-card-button-cancel" href="{{ return_to }}">Cancel</a>
+            <form method="post" action="/google/import" data-busy-modal-title="Importing from Google Contacts" data-busy-modal-copy="Erasing local contacts and importing from Google Contacts.">
+              <input type="hidden" name="return_to" value="{{ return_to }}">
+              <button type="submit" class="contact-card-button contact-card-button-delete">Erase App Contacts And Import</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel import-card">
+        <div class="import-card-title" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+          <h2>Import from backup in Google Drive</h2>
+        </div>
+        <div class="import-card-body">
+          <h3>Warning</h3>
+          <p class="google-import-warning-copy">
+            This will erase the selected data currently stored in the app and replace it with data from the selected Google Drive backup.
+          </p>
+          <dl class="meta-list">
+            <div><dt>Configured Google account</dt><dd>{{ account.email or "Not configured yet" }}</dd></div>
+            <div><dt>Connection status</dt><dd>{{ account.status|replace('_', ' ') }}</dd></div>
+            <div><dt>Drive scope granted</dt><dd>{{ "Yes" if account.drive_scope_ready else "No" }}</dd></div>
+          </dl>
+
+          {% if backup_error_message %}
+            <p class="google-import-warning-copy">{{ backup_error_message }}</p>
+          {% endif %}
+
+          <form method="post" action="/google/import/backup" id="drive-backup-import-form" data-busy-modal-title="Importing from Drive" data-busy-modal-copy="Erasing local data and restoring the selected Google Drive backup.">
+            <input type="hidden" name="backup_kind" id="drive-backup-import-kind" value="">
+
+            <div class="backup-import-choice-group">
+              <h4>Contacts</h4>
+              {% for file in backup_files.contacts %}
+                <label class="backup-import-choice">
+                  <input type="checkbox" name="backup_file_id" value="{{ file.id }}" data-backup-kind="contacts">
+                  <span>
+                    <strong>{{ file.name }}</strong>
+                    <small>{{ file.created_time or file.modified_time }}</small>
+                  </span>
+                </label>
+              {% else %}
+                <p class="muted">No Contacts backup files found in Drive.</p>
+              {% endfor %}
+            </div>
+
+            <div class="backup-import-choice-group">
+              <h4>MeetingData</h4>
+              {% for file in backup_files.meetingdata %}
+                <label class="backup-import-choice">
+                  <input type="checkbox" name="backup_file_id" value="{{ file.id }}" data-backup-kind="meetingdata">
+                  <span>
+                    <strong>{{ file.name }}</strong>
+                    <small>{{ file.created_time or file.modified_time }}</small>
+                  </span>
+                </label>
+              {% else %}
+                <p class="muted">No MeetingData backup files found in Drive.</p>
+              {% endfor %}
+            </div>
+
+            <div class="editor-actions-links">
+              <a class="contact-card-button contact-card-button-cancel" href="{{ return_to }}">Cancel</a>
+              <button type="submit" class="contact-card-button contact-card-button-delete" id="drive-backup-import-button" disabled>Erase Selected Data And Import Backup</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const temporaryNotice = document.getElementById("import-temporary-notice");
+      if (temporaryNotice) {
+        const hideDelay = Number.parseInt(temporaryNotice.dataset.autoHideMs || "0", 10);
+        if (hideDelay > 0) {
+          window.setTimeout(() => {
+            if (temporaryNotice.isConnected) {
+              temporaryNotice.remove();
+            }
+          }, hideDelay);
+        }
+      }
+
+      const importForm = document.getElementById("drive-backup-import-form");
+      const importKindInput = document.getElementById("drive-backup-import-kind");
+      const importButton = document.getElementById("drive-backup-import-button");
+      const checkboxes = Array.from(document.querySelectorAll('[name="backup_file_id"][data-backup-kind]'));
+      if (!importForm || !importKindInput || !importButton || !checkboxes.length) return;
+
+      const syncSelection = (selectedCheckbox) => {
+        checkboxes.forEach((checkbox) => {
+          if (checkbox !== selectedCheckbox) {
+            checkbox.checked = false;
+          }
+        });
+        importKindInput.value = selectedCheckbox?.checked ? selectedCheckbox.dataset.backupKind || "" : "";
+        importButton.disabled = !selectedCheckbox?.checked;
+      };
+
+      checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          syncSelection(checkbox);
+        });
+      });
+    });
+  </script>
+{% endblock %}

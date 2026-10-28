@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ContactsFreeShare — User Manual</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #5b6770;
+    --accent: #5b4b9a;
+    --accent-soft: #efecf8;
+    --line: #e3e8ec;
+    --code-bg: #f5f7f9;
+    --warn-bg: #fff7e6;
+    --warn-border: #f0c66b;
+    --tip-bg: #eef7ef;
+    --tip-border: #9ccfa0;
+    --ph-bg: #f7f4fc;
+    --ph-border: #c4b6e6;
+    --ph-ink: #6b5b95;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; color: var(--ink); background: #fbfcfd; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 18px; line-height: 1.7; }
+  .page { max-width: 780px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1, h2, h3, .cover-title, nav, .badge, code, pre, table, .callout-label, .fig figcaption, .fig .ph { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .cover { text-align: center; padding: 64px 0 48px; border-bottom: 1px solid var(--line); margin-bottom: 36px; }
+  .cover .badge { display: inline-block; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 6px 14px; border-radius: 999px; margin-bottom: 24px; font-weight: 600; }
+  .cover-title { font-size: 42px; line-height: 1.12; margin: 0 0 14px; font-weight: 700; letter-spacing: -0.5px; }
+  .cover-sub { font-size: 19px; color: var(--muted); margin: 0 auto; max-width: 540px; font-style: italic; }
+  nav.toc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px 28px; margin: 0 0 44px; }
+  nav.toc h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding-left: 22px; }
+  nav.toc li { margin: 7px 0; font-size: 16px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  h2.chapter { font-size: 27px; margin: 56px 0 6px; padding-top: 20px; border-top: 3px solid var(--accent); font-weight: 700; letter-spacing: -0.3px; }
+  h2.chapter .num { display: block; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 2px; }
+  h3 { font-size: 20px; margin: 32px 0 4px; font-weight: 600; }
+  p { margin: 14px 0; }
+  ul, ol.steps { margin: 14px 0; padding-left: 26px; }
+  li { margin: 7px 0; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 14.5px; word-break: break-word; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 14.5px; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; }
+  .callout { border-radius: 10px; padding: 16px 18px; margin: 22px 0; font-size: 16.5px; }
+  .callout p { margin: 8px 0; }
+  .callout .callout-label { display: block; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; }
+  .callout.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .callout.warn .callout-label { color: #9a6700; }
+  .callout.tip  { background: var(--tip-bg);  border: 1px solid var(--tip-border); }
+  .callout.tip .callout-label { color: #2f7d3a; }
+  table { border-collapse: collapse; width: 100%; margin: 22px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; }
+  td code { font-size: 13.5px; }
+  .menuname { font-weight: 600; color: var(--accent); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .lead { font-size: 19.5px; color: #33414b; }
+  .footer-note { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; font-style: italic; }
+
+  /* Figures / screenshot slots */
+  .fig { margin: 26px 0; }
+  .fig img { width: 100%; border: 1px solid var(--line); border-radius: 10px; display: block; }
+  .fig .ph { border: 2px dashed var(--ph-border); background: var(--ph-bg); border-radius: 10px; padding: 26px 20px; text-align: center; color: var(--ph-ink); font-size: 15px; }
+  .fig .ph .ph-tag { display: inline-block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; background: #fff; border: 1px solid var(--ph-border); border-radius: 999px; padding: 3px 10px; margin-bottom: 10px; }
+  .fig .ph .ph-desc { display: block; margin: 4px 0 10px; }
+  .fig .ph code { background: #fff; }
+  .fig figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; font-style: italic; }
+
+  @media print {
+    body { background: #fff; font-size: 12pt; }
+    .page { max-width: none; padding: 0 6mm; }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: avoid; }
+    nav.toc { page-break-after: always; }
+    pre, table, .callout, .fig { page-break-inside: avoid; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+  @media (max-width: 520px) {
+    body { font-size: 17px; }
+    .cover-title { font-size: 32px; }
+    .page { padding: 32px 18px 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="cover">
+    <span class="badge">User Manual</span>
+    <h1 class="cover-title">ContactsFreeShare</h1>
+    <p class="cover-sub">How to run the desktop app and use every menu — written in plain
+    language, one feature at a time.</p>
+  </header>
+
+  <p class="lead">This manual explains how to start ContactsFreeShare and what each menu and
+  page does. You can read it cover to cover, or jump straight to a chapter from the contents
+  below. Throughout, the <span class="menuname">menu names</span> appear in color so they're
+  easy to spot, and figures show you where things are on screen.</p>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#ch1">Getting started: launching the app</a></li>
+      <li><a href="#ch2">The menu bar at a glance</a></li>
+      <li><a href="#ch3">Google Connect and the Editor system</a></li>
+      <li><a href="#ch4">The ContactsFreeShare menu (About, Settings, Update, Revisions)</a></li>
+      <li><a href="#ch5">The File menu: Import, Export, Backup</a></li>
+      <li><a href="#ch6">Contacts: the main list</a></li>
+      <li><a href="#ch7">Viewing and editing a contact</a></li>
+      <li><a href="#ch8">Meeting Data</a></li>
+      <li><a href="#ch9">Address Book</a></li>
+      <li><a href="#ch10">Field List</a></li>
+      <li><a href="#ch11">Pending Edits</a></li>
+      <li><a href="#ch12">Edit Lists (history)</a></li>
+      <li><a href="#ch13">Share Contacts</a></li>
+      <li><a href="#ch14">Settings, explained</a></li>
+      <li><a href="#ch15">Words worth knowing (glossary)</a></li>
+    </ol>
+  </nav>
+
+  <!-- ===================== CHAPTER 1 ===================== -->
+  <h2 class="chapter" id="ch1"><span class="num">Chapter One</span>Getting started: launching the app</h2>
+
+  <p>ContactsFreeShare runs on your own computer and shows itself inside your web browser.
+  Nothing is published to the internet; the browser is simply the window the app uses.</p>
+
+  <p>To start it, open the <strong>ContactsFreeShare</strong> folder and double-click
+  <strong>Start ContactsFreeShare.command</strong> on a Mac, or <strong>Start
+  ContactsFreeShare</strong> on Windows. (If you installed the Desktop shortcut, you can use
+  that icon instead.) A moment later your browser opens automatically to the address
+  <code>http://127.0.0.1:8000</code>, which just means "this computer." If the app is already
+  running, double-clicking again simply brings the existing window forward instead of
+  starting a second copy.</p>
+
+  <p>The first screen you land on is <span class="menuname">Google Connect</span>, because
+  almost everything the app does begins with connecting your Google account. We'll cover that
+  in Chapter Three. To close the app, close the browser tab and quit the launcher window.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: where your information lives</span>
+    <p>Your contacts, photos, and settings are stored privately on your own computer in a
+    ContactsFreeShare folder (on a Mac, inside <em>Library → Application Support</em>). They
+    are only sent to Google when you choose to upload — see Chapter Three.</p>
+  </div>
+
+  <div class="fig">
+    <img src="manual-images/01-main-window.png" alt="The ContactsFreeShare window with the top menu bar"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 1 — screenshot needed</span>
+      <span class="ph-desc">The whole app window, showing the top menu bar across the top
+      (ContactsFreeShare, Google Connect, File, Contacts, Meeting Data, Address Book, Field
+      List, Pending Edits, Edit Lists). The Contacts page in the background is ideal.</span>
+      <code>manual-images/01-main-window.png</code>
+    </div>
+    <figcaption>Figure 1. The main window and the menu bar that appears on every page.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 2 ===================== -->
+  <h2 class="chapter" id="ch2"><span class="num">Chapter Two</span>The menu bar at a glance</h2>
+
+  <p>The strip across the top of every page is your map of the whole app. Here is what each
+  item is for; the rest of the manual takes them one by one.</p>
+
+  <table>
+    <tr><th>Menu</th><th>What it's for</th></tr>
+    <tr><td><span class="menuname">ContactsFreeShare</span></td><td>The app menu — About, Settings, Update App, and App Revisions (Chapter Four).</td></tr>
+    <tr><td><span class="menuname">Google Connect</span></td><td>Sign in to Google, sign in as the Editor, and upload your changes (Chapter Three).</td></tr>
+    <tr><td><span class="menuname">File</span></td><td>Import contacts, export them, and make backups (Chapter Five).</td></tr>
+    <tr><td><span class="menuname">Contacts</span></td><td>The main list of everyone, with search and filters (Chapter Six).</td></tr>
+    <tr><td><span class="menuname">Meeting Data</span></td><td>Printable meeting-directory layouts (Chapter Eight).</td></tr>
+    <tr><td><span class="menuname">Address Book</span></td><td>Design and print a PDF address book (Chapter Nine).</td></tr>
+    <tr><td><span class="menuname">Field List</span></td><td>Build and print custom field/meeting lists (Chapter Ten).</td></tr>
+    <tr><td><span class="menuname">Pending Edits</span></td><td>Change requests waiting to be applied (Chapter Eleven).</td></tr>
+    <tr><td><span class="menuname">Edit Lists</span></td><td>A history of edits made to contacts and meeting data (Chapter Twelve).</td></tr>
+    <tr><td><span class="menuname">Share Contacts</span></td><td>Opens the separate sharing website (Chapter Thirteen). Appears only when you're signed in and allowed to edit.</td></tr>
+  </table>
+
+  <p>Some menus are simple links that open a page; others (the <span class="menuname">ContactsFreeShare</span>,
+  <span class="menuname">File</span>, and <span class="menuname">Edit Lists</span> menus) open
+  a small dropdown when you hover or click them.</p>
+
+  <!-- ===================== CHAPTER 3 ===================== -->
+  <h2 class="chapter" id="ch3"><span class="num">Chapter Three</span>Google Connect and the Editor system</h2>
+
+  <p>This is the most important page to understand, because it controls how your contacts move
+  between the app and Google. Its full title on screen is <strong>Google Connect
+  Settings</strong>, and it's where you connect your account, sign in to make changes, and
+  push your work back to Google.</p>
+
+  <div class="fig">
+    <img src="manual-images/03-google-connect.png" alt="The Google Connect page"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 2 — screenshot needed</span>
+      <span class="ph-desc">The Google Connect page after connecting, showing the green
+      "Connected" pill, the Connection panel, and the Sync State panel.</span>
+      <code>manual-images/03-google-connect.png</code>
+    </div>
+    <figcaption>Figure 2. The Google Connect page.</figcaption>
+  </div>
+
+  <h3>Connecting your Google account</h3>
+  <p>If you're not connected yet, click <strong>Sign In With Google</strong> and approve
+  access in the window that appears. Once connected, a green <strong>Connected</strong> badge
+  is shown. If you ever need to use a different account, use <strong>Reconnect / Switch
+  Account</strong>, and <strong>Disconnect</strong> removes the connection entirely.</p>
+
+  <h3>One Editor at a time</h3>
+  <p>ContactsFreeShare is built so that several people can share one set of contacts safely.
+  To prevent two people from overwriting each other, only one person can be the
+  <strong>Editor</strong> — the person allowed to make changes — at any moment. Everyone else
+  can still look around in what the app calls <strong>NO-EDIT mode</strong>.</p>
+
+  <p>How sign-in looks depends on a single setting (Chapter Fourteen):</p>
+  <ul>
+    <li><strong>If the app is set for a single person</strong>, connecting your Google account
+    is all you need; you can edit right away.</li>
+    <li><strong>If the app is set for multiple Editors</strong>, you also choose an
+    <strong>Access role</strong>, type your two-letter <strong>initials</strong>, and — for
+    the full <strong>Editor</strong> role — enter the shared <strong>Editor</strong> password,
+    then click <strong>Sign in</strong>. Lesser roles let helpers work only on the Field List,
+    Address Book, or Pending Edits without touching contacts.</li>
+  </ul>
+
+  <div class="fig">
+    <img src="manual-images/04-editor-signin.png" alt="The Editor sign-in area"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 3 — screenshot needed (only if you use multiple Editors)</span>
+      <span class="ph-desc">The Editor sign-in area on Google Connect: the Access role choice,
+      the initials box, and the Password box with the Sign in button.</span>
+      <code>manual-images/04-editor-signin.png</code>
+    </div>
+    <figcaption>Figure 3. Signing in as the Editor (multi-Editor mode only).</figcaption>
+  </div>
+
+  <p>When you sign in as the Editor, the app reserves the "edit lock," pulls down the latest
+  shared information, and lets you make changes. If someone else is already the Editor, you'll
+  see a notice telling you who it is and how long until their session ends; until then the app
+  stays in NO-EDIT mode. If a previous Editor left without signing out, you may be offered the
+  chance to <strong>Take Over</strong> the stale session.</p>
+
+  <h3>The Editor time limit</h3>
+  <p>An Editor session lasts a set length of time (you choose it in Settings). Two minutes
+  before it ends, a box titled <strong>Editor Time Almost Up</strong> appears with a
+  countdown. Click <strong>Add 15 minutes</strong> to keep working, or <strong>Sign
+  out</strong> to finish. If the time runs out, the app signs the Editor out for you so the
+  next person can take a turn.</p>
+
+  <div class="fig">
+    <img src="manual-images/05-editor-timeout.png" alt="The Editor Time Almost Up box"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 4 — screenshot needed (optional)</span>
+      <span class="ph-desc">The "Editor Time Almost Up" pop-up with its countdown and the
+      "Sign out" and "Add 15 minutes" buttons.</span>
+      <code>manual-images/05-editor-timeout.png</code>
+    </div>
+    <figcaption>Figure 4. The Editor time-limit warning.</figcaption>
+  </div>
+
+  <h3>Upload: sending your work to Google</h3>
+  <p>As you edit, your changes are saved on your computer first. When you're ready to publish
+  them, click <strong>Upload</strong> (it appears on both the Google Connect and Contacts
+  pages whenever there's something waiting). Upload sends your contact changes to Google
+  Contacts and saves the shared settings, lists, and layouts to Google Drive. Signing out as
+  the Editor also uploads any pending contact edits before releasing the lock.</p>
+
+  <!-- ===================== CHAPTER 4 ===================== -->
+  <h2 class="chapter" id="ch4"><span class="num">Chapter Four</span>The ContactsFreeShare menu</h2>
+
+  <p>The first menu, named after the app itself, holds four items.</p>
+
+  <div class="fig">
+    <img src="manual-images/02-brand-menu.png" alt="The ContactsFreeShare menu open"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 5 — screenshot needed</span>
+      <span class="ph-desc">The ContactsFreeShare menu opened, showing About, Settings, Update
+      App, and App Revisions.</span>
+      <code>manual-images/02-brand-menu.png</code>
+    </div>
+    <figcaption>Figure 5. The ContactsFreeShare menu.</figcaption>
+  </div>
+
+  <p><strong>About</strong> opens a small window showing the app's name and version number —
+  handy if you're ever asked which version you're running.</p>
+
+  <p><strong>Settings</strong> opens the main settings page, where you control colors, the
+  Editor system, the shared Drive folder, and the connection to the sharing website. Because
+  there's a lot there, it has its own chapter (Chapter Fourteen).</p>
+
+  <p><strong>Update App</strong> checks whether a newer version of ContactsFreeShare is
+  available. It shows a brief "Checking for updates" message and then takes you to the App
+  Revisions page with the result.</p>
+
+  <p><strong>App Revisions</strong> shows a dated list of what changed in each version. If an
+  update is available, a panel here lets you <strong>Install</strong> or <strong>Download</strong>
+  the new version. Installing closes the app and replaces it with the newer one.</p>
+
+  <!-- ===================== CHAPTER 5 ===================== -->
+  <h2 class="chapter" id="ch5"><span class="num">Chapter Five</span>The File menu: Import, Export, Backup</h2>
+
+  <p>The <span class="menuname">File</span> menu is where contacts come in and go out.</p>
+
+  <div class="fig">
+    <img src="manual-images/06-file-menu.png" alt="The File menu open"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 6 — screenshot needed</span>
+      <span class="ph-desc">The File menu opened, with Import, and the Export and Backup
+      sub-menus expanded if possible.</span>
+      <code>manual-images/06-file-menu.png</code>
+    </div>
+    <figcaption>Figure 6. The File menu.</figcaption>
+  </div>
+
+  <h3>Import</h3>
+  <p><strong>Import</strong> opens a page with three choices. <strong>Sync from Google
+  Contacts</strong> is the gentle one: it brings in only the contacts that changed in your
+  Google account and leaves everything else untouched. <strong>Import from Google
+  Contacts</strong> is the heavy one: it erases the app's contacts and replaces them with a
+  fresh copy from Google — useful when starting over, but it asks you to confirm by clicking
+  <strong>Erase App Contacts And Import</strong>. The third choice restores
+  <strong>Contacts</strong> or <strong>MeetingData</strong> from a backup you previously saved
+  in Google Drive.</p>
+
+  <div class="fig">
+    <img src="manual-images/07-import.png" alt="The Import page"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 7 — screenshot needed (optional)</span>
+      <span class="ph-desc">The Import page showing the three cards: Sync from Google, Import
+      from Google (the erase-and-replace one), and Import from a Drive backup.</span>
+      <code>manual-images/07-import.png</code>
+    </div>
+    <figcaption>Figure 7. The three ways to bring contacts in.</figcaption>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-label">Heads-up</span>
+    <p>"Import from Google Contacts" and "Erase Selected Data And Import Backup" both
+    <em>replace</em> what's in the app. When in doubt, use "Sync from Google Contacts," which
+    only merges changes.</p>
+  </div>
+
+  <h3>Export</h3>
+  <p><strong>Export</strong> saves your contacts to a file. You can choose <strong>App
+  CSV</strong> (a spreadsheet in the app's own format), <strong>Google CSV</strong> (a
+  spreadsheet formatted the way Google likes), or <strong>vCard</strong> (the standard
+  contact-card format that most phones and address books understand). After picking a format,
+  the app asks whether to save it <strong>On This Computer</strong> or <strong>In Google
+  Drive</strong>.</p>
+
+  <h3>Backup</h3>
+  <p><strong>Backup</strong> saves a complete safety copy. You can back up your
+  <strong>Contacts</strong> or your <strong>MeetingData</strong>, and send each either to your
+  computer or to a Backups folder in Google Drive. These are the files the Import page can
+  later restore from.</p>
+
+  <!-- ===================== CHAPTER 6 ===================== -->
+  <h2 class="chapter" id="ch6"><span class="num">Chapter Six</span>Contacts: the main list</h2>
+
+  <p>The <span class="menuname">Contacts</span> page is the heart of the app — the full list of
+  everyone, with the total count shown in the title (for example, <strong>Contacts -
+  722</strong>). Names are listed alphabetically by family name, then given name.</p>
+
+  <div class="fig">
+    <img src="manual-images/08-contacts-list.png" alt="The Contacts list"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 8 — screenshot needed</span>
+      <span class="ph-desc">The Contacts list with several rows visible, the action buttons at
+      the top (New Contact, Message, Email, Delete, Move, etc.), and the search and filter
+      boxes.</span>
+      <code>manual-images/08-contacts-list.png</code>
+    </div>
+    <figcaption>Figure 8. The Contacts list.</figcaption>
+  </div>
+
+  <h3>Finding people</h3>
+  <p>Type into <strong>Search by family or given name</strong> to narrow the list as you type.
+  The <strong>All fields</strong> and <strong>All meetings</strong> dropdowns let you show only
+  the people in a particular field or meeting; those same dropdowns also let you add, rename,
+  or remove a field or meeting. <strong>Clear Search</strong> resets everything back to the
+  full list.</p>
+
+  <h3>The action buttons</h3>
+  <p>Across the top you'll find buttons that act on the list or on the people you've checked:</p>
+  <table>
+    <tr><th>Button</th><th>What it does</th></tr>
+    <tr><td><strong>New Contact</strong></td><td>Opens a blank form to add someone.</td></tr>
+    <tr><td><strong>Message</strong></td><td>Texts the selected people using your computer's messaging app.</td></tr>
+    <tr><td><strong>Email</strong></td><td>Starts an email to the selected people.</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Moves the selected people to "Deleted" (and permanently removes them if they're already there).</td></tr>
+    <tr><td><strong>Move</strong></td><td>Moves the selected people to a different field or meeting at once.</td></tr>
+    <tr><td><strong>Sync from Google</strong></td><td>Pulls in recent changes from Google (when connected and editing is allowed).</td></tr>
+    <tr><td><strong>Upload</strong></td><td>Sends your pending changes to Google and Drive.</td></tr>
+  </table>
+
+  <p>To select people, use the checkboxes on the left of each row; the <strong>All</strong> and
+  <strong>None</strong> shortcuts help when you want everyone or want to start over. To open a
+  person, just click their row or their name.</p>
+
+  <!-- ===================== CHAPTER 7 ===================== -->
+  <h2 class="chapter" id="ch7"><span class="num">Chapter Seven</span>Viewing and editing a contact</h2>
+
+  <p>Clicking a name opens that person's <strong>detail page</strong> — a clean, read-only
+  summary. Phone numbers show call and text icons, email addresses are clickable, and
+  addresses include map links. You'll also see their field and meeting assignments, any notes
+  or custom fields, birthday, and a small Administration panel with technical details like the
+  Google contact ID.</p>
+
+  <div class="fig">
+    <img src="manual-images/09-contact-detail.png" alt="A contact's detail page"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 9 — screenshot needed</span>
+      <span class="ph-desc">A single contact's detail (view) page, showing photo, phones,
+      emails, addresses, and the field/meeting chips. Pick a contact with plenty of
+      information filled in.</span>
+      <code>manual-images/09-contact-detail.png</code>
+    </div>
+    <figcaption>Figure 9. A contact's detail page.</figcaption>
+  </div>
+
+  <p>From the detail page, <strong>Edit</strong> opens the form where you change information,
+  and <strong>Delete</strong> moves the person to Deleted. A deleted person shows a
+  <strong>Restore</strong> button so you can bring them back.</p>
+
+  <h3>The edit form</h3>
+  <p>The edit form is organized into sections. At the top are the name, birthday, and a
+  <strong>Do not Print</strong> checkbox (which keeps someone out of printed books). Below that
+  are repeatable sections for <strong>Phones</strong>, <strong>Emails</strong>,
+  <strong>Addresses</strong>, <strong>Relationships</strong>, <strong>Custom Fields</strong>,
+  and <strong>Notes</strong> — each with an <strong>Add</strong> button to include another and
+  a <strong>Remove</strong> to take one away. Near the bottom are the <strong>Fields</strong>
+  and <strong>Meetings</strong> this person belongs to. When you're done, click <strong>Save
+  Contact</strong>; <strong>Cancel</strong> discards your changes.</p>
+
+  <div class="fig">
+    <img src="manual-images/10-contact-edit.png" alt="The contact edit form"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 10 — screenshot needed</span>
+      <span class="ph-desc">The contact Edit form, showing the name fields at top, the photo
+      area, and a couple of the repeatable sections (Phones / Emails) with their Add
+      buttons.</span>
+      <code>manual-images/10-contact-edit.png</code>
+    </div>
+    <figcaption>Figure 10. Editing a contact.</figcaption>
+  </div>
+
+  <h3>The photo tool</h3>
+  <p>To add a picture, use <strong>Upload photo from computer</strong>. A
+  <strong>Crop Contact Photo</strong> window opens where you can drag the photo to position it
+  and use the <strong>Zoom</strong> slider to size it; click <strong>Use Crop</strong> when it
+  looks right. For people who already exist in Google, <strong>Upload photo to Google
+  Contacts</strong> sends the picture up with your next upload.</p>
+
+  <div class="fig">
+    <img src="manual-images/11-photo-crop.png" alt="The Crop Contact Photo window"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 11 — screenshot needed (optional)</span>
+      <span class="ph-desc">The "Crop Contact Photo" pop-up with a photo loaded, the Zoom
+      slider, and the Cancel / Use Crop buttons.</span>
+      <code>manual-images/11-photo-crop.png</code>
+    </div>
+    <figcaption>Figure 11. The photo crop tool.</figcaption>
+  </div>
+
+  <h3>Moving people</h3>
+  <p>To move several people to a different field or meeting, check them on the Contacts list,
+  click <strong>Move</strong>, choose the destination, and confirm with <strong>Move
+  Contacts</strong>.</p>
+
+  <!-- ===================== CHAPTER 8 ===================== -->
+  <h2 class="chapter" id="ch8"><span class="num">Chapter Eight</span>Meeting Data</h2>
+
+  <p>The <span class="menuname">Meeting Data</span> page manages printable meeting-directory
+  layouts, organized by field and meeting. The opening page, titled <strong>MeetingData</strong>,
+  lists each section with how many rows and cells it contains, and the same search and
+  field/meeting filters you know from the Contacts page.</p>
+
+  <div class="fig">
+    <img src="manual-images/12-meeting-data.png" alt="The Meeting Data sections list"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 12 — screenshot needed</span>
+      <span class="ph-desc">The Meeting Data page listing sections (Field, Meeting, Rows,
+      Cells columns).</span>
+      <code>manual-images/12-meeting-data.png</code>
+    </div>
+    <figcaption>Figure 12. The Meeting Data sections list.</figcaption>
+  </div>
+
+  <p>Clicking a section opens the <strong>MeetingData Editor</strong>, a visual canvas that
+  mirrors the printed page. There you arrange rows, adjust the column layout, gap, and font
+  size, choose a <strong>Book Layout</strong>, preview the printed result with <strong>Meeting
+  Print Preview</strong>, and keep your work with <strong>Save Layout</strong>.</p>
+
+  <div class="fig">
+    <img src="manual-images/13-meeting-editor.png" alt="The Meeting Data editor"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 13 — screenshot needed (optional)</span>
+      <span class="ph-desc">The MeetingData Editor showing the row canvas and the layout
+      controls (columns, gap, font size, Save Layout).</span>
+      <code>manual-images/13-meeting-editor.png</code>
+    </div>
+    <figcaption>Figure 13. The Meeting Data editor.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 9 ===================== -->
+  <h2 class="chapter" id="ch9"><span class="num">Chapter Nine</span>Address Book</h2>
+
+  <p>The <span class="menuname">Address Book</span> page is a design studio for producing a
+  printed PDF address book from your contacts. The left side holds layout choices — page size,
+  fonts, line spacing, and margins — while the middle shows a live preview of how a page will
+  look, and the right side holds printing options.</p>
+
+  <div class="fig">
+    <img src="manual-images/14-address-book.png" alt="The Address Book designer"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 14 — screenshot needed</span>
+      <span class="ph-desc">The Address Book page with the left layout sidebar, the central
+      page preview, and the right-hand print settings.</span>
+      <code>manual-images/14-address-book.png</code>
+    </div>
+    <figcaption>Figure 14. Designing the address book.</figcaption>
+  </div>
+
+  <p>On the right you can decide whether addresses link to Google or Apple Maps, choose left or
+  right alignment, and pick the printing order — alphabetical or a custom order you arrange by
+  dragging. You can add a cover picture, title, and date, choose how meetings flow onto pages,
+  and finally produce the document with <strong>Print PDF</strong>. There are even
+  binding choices — side spiral, top spiral, or stapled — for <strong>Print paper book</strong>.
+  Layouts you create can be saved and reused.</p>
+
+  <!-- ===================== CHAPTER 10 ===================== -->
+  <h2 class="chapter" id="ch10"><span class="num">Chapter Ten</span>Field List</h2>
+
+  <p>The <span class="menuname">Field List</span> page builds simpler printed lists for a
+  particular field or meeting — lighter than the full address book. As with the Address Book,
+  the left sidebar holds page options (one or two columns, address alignment, page numbers, and
+  more), the middle is a builder where you arrange what appears, and the right sidebar controls
+  fonts, sizes, and margins. You can save named templates and print with <strong>Print
+  List</strong>.</p>
+
+  <div class="fig">
+    <img src="manual-images/15-field-list.png" alt="The Field List builder"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 15 — screenshot needed</span>
+      <span class="ph-desc">The Field List page with its left page-options sidebar, the central
+      builder, and the right typography/margins sidebar.</span>
+      <code>manual-images/15-field-list.png</code>
+    </div>
+    <figcaption>Figure 15. The Field List builder.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 11 ===================== -->
+  <h2 class="chapter" id="ch11"><span class="num">Chapter Eleven</span>Pending Edits</h2>
+
+  <p>The <span class="menuname">Pending Edits</span> page is a shared list of change requests —
+  often sent in from the mobile app — that the Editor reviews and applies. Each row records the
+  date, the person or event the change is about, and the change itself, and rows save
+  automatically as you type.</p>
+
+  <div class="fig">
+    <img src="manual-images/16-pending-edits.png" alt="The Pending Edits page"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 16 — screenshot needed (optional)</span>
+      <span class="ph-desc">The Pending Edits (Changes) page showing the Date, Name/Event, and
+      Changes columns and the buttons across the top.</span>
+      <code>manual-images/16-pending-edits.png</code>
+    </div>
+    <figcaption>Figure 16. Pending Edits.</figcaption>
+  </div>
+
+  <p>Use <strong>Download from Drive</strong> to pull in requests submitted from phones,
+  <strong>Add Row</strong> to jot a new one, and <strong>Completed edit(s)</strong> to tick off
+  requests you've handled. As with everything else, your changes reach Google Drive the next
+  time you <strong>Upload</strong>.</p>
+
+  <!-- ===================== CHAPTER 12 ===================== -->
+  <h2 class="chapter" id="ch12"><span class="num">Chapter Twelve</span>Edit Lists (history)</h2>
+
+  <p>The <span class="menuname">Edit Lists</span> menu offers two history pages that record who
+  changed what. The <strong>Contacts Edit List</strong> shows each contact edit with the
+  editor's initials, the contact's name, the field that changed, and the text before and after.
+  The <strong>Meeting Data Edit List</strong> does the same for meeting-directory changes.
+  Clicking an entry jumps you straight to the relevant edit. These pages are read-only — a
+  helpful trail rather than a place to make changes.</p>
+
+  <div class="fig">
+    <img src="manual-images/18-edit-list.png" alt="The Contacts Edit List history page"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 18 — screenshot needed</span>
+      <span class="ph-desc">The Contacts Edit List page, showing the history columns (Editor,
+      ContactName, LabelName, Original Text, Edited Text) with a few rows of edits.</span>
+      <code>manual-images/18-edit-list.png</code>
+    </div>
+    <figcaption>Figure 18. The Contacts Edit List history page.</figcaption>
+  </div>
+
+  <!-- ===================== CHAPTER 13 ===================== -->
+  <h2 class="chapter" id="ch13"><span class="num">Chapter Thirteen</span>Share Contacts</h2>
+
+  <p>The <span class="menuname">Share Contacts</span> link opens the separate sharing website
+  in a new browser tab — the place where you can share a group of contacts with other people
+  and have your updates delivered to them automatically. It appears in the menu only when
+  you're connected to Google and allowed to edit (in multi-Editor mode, only when you're the
+  signed-in Editor). The website's address and key are set up once under Settings (Chapter
+  Fourteen). Using the sharing site itself is covered in its own separate guide.</p>
+
+  <!-- ===================== CHAPTER 14 ===================== -->
+  <h2 class="chapter" id="ch14"><span class="num">Chapter Fourteen</span>Settings, explained</h2>
+
+  <p>Open <span class="menuname">ContactsFreeShare → Settings</span> to reach the page titled
+  <strong>ContactsFreeShare Settings</strong>. When the app is set for multiple Editors, you
+  must be signed in as the Editor to change anything here. Click <strong>Save Settings</strong>
+  when you're done.</p>
+
+  <div class="fig">
+    <img src="manual-images/17-settings.png" alt="The Settings page"
+         onerror="this.style.display='none'; this.parentElement.querySelector('.ph').style.display='block';">
+    <div class="ph" style="display:none">
+      <span class="ph-tag">Figure 17 — screenshot needed</span>
+      <span class="ph-desc">The Settings page, showing the Editor Mode section and as many of
+      the other sections (colors, shared folder, share web app) as fit.</span>
+      <code>manual-images/17-settings.png</code>
+    </div>
+    <figcaption>Figure 17. The Settings page.</figcaption>
+  </div>
+
+  <p>The settings are grouped into sections:</p>
+
+  <table>
+    <tr><th>Section</th><th>What it controls</th></tr>
+    <tr><td><strong>Editor Mode</strong></td><td>Whether the app is used by one person or by multiple Editors. Choosing "Yes" turns on the Editor sign-in, password, and one-at-a-time lock described in Chapter Three.</td></tr>
+    <tr><td><strong>Single-Editor save location</strong></td><td>(Single-person mode) Whether edits stay only on this computer, or also go up to Google Contacts and Drive.</td></tr>
+    <tr><td><strong>Editor secret</strong></td><td>(Multi-Editor mode) The password people type to sign in with the full Editor role.</td></tr>
+    <tr><td><strong>Editor lock-out time</strong></td><td>(Multi-Editor mode) How long an Editor session lasts before the time-up warning appears — set in hours and minutes.</td></tr>
+    <tr><td><strong>Shared folder</strong></td><td>The Google Drive folder used to share Address Book PDFs, with a button to choose it.</td></tr>
+    <tr><td><strong>Share web app</strong></td><td>The address and key for the separate sharing website, so the Share Contacts link and automatic recipient updates work.</td></tr>
+    <tr><td><strong>Contacts Colors</strong></td><td>The title-bar, row, and hover colors on the Contacts screens.</td></tr>
+    <tr><td><strong>MeetingData Colors</strong></td><td>The same color choices for the Meeting Data screens.</td></tr>
+    <tr><td><strong>Shared Contacts Group</strong></td><td>The name of the Google group used to hold shared contacts.</td></tr>
+  </table>
+
+  <!-- ===================== CHAPTER 15 ===================== -->
+  <h2 class="chapter" id="ch15"><span class="num">Chapter Fifteen</span>Words worth knowing (glossary)</h2>
+
+  <table>
+    <tr><th>Term</th><th>Meaning</th></tr>
+    <tr><td><strong>Editor</strong></td><td>The one person currently allowed to make changes. Only one Editor can be active at a time.</td></tr>
+    <tr><td><strong>NO-EDIT mode</strong></td><td>What everyone else sees while someone else is the Editor — you can look but not change.</td></tr>
+    <tr><td><strong>Upload</strong></td><td>Sending your saved changes up to Google Contacts and Google Drive.</td></tr>
+    <tr><td><strong>Sync from Google</strong></td><td>Bringing in only the contacts that changed in your Google account, without erasing anything.</td></tr>
+    <tr><td><strong>Import (erase &amp; replace)</strong></td><td>Replacing the app's contacts with a fresh copy from Google or a backup.</td></tr>
+    <tr><td><strong>Field / Meeting</strong></td><td>The two ways contacts are grouped throughout the app, used for filtering and printing.</td></tr>
+    <tr><td><strong>Do not Print</strong></td><td>A per-contact switch that keeps someone out of printed books and lists.</td></tr>
+    <tr><td><strong>Backup</strong></td><td>A complete safety copy of your contacts or meeting data, saved to your computer or Drive.</td></tr>
+  </table>
+
+  <p class="footer-note">That's the whole app. Keep this manual nearby while you get
+  comfortable — after a week or two, most of it will feel like second nature.</p>
+
+</div>
+</body>
+</html>

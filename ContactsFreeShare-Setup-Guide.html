@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ContactsFreeShare — Setup Guide</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #5b6770;
+    --accent: #2c6e9b;
+    --accent-soft: #eaf3f9;
+    --line: #e3e8ec;
+    --code-bg: #f5f7f9;
+    --warn-bg: #fff7e6;
+    --warn-border: #f0c66b;
+    --tip-bg: #eef7ef;
+    --tip-border: #9ccfa0;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: #fbfcfd;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.7;
+  }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+  h1, h2, h3, .cover-title, nav, .badge, code, pre, table, .callout-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* Cover */
+  .cover {
+    text-align: center;
+    padding: 60px 0 48px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+  .cover .badge {
+    display: inline-block;
+    font-size: 13px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 6px 14px;
+    border-radius: 999px;
+    margin-bottom: 24px;
+    font-weight: 600;
+  }
+  .cover-title {
+    font-size: 40px;
+    line-height: 1.15;
+    margin: 0 0 14px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .cover-sub {
+    font-size: 19px;
+    color: var(--muted);
+    margin: 0 auto;
+    max-width: 520px;
+    font-style: italic;
+  }
+
+  /* Table of contents */
+  nav.toc {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px 26px;
+    margin: 0 0 48px;
+  }
+  nav.toc h2 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  nav.toc ol { margin: 0; padding-left: 22px; }
+  nav.toc li { margin: 7px 0; font-size: 16px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+
+  h2.chapter {
+    font-size: 27px;
+    margin: 56px 0 6px;
+    padding-top: 20px;
+    border-top: 3px solid var(--accent);
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  h2.chapter .num {
+    display: block;
+    font-size: 13px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  h3 {
+    font-size: 20px;
+    margin: 34px 0 4px;
+    font-weight: 600;
+  }
+  p { margin: 14px 0; }
+  ul, ol.steps { margin: 14px 0; padding-left: 26px; }
+  li { margin: 8px 0; }
+
+  a { color: var(--accent); }
+
+  code {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 14.5px;
+    word-break: break-word;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 14.5px;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; }
+
+  .callout {
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin: 22px 0;
+    font-size: 16.5px;
+  }
+  .callout p { margin: 8px 0; }
+  .callout .callout-label {
+    display: block;
+    font-size: 12px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .callout.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .callout.warn .callout-label { color: #9a6700; }
+  .callout.tip  { background: var(--tip-bg);  border: 1px solid var(--tip-border); }
+  .callout.tip .callout-label { color: #2f7d3a; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 22px 0;
+    font-size: 15px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--accent-soft); font-weight: 600; }
+  td code { font-size: 13.5px; }
+
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+
+  .lead { font-size: 19.5px; color: #33414b; }
+
+  .footer-note {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 15px;
+    font-style: italic;
+  }
+
+  @media print {
+    body { background: #fff; font-size: 12pt; }
+    .page { max-width: none; padding: 0 6mm; }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: avoid; }
+    nav.toc { page-break-after: always; }
+    pre, table, .callout { page-break-inside: avoid; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+  @media (max-width: 520px) {
+    body { font-size: 17px; }
+    .cover-title { font-size: 31px; }
+    .page { padding: 32px 18px 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="cover">
+    <span class="badge">Setup Handbook</span>
+    <h1 class="cover-title">ContactsFreeShare</h1>
+    <p class="cover-sub">A friendly, step-by-step guide to running the app — and your own
+    private sharing server — on your own computer and Google account.</p>
+  </header>
+
+  <p class="lead">This handbook walks you through everything from start to finish. You do
+  not need to be a programmer. Read it like a short book: the early chapters are easy, and
+  the one technical chapter is broken into small, copy-and-paste steps you can follow
+  slowly. Take your time, and don't skip the boxes labeled <em>Heads-up</em> and
+  <em>Tip</em> — they save you the most trouble.</p>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#ch1">What this is, and what you'll need</a></li>
+      <li><a href="#ch2">Installing the desktop app</a></li>
+      <li><a href="#ch3">Connecting the app to your Google account</a></li>
+      <li><a href="#ch4">Setting up your own sharing server</a></li>
+      <li><a href="#ch5">Sharing contacts with other people</a></li>
+      <li><a href="#ch6">Keeping it running: updates, costs, shutdown</a></li>
+      <li><a href="#ch7">When something goes wrong</a></li>
+      <li><a href="#ch8">Quick reference</a></li>
+    </ol>
+  </nav>
+
+  <!-- ===================== CHAPTER 1 ===================== -->
+  <h2 class="chapter" id="ch1"><span class="num">Chapter One</span>What this is, and what you'll need</h2>
+
+  <p>ContactsFreeShare is made of two separate pieces, and it helps to picture them before
+  you begin.</p>
+
+  <p>The first piece is the <strong>desktop app</strong>. It runs entirely on your own Mac
+  or Windows computer. You use it to view and edit your contacts and to keep them in sync
+  with your Google account. Nothing about the desktop app is published to the internet — it
+  is just a private window that opens in your web browser at an address that only your own
+  computer can see.</p>
+
+  <p>The second piece is the <strong>sharing server</strong>. This is a small private
+  website that you publish into <em>your own</em> Google Cloud account. Its only job is to
+  let you share a group of contacts with other people — called <strong>recipients</strong>
+  — and to quietly push your later edits out to them. You only need the server if you plan
+  to share contacts. If you simply want to manage your own contacts, the desktop app alone
+  is enough.</p>
+
+  <div class="callout warn">
+    <span class="callout-label">Heads-up: difficulty and cost</span>
+    <p>Installing the desktop app (Chapters Two and Three) is easy — most people finish in
+    about ten minutes.</p>
+    <p>Setting up the sharing server (Chapter Four) is the advanced part. It involves Google
+    Cloud, a credit card for billing, and copying a few commands into a terminal window.
+    Set aside one to two hours the first time, and if you've never used a terminal, it's
+    perfectly fine to ask a more technical friend to sit with you for that chapter.</p>
+    <p>Because the server runs around the clock so it can deliver updates, Google Cloud
+    charges a small monthly amount — often just a few dollars. You can shut it down at any
+    time, and Chapter Six shows you how to watch and cap the cost.</p>
+  </div>
+
+  <h3>What to have ready</h3>
+  <p>For the desktop app you need a Google account — the one whose contacts you want to
+  manage — and a computer running macOS or Windows. For the sharing server you additionally
+  need a credit or debit card to switch on Google Cloud billing, and a little patience for
+  the one technical chapter.</p>
+
+  <p>You will also need two things from the person who gave you this guide: the
+  <strong>app download</strong> (a <code>.zip</code> file, one for Mac and one for Windows),
+  and — only if you're building the server — the <strong>project source folder</strong>,
+  which is the folder that contains a sub-folder named <code>sharecontactsfree</code>.</p>
+
+  <!-- ===================== CHAPTER 2 ===================== -->
+  <h2 class="chapter" id="ch2"><span class="num">Chapter Two</span>Installing the desktop app</h2>
+
+  <p>Start by getting the download link from the person who sent you this guide. There is a
+  separate package for Mac and for Windows, so be sure to grab the right one for your
+  computer.</p>
+
+  <h3>On a Mac</h3>
+  <p>Double-click the downloaded <code>.zip</code> file to unzip it. You'll get a folder
+  called <strong>ContactsFreeShare</strong>. Open that folder and double-click
+  <strong>Start ContactsFreeShare.command</strong> to launch the app.</p>
+
+  <p>The very first time, macOS may complain that the file is from an unidentified
+  developer. If that happens, right-click the file, choose <strong>Open</strong>, and then
+  click <strong>Open</strong> once more to confirm. If Python (a small piece of software the
+  app needs) isn't already installed, the launcher downloads the installer and opens it for
+  you; install it, then double-click <strong>Start ContactsFreeShare.command</strong>
+  again.</p>
+
+  <p>If you'd like a tidy icon on your Desktop, open the folder once and double-click
+  <strong>Install Desktop Shortcut Mac.command</strong>. Just keep the unzipped
+  ContactsFreeShare folder where it is, because the shortcut starts the app from there.</p>
+
+  <h3>On Windows</h3>
+  <p>Right-click the downloaded <code>.zip</code> and choose <strong>Extract All</strong> to
+  get a <strong>ContactsFreeShare</strong> folder. Open it and double-click
+  <strong>Start ContactsFreeShare</strong>. If Windows shows a blue SmartScreen warning,
+  click <strong>More info</strong> and then <strong>Run anyway</strong>. As on the Mac, if
+  Python isn't installed the launcher fetches it for you; install it and start the app
+  again. To add a Desktop icon, double-click
+  <strong>Install Desktop Shortcut Windows.bat</strong> inside the folder.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip</span>
+    <p>When the app starts, your web browser automatically opens to
+    <code>http://127.0.0.1:8000</code>. That address simply means "this very computer," so
+    the app is private to you. If you ever close the browser tab, just reopen that address
+    while the app is running.</p>
+  </div>
+
+  <!-- ===================== CHAPTER 3 ===================== -->
+  <h2 class="chapter" id="ch3"><span class="num">Chapter Three</span>Connecting the app to your Google account</h2>
+
+  <p>Before the app can read or update your contacts, Google needs you to create a small
+  permission slip called an <strong>OAuth client</strong>. It's free, and you only do it
+  once.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: doing the server too?</span>
+    <p>If you also plan to set up the sharing server in Chapter Four, you can create
+    <em>one</em> Google Cloud project and <em>one</em> OAuth client and use it for both. In
+    that case, do steps one through five below, and later just add a couple more web
+    addresses to the same client.</p>
+  </div>
+
+  <ol class="steps">
+    <li>Go to <a href="https://console.cloud.google.com/">console.cloud.google.com</a> and
+    sign in with your Google account.</li>
+    <li>Near the top, open the project dropdown and choose <strong>New Project</strong>.
+    Give it a simple name like <code>my-contacts</code> and click <strong>Create</strong>.</li>
+    <li>Use the search bar to find <strong>Google People API</strong>, open it, and click
+    <strong>Enable</strong>.</li>
+    <li>Search for <strong>OAuth consent screen</strong>. Choose <strong>External</strong>,
+    click <strong>Create</strong>, then fill in an app name and your own email where asked
+    (support email and developer contact). Click through the <strong>Scopes</strong> page
+    without changes, and on the <strong>Test users</strong> page add your own Google email
+    address.</li>
+    <li>Search for <strong>Credentials</strong>, click <strong>Create Credentials</strong>,
+    and choose <strong>OAuth client ID</strong>. Pick <strong>Web application</strong> as
+    the type. Under <strong>Authorized redirect URIs</strong>, click <strong>Add URI</strong>
+    and paste this address exactly:
+      <pre><code>http://127.0.0.1:8000/google/connect/callback</code></pre>
+      Click <strong>Create</strong>. A small window shows your <strong>Client ID</strong> and
+      <strong>Client secret</strong> — copy both somewhere safe.</li>
+  </ol>
+
+  <h3>Putting the keys into the app</h3>
+  <p>The app keeps its settings in a small text file named <code>.env</code>, which it
+  creates automatically the first time it runs. You'll find it here:</p>
+
+  <table>
+    <tr><th>Mac</th><td><code>~/Library/Application Support/ContactsFreeShare/.env</code></td></tr>
+    <tr><th>Windows</th><td><code>C:\Users\&lt;your-name&gt;\AppData\Roaming\ContactsFreeShare\.env</code></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: finding that folder</span>
+    <p>On a Mac, in Finder press <strong>Cmd+Shift+G</strong> and paste
+    <code>~/Library/Application Support/ContactsFreeShare</code>. On Windows, type
+    <code>%APPDATA%\ContactsFreeShare</code> into the File Explorer address bar and press
+    Enter.</p>
+  </div>
+
+  <p>Open that <code>.env</code> file in a plain text editor — TextEdit on Mac or Notepad on
+  Windows — and set these three lines, pasting in the values you copied a moment ago:</p>
+
+  <pre><code>GOOGLE_OAUTH_CLIENT_ID=paste-your-client-id-here
+GOOGLE_OAUTH_CLIENT_SECRET=paste-your-client-secret-here
+GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/google/connect/callback</code></pre>
+
+  <p>Save the file, then fully quit and restart the app. Use the <strong>Connect
+  Google</strong> option inside the app and sign in. Because this is a personal app you
+  built yourself, Google shows an "unverified app" warning — that's expected. Click
+  <strong>Advanced</strong>, then <strong>Go to (your app name) (unsafe)</strong>, and
+  allow access.</p>
+
+  <p>That's it. You can now use the desktop app on its own. If you don't need to share
+  contacts with other people, you can stop here. Continue to Chapter Four only if you want
+  the sharing feature.</p>
+
+  <!-- ===================== CHAPTER 4 ===================== -->
+  <h2 class="chapter" id="ch4"><span class="num">Chapter Four</span>Setting up your own sharing server</h2>
+
+  <p>This chapter publishes a tiny private website into your own Google Cloud account so you
+  can share contact groups and push updates automatically. It is the longest chapter, so go
+  slowly and finish each section before moving on.</p>
+
+  <h3>Step 1 — Create a project and turn on billing</h3>
+  <p>Sign in at <a href="https://console.cloud.google.com/">console.cloud.google.com</a> and
+  either reuse the project from Chapter Three or create a new one. Make a note of its
+  <strong>Project ID</strong> — it appears just under the project name and looks something
+  like <code>my-contacts-123456</code>. Then use the search bar to open
+  <strong>Billing</strong> and link a billing account by adding a card. The server needs
+  billing switched on in order to run continuously.</p>
+
+  <div class="callout tip">
+    <span class="callout-label">Tip: cap your spending</span>
+    <p>Under <strong>Billing → Budgets &amp; alerts</strong> you can set a budget — say
+    ten dollars a month — so Google emails you if costs ever climb. And you can delete the
+    server entirely whenever you like (Chapter Six).</p>
+  </div>
+
+  <h3>Step 2 — Install the Google Cloud tool (gcloud)</h3>
+  <p>This is a small program that lets your computer talk to Google Cloud.</p>
+  <p>On a Mac, open the <strong>Terminal</strong> app and run:</p>
+  <pre><code>curl https://sdk.cloud.google.com | bash</code></pre>
+  <p>Then close and reopen Terminal. (If you prefer a clickable installer, follow the
+  instructions at <a href="https://cloud.google.com/sdk/docs/install">cloud.google.com/sdk/docs/install</a>.)</p>
+  <p>On Windows, download and run the installer from that same page (look for the Windows
+  installer). When it finishes, open the <strong>Google Cloud SDK Shell</strong> from the
+  Start menu — use that window for every command in this chapter. To confirm it worked,
+  run:</p>
+  <pre><code>gcloud --version</code></pre>
+  <p>You should see version numbers rather than an error.</p>
+
+  <h3>Step 3 — Sign in and choose your project</h3>
+  <p>Run these one at a time, replacing <code>YOUR_PROJECT_ID</code> with the real ID you
+  noted in Step 1:</p>
+  <pre><code>gcloud auth login
+gcloud config set project YOUR_PROJECT_ID</code></pre>
+  <p>The first command opens a browser so you can confirm — sign in with the same Google
+  account.</p>
+
+  <h3>Step 4 — Make sure you have an OAuth client</h3>
+  <p>If you already created one in Chapter Three, you'll simply add two more web addresses to
+  it later in Step 7 — there's nothing to do now. If you skipped Chapter Three, create one
+  now: in the Console, enable the <strong>Google People API</strong>, set up the
+  <strong>OAuth consent screen</strong> (External, with yourself added as a Test user), then
+  under <strong>Credentials</strong> create an <strong>OAuth client ID</strong> of type
+  <strong>Web application</strong> and copy its Client ID and Client secret.</p>
+
+  <h3>Step 5 — Put the source code on your computer</h3>
+  <p>You need the project's source folder — the one that contains the
+  <code>sharecontactsfree</code> sub-folder. The person sharing this guide will give it to
+  you as a <code>.zip</code> to unzip or a link to download. Put it somewhere easy to reach,
+  such as your home folder, then move into it in the terminal. For example:</p>
+  <pre><code>cd ~/PythonDB4-3-26</code></pre>
+  <p>Use the actual name and location of the folder where you placed it.</p>
+
+  <h3>Step 6 — Create the server's settings file</h3>
+  <p>The server reads its settings from <code>sharecontactsfree/python/.env</code>. Create
+  it from the included example:</p>
+  <pre><code>cd sharecontactsfree/python
+cp .env.example .env</code></pre>
+  <p>Next, generate a random secret key. On Mac or Linux run the first command; on Windows
+  (in the Google Cloud SDK Shell) run the second:</p>
+  <pre><code>openssl rand -hex 32</code></pre>
+  <pre><code>python -c "import secrets; print(secrets.token_hex(32))"</code></pre>
+  <p>Copy the long random string it prints. Then open
+  <code>sharecontactsfree/python/.env</code> in a text editor and fill in these four lines —
+  use that same random string for both <code>APP_SECRET_KEY</code> and
+  <code>CFS_API_KEY</code>:</p>
+  <pre><code>GOOGLE_CLIENT_ID=paste-your-client-id-here
+GOOGLE_CLIENT_SECRET=paste-your-client-secret-here
+APP_SECRET_KEY=paste-the-random-string-you-generated
+CFS_API_KEY=paste-the-same-random-string-again</code></pre>
+  <div class="callout warn">
+    <span class="callout-label">Heads-up</span>
+    <p>Keep <code>APP_SECRET_KEY</code> safe and don't change it later — changing it logs out
+    everyone you've shared with. Reusing the same value for <code>CFS_API_KEY</code> is what
+    lets your desktop app send updates to the server. Leave the rest of the file as it is;
+    the deploy script fills in everything else automatically.</p>
+  </div>
+
+  <h3>Step 7 — Publish (deploy) the server</h3>
+  <p>From the main project folder, run the deploy script:</p>
+  <pre><code>cd ../..
+bash sharecontactsfree/scripts/deploy_cloud_run.sh</code></pre>
+  <p>The first run takes several minutes. It switches on the Google Cloud services it needs,
+  creates a storage area for the database, and builds and publishes your server. If it asks
+  you to confirm enabling anything, say <strong>yes</strong>. When it finishes, it prints
+  something like this:</p>
+  <pre><code>Deployed: https://share-contacts-xxxxxxxx-uc.a.run.app</code></pre>
+  <p><strong>Copy that <code>https://…run.app</code> address</strong> — you'll use it a few
+  times below.</p>
+
+  <h3>Step 8 — Tell Google about the server's web addresses</h3>
+  <p>In the Console, go to <strong>Credentials</strong> and click your Web-application OAuth
+  client. Under <strong>Authorized redirect URIs</strong>, add both of these, replacing the
+  address with <em>your</em> real one from Step 7, then click <strong>Save</strong>:</p>
+  <pre><code>https://share-contacts-xxxxxxxx-uc.a.run.app/auth/owner/callback
+https://share-contacts-xxxxxxxx-uc.a.run.app/auth/recipient/callback</code></pre>
+  <p>If this is the same client your desktop app uses, leave the earlier
+  <code>http://127.0.0.1:8000/google/connect/callback</code> entry in place as well.</p>
+
+  <h3>Step 9 — Make recipient logins reliable</h3>
+  <p>While your consent screen is in <strong>Testing</strong> mode, Google expires
+  permission after seven days, which would quietly break automatic updates to the people you
+  share with. The simplest fix for friends and family is to publish the app: open the
+  <strong>OAuth consent screen</strong>, click <strong>Publish App</strong>, and confirm to
+  move it to <strong>In production</strong>. You can do this without formal Google
+  verification — recipients just click past an "unverified app" notice — and it removes the
+  seven-day limit. There's a cap of about a hundred users, which is far more than enough for
+  personal use.</p>
+  <p>If you'd rather stay in Testing mode, you instead have to add every recipient's Google
+  email as a Test user, and re-approve permissions every seven days.</p>
+
+  <h3>Step 10 — Point your desktop app at your server</h3>
+  <p>Open the desktop app and go to <strong>App Settings</strong>. Set <strong>Share web app
+  URL</strong> to your server address from Step 7, and set <strong>Share web API key</strong>
+  to the same random string you used for <code>APP_SECRET_KEY</code> in Step 6. Save, and
+  your desktop app is now wired to your very own sharing server.</p>
+
+  <!-- ===================== CHAPTER 5 ===================== -->
+  <h2 class="chapter" id="ch5"><span class="num">Chapter Five</span>Sharing contacts with other people</h2>
+
+  <p>With the server running, sharing is straightforward. In your browser, open your
+  server's owner page — your <code>https://…run.app/</code> address — and sign in with
+  Google. Choose a contact group to share and enter a recipient's email address.</p>
+
+  <p>Then send that recipient the invite link below. They open it in any web browser; they do
+  <em>not</em> install anything:</p>
+  <pre><code>https://share-contacts-xxxxxxxx-uc.a.run.app/?mode=shared</code></pre>
+
+  <p>The recipient signs in with their own Google account and clicks <strong>Connect
+  account</strong>. Your server then imports the shared contacts into their Google account in
+  the background. Later, whenever you edit those contacts in the desktop app and upload your
+  changes, the server quietly pushes the updates out to everyone you've shared with.</p>
+
+  <!-- ===================== CHAPTER 6 ===================== -->
+  <h2 class="chapter" id="ch6"><span class="num">Chapter Six</span>Keeping it running: updates, costs, and shutdown</h2>
+
+  <p>When you receive a newer version of the source code, you can update the server simply by
+  running the deploy script again:</p>
+  <pre><code>bash sharecontactsfree/scripts/deploy_cloud_run.sh</code></pre>
+
+  <p>To keep an eye on cost, visit <strong>Billing → Budgets &amp; alerts</strong> in the
+  Google Cloud Console and set a small monthly budget so you're emailed if spending grows.</p>
+
+  <p>To pause or stop charges entirely, open <strong>Cloud Run</strong> in the Console, click
+  the <strong>share-contacts</strong> service, and choose <strong>Delete</strong>; you can
+  always redeploy later. Lowering the minimum instances to zero also reduces cost, though
+  background updates to recipients become less reliable when the server is allowed to sleep.</p>
+
+  <!-- ===================== CHAPTER 7 ===================== -->
+  <h2 class="chapter" id="ch7"><span class="num">Chapter Seven</span>When something goes wrong</h2>
+
+  <p>A few problems come up often enough to list here, along with their fixes.</p>
+
+  <p>If the terminal says <strong>"gcloud: command not found,"</strong> the Google Cloud tool
+  either isn't installed or you didn't reopen the terminal after installing it. Redo Step 2
+  of Chapter Four and open a fresh terminal window.</p>
+
+  <p>If the deploy script complains that <strong>APP_SECRET_KEY is required</strong>, you
+  haven't filled in <code>sharecontactsfree/python/.env</code> — revisit Step 6. If it says
+  <strong>GOOGLE_CLIENT_ID is required</strong>, the Client ID or Secret lines in that file
+  are still blank; paste them from your OAuth client.</p>
+
+  <p>If Google sign-in shows <strong>"redirect_uri_mismatch,"</strong> the exact web address
+  isn't listed in your OAuth client's Authorized redirect URIs. Re-check Chapter Three's
+  step five and Chapter Four's step eight; the address must match character for character,
+  including <code>http</code> versus <code>https</code> and any trailing slash.</p>
+
+  <p>An <strong>"unverified app"</strong> warning is normal for a personal build — click
+  <strong>Advanced</strong> and continue. If recipients stop syncing after about a week, your
+  consent screen is still in Testing mode; publish it to production as described in Chapter
+  Four, step nine. And if the desktop app's <strong>Connect Google</strong> fails, double-
+  check the three <code>GOOGLE_OAUTH_*</code> lines in the desktop <code>.env</code> file and
+  make sure you restarted the app afterward.</p>
+
+  <!-- ===================== CHAPTER 8 ===================== -->
+  <h2 class="chapter" id="ch8"><span class="num">Chapter Eight</span>Quick reference</h2>
+
+  <p>Keep this table handy — it collects every address and file path used in the guide.</p>
+
+  <table>
+    <tr><th>What</th><th>Value</th></tr>
+    <tr><td>Desktop app address</td><td><code>http://127.0.0.1:8000</code></td></tr>
+    <tr><td>Desktop settings file (Mac)</td><td><code>~/Library/Application Support/ContactsFreeShare/.env</code></td></tr>
+    <tr><td>Desktop settings file (Windows)</td><td><code>%APPDATA%\ContactsFreeShare\.env</code></td></tr>
+    <tr><td>Desktop redirect address</td><td><code>http://127.0.0.1:8000/google/connect/callback</code></td></tr>
+    <tr><td>Server settings file</td><td><code>sharecontactsfree/python/.env</code></td></tr>
+    <tr><td>Server redirect addresses</td><td><code>&lt;server-url&gt;/auth/owner/callback</code><br><code>&lt;server-url&gt;/auth/recipient/callback</code></td></tr>
+    <tr><td>Server owner page</td><td><code>&lt;server-url&gt;/</code></td></tr>
+    <tr><td>Recipient invite link</td><td><code>&lt;server-url&gt;/?mode=shared</code></td></tr>
+    <tr><td>Share web API key (in desktop)</td><td>same as <code>APP_SECRET_KEY</code> / <code>CFS_API_KEY</code></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-label">Don't want to run a server at all?</span>
+    <p>A friend doesn't have to deal with Google Cloud. They can use the desktop app on its
+    own to manage their contacts, and whoever already runs a sharing server can simply add
+    them as another <em>owner</em> — the server is built to host many different owners at
+    once.</p>
+  </div>
+
+  <p class="footer-note">You did it. Keep this guide somewhere handy in case you ever need to
+  reinstall, update, or help a friend through the same steps.</p>
+
+</div>
+</body>
+</html>

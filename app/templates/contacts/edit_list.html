@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Contacts Edit List | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3", "primary": "#f8f3e3", "secondary": "#edf5f7", "highlight": "#ffe3a1"}) %}
+  <div class="edit-log-page">
+    <section class="panel page-top-panel meetingdata-filter-panel edit-log-title-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+      <div class="edit-log-title-copy">
+        <h2>Contacts Edit List</h2>
+        <p>All edits to contact cards appear below</p>
+      </div>
+    </section>
+
+    <section class="panel edit-log-panel">
+      <div class="edit-log-table-header" aria-hidden="true">
+        <div class="edit-log-sticky-cell edit-log-col-editor">Editor</div>
+        <div class="edit-log-sticky-cell edit-log-col-contact">ContactName</div>
+        <div class="edit-log-sticky-cell edit-log-col-label">LabelName</div>
+        <div class="edit-log-sticky-cell edit-log-col-original">OriginalText</div>
+        <div class="edit-log-sticky-cell edit-log-col-edited">EditedText</div>
+      </div>
+      <div class="edit-log-list">
+        {% for batch in edit_batches %}
+          {% set batch_band_color = row_colors.primary if loop.index0 % 2 == 0 else row_colors.secondary %}
+          {% set edit_target = "/contacts/" ~ batch.contact_id ~ "/edit?return_to=/contacts/edit-list" %}
+          <section class="edit-log-batch click-row" style="--row-band-color: {{ batch_band_color }}; --row-hover-color: {{ row_colors.highlight }};" onclick="window.location='{{ edit_target }}'">
+            {% for entry in batch.entries %}
+              <div class="edit-log-row">
+                <div class="edit-log-cell edit-log-cell-editor">{% if loop.first %}{{ batch.editor_initials }}{% endif %}</div>
+                <div class="edit-log-cell edit-log-cell-contact">
+                  {% if loop.first %}
+                    <a class="row-link edit-log-contact-link" href="{{ edit_target }}" onclick="event.stopPropagation()">{{ batch.contact_name }}</a>
+                    {% if batch.batch_created_at_display %}
+                      <div class="edit-log-contact-timestamp">{{ batch.batch_created_at_display }}</div>
+                    {% endif %}
+                  {% endif %}
+                </div>
+                <div class="edit-log-cell edit-log-cell-label">{{ entry.label_name }}</div>
+                <div class="edit-log-cell preserve-breaks edit-log-cell-text">{{ entry.original_text or "" }}</div>
+                <div class="edit-log-cell preserve-breaks edit-log-cell-text">{{ entry.edited_text_html|safe }}</div>
+              </div>
+            {% endfor %}
+          </section>
+        {% else %}
+          <div class="edit-log-empty">No contact edits have been logged yet.</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const editLogPage = document.querySelector(".edit-log-page");
+      const titlePanel = document.querySelector(".edit-log-page .edit-log-title-panel");
+      if (!editLogPage || !titlePanel) return;
+
+      const syncEditLogPanelOffset = () => {
+        editLogPage.style.setProperty("--edit-log-filter-panel-space", `${titlePanel.offsetHeight}px`);
+      };
+
+      syncEditLogPanelOffset();
+      window.addEventListener("resize", syncEditLogPanelOffset);
+    });
+  </script>
+{% endblock %}

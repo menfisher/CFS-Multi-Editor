@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Contacts Website{% endblock %}</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="stylesheet" href="/static/css/app.css?v=379">
+  </head>
+  <body class="{% block body_class %}{% endblock %}">
+    {% set current_path = request.url.path if request is defined else '' %}
+    <header class="site-header">
+      <div class="wrap">
+        <details class="site-nav-dropdown site-brand-dropdown" data-site-nav-dropdown>
+          <summary class="site-brand site-nav-dropdown-trigger {% if current_path in ['/presets/app-settings', '/app-revisions'] %}site-nav-link-active{% endif %}">ContactsFreeShare</summary>
+          <div class="site-nav-dropdown-menu site-nav-dropdown-menu-left">
+            <button
+              type="button"
+              class="site-nav-dropdown-item"
+              data-app-action="about"
+            >
+              About
+            </button>
+            <a class="site-nav-dropdown-item {% if current_path == '/presets/app-settings' %}is-active{% endif %}" href="/presets/app-settings">Settings</a>
+            <a class="site-nav-dropdown-item" href="/app-updates/check" data-busy-modal-title="Checking for updates" data-busy-modal-copy="Looking for a newer ContactsFreeShare app package.">
+              Update App
+            </a>
+            <a id="site-menu-app-revisions-link" class="site-nav-dropdown-item {% if current_path == '/app-revisions' %}is-active{% endif %}" href="/app-revisions" data-busy-modal-title="Importing from Drive" data-busy-modal-copy="Loading the latest App Revisions from Google Drive.">App Revisions</a>
+          </div>
+        </details>
+        <nav class="site-nav">
+          <a class="{% if current_path == '/presets/google-connect' %}site-nav-link-active{% endif %}" href="/presets/google-connect">Google Connect</a>
+          <details class="site-nav-dropdown" data-site-nav-dropdown>
+            <summary class="site-nav-dropdown-trigger">File</summary>
+            <div class="site-nav-dropdown-menu site-nav-dropdown-menu-left">
+              <a class="site-nav-dropdown-item" href="/google/import?return_to=%2Fcontacts%2F">Import</a>
+              <div class="site-nav-submenu">
+                <button type="button" class="site-nav-dropdown-item site-nav-submenu-trigger">Export</button>
+                <div class="site-nav-submenu-panel">
+                  <button type="button" class="site-nav-dropdown-item" data-contact-export-kind="csv" data-contact-export-label="App CSV">App CSV</button>
+                  <button type="button" class="site-nav-dropdown-item" data-contact-export-kind="google_csv" data-contact-export-label="Google CSV">Google CSV</button>
+                  <button type="button" class="site-nav-dropdown-item" data-contact-export-kind="vcard" data-contact-export-label="vCard">vCard</button>
+                </div>
+              </div>
+              <div class="site-nav-submenu">
+                <button type="button" class="site-nav-dropdown-item site-nav-submenu-trigger">Backup</button>
+                <div class="site-nav-submenu-panel">
+                  <button type="button" class="site-nav-dropdown-item" data-json-backup-kind="contacts" data-json-backup-destination="local" data-json-backup-label="Contacts">Contacts to Computer</button>
+                  <button type="button" class="site-nav-dropdown-item" data-json-backup-kind="contacts" data-json-backup-destination="drive" data-json-backup-label="Contacts">Contacts to Google Drive</button>
+                  <button type="button" class="site-nav-dropdown-item" data-json-backup-kind="meetingdata" data-json-backup-destination="local" data-json-backup-label="MeetingData">MeetingData to Computer</button>
+                  <button type="button" class="site-nav-dropdown-item" data-json-backup-kind="meetingdata" data-json-backup-destination="drive" data-json-backup-label="MeetingData">MeetingData to Google Drive</button>
+                </div>
+              </div>
+            </div>
+          </details>
+          <a class="{% if current_path == '/contacts' or (current_path.startswith('/contacts/') and current_path != '/contacts/edit-list') %}site-nav-link-active{% endif %}" href="/contacts/">Contacts</a>
+          <a class="{% if current_path.startswith('/meetings/') and current_path != '/meetings/edit-list' %}site-nav-link-active{% endif %}" href="/meetings/v2/sections">Meeting Data</a>
+          <a class="{% if current_path.startswith('/address-book/') %}site-nav-link-active{% endif %}" href="/address-book/pdf">Address Book</a>
+          <a class="{% if current_path == '/field-list' %}site-nav-link-active{% endif %}" href="/field-list">Field List</a>
+          <a class="{% if current_path == '/changes-list' %}site-nav-link-active{% endif %}" href="/changes-list">Pending Edits</a>
+          <details class="site-nav-dropdown" data-site-nav-dropdown>
+            <summary class="site-nav-dropdown-trigger {% if current_path == '/contacts/edit-list' or current_path == '/meetings/edit-list' %}site-nav-link-active{% endif %}">Edit Lists</summary>
+            <div class="site-nav-dropdown-menu site-nav-dropdown-menu-left">
+              <a class="site-nav-dropdown-item {% if current_path == '/contacts/edit-list' %}is-active{% endif %}" href="/contacts/edit-list">Contacts Edit List</a>
+              <a class="site-nav-dropdown-item {% if current_path == '/meetings/edit-list' %}is-active{% endif %}" href="/meetings/edit-list">Meeting Data Edit List</a>
+            </div>
+          </details>
+          <details class="site-nav-dropdown" data-site-nav-dropdown>
+            <summary class="site-nav-dropdown-trigger">Help</summary>
+            <div class="site-nav-dropdown-menu site-nav-dropdown-menu-left">
+              <a class="site-nav-dropdown-item" href="/static/help/cfs-manual.html" target="_blank" rel="noopener noreferrer">App Manual</a>
+              <a class="site-nav-dropdown-item" href="/static/help/share-manual.html" target="_blank" rel="noopener noreferrer">Share App Manual</a>
+            </div>
+          </details>
+          <a
+            id="site-nav-share-contacts-link"
+            class="site-nav-external-link"
+            href="/share"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open Share Google Contacts (owner and recipient sharing — separate web app)"
+            {% if not share_contacts_nav_visible() %}hidden{% endif %}
+          >Share Contacts</a>
+        </nav>
+      </div>
+    </header>
+    <main class="wrap">
+      {% block content %}{% endblock %}
+    </main>
+    <dialog class="app-modal about-modal" id="about-app-modal">
+      <form method="dialog" class="app-modal-panel about-modal-panel">
+        <div class="about-modal-hero">
+          <img
+            src="/static/img/contactsfreeshare-icon.png"
+            alt="ContactsFreeShare icon"
+            class="about-modal-icon"
+          >
+          <h2 class="about-modal-name">ContactsFreeShare</h2>
+          <p class="about-modal-version">{{ app_edition_label() }} · Version {{ app_version() }}</p>
+          <p class="about-modal-year">2026</p>
+        </div>
+        <div class="about-modal-body">
+          <p class="about-modal-copy">
+            ContactsFreeShare is free. This app will edit your contacts and share them with other Google accounts.
+          </p>
+        </div>
+        <div class="app-modal-actions about-modal-actions">
+          <button type="submit" class="contact-card-button contact-card-button-edit">OK</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="app-modal app-busy-modal" id="app-busy-modal">
+      <div class="app-modal-panel app-busy-modal-panel">
+        <div class="app-busy-spinner" aria-hidden="true"></div>
+        <div class="app-modal-header app-busy-modal-header">
+          <h3 class="app-modal-title" id="app-busy-modal-title">Working</h3>
+          <p class="app-modal-copy" id="app-busy-modal-copy">Please wait.</p>
+        </div>
+      </div>
+    </dialog>
+    <dialog class="app-modal" id="editor-timeout-modal">
+      <form method="dialog" class="app-modal-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title">Editor Time Almost Up</h3>
+          <p class="app-modal-copy">
+            Your Editor session will close in <strong id="editor-timeout-countdown">1:00</strong>.
+          </p>
+          <p class="app-modal-copy">If more time is needed, add 15 minutes now.</p>
+          <p class="app-modal-copy app-modal-error" id="editor-timeout-error" hidden></p>
+        </div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="editor-timeout-signout">Sign out</button>
+          <button type="button" class="contact-card-button contact-card-button-edit" id="editor-timeout-extend">Add 15 minutes</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="app-modal" id="contact-export-modal">
+      <form method="dialog" class="app-modal-panel contact-export-modal-panel" id="contact-export-modal-form">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title" id="contact-export-modal-title">Export Contacts</h3>
+          <p class="app-modal-copy" id="contact-export-modal-copy">Choose where to store the export file.</p>
+        </div>
+        <div class="contact-export-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-edit" id="contact-export-local-button">On This Computer</button>
+          <button type="button" class="contact-card-button contact-card-button-edit" id="contact-export-drive-button">In Google Drive</button>
+        </div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="contact-export-cancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        const dropdowns = Array.from(document.querySelectorAll("[data-site-nav-dropdown]"));
+        const submenus = Array.from(document.querySelectorAll(".site-nav-submenu"));
+
+        const closeSubmenus = (root = document) => {
+          root.querySelectorAll(".site-nav-submenu.is-open").forEach((submenu) => {
+            submenu.classList.remove("is-open");
+          });
+        };
+
+        const closeDropdown = (dropdown) => {
+          if (!dropdown) return;
+          closeSubmenus(dropdown);
+          dropdown.open = false;
+        };
+
+        const closeAllDropdowns = () => {
+          dropdowns.forEach((dropdown) => {
+            closeDropdown(dropdown);
+          });
+        };
+
+        const openDropdown = (dropdown) => {
+          if (!dropdown) return;
+          dropdowns.forEach((other) => {
+            if (other !== dropdown) {
+              closeDropdown(other);
+            }
+          });
+          dropdown.open = true;
+        };
+
+        // Click-only menus: control open state ourselves so hover/native races cannot steal clicks.
+        dropdowns.forEach((dropdown) => {
+          const trigger = dropdown.querySelector(":scope > summary");
+          if (!trigger) return;
+          trigger.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (dropdown.open) {
+              closeDropdown(dropdown);
+            } else {
+              openDropdown(dropdown);
+            }
+          });
+        });
+
+        submenus.forEach((submenu) => {
+          const trigger = submenu.querySelector(":scope > .site-nav-submenu-trigger");
+          if (!trigger) return;
+          trigger.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !submenu.classList.contains("is-open");
+            const parentMenu = submenu.closest(".site-nav-dropdown-menu");
+            if (parentMenu) {
+              closeSubmenus(parentMenu);
+            }
+            submenu.classList.toggle("is-open", willOpen);
+          });
+        });
+
+        const busyModal = document.getElementById("app-busy-modal");
+        const busyModalTitle = document.getElementById("app-busy-modal-title");
+        const busyModalCopy = document.getElementById("app-busy-modal-copy");
+        const exportModal = document.getElementById("contact-export-modal");
+        const exportModalTitle = document.getElementById("contact-export-modal-title");
+        const exportModalCopy = document.getElementById("contact-export-modal-copy");
+        const exportLocalButton = document.getElementById("contact-export-local-button");
+        const exportDriveButton = document.getElementById("contact-export-drive-button");
+        const exportCancelButton = document.getElementById("contact-export-cancel");
+        const editorTimeoutModal = document.getElementById("editor-timeout-modal");
+        const editorTimeoutCountdown = document.getElementById("editor-timeout-countdown");
+        const editorTimeoutExtend = document.getElementById("editor-timeout-extend");
+        const editorTimeoutSignout = document.getElementById("editor-timeout-signout");
+        const editorTimeoutError = document.getElementById("editor-timeout-error");
+        const shareContactsNavLink = document.getElementById("site-nav-share-contacts-link");
+        const exportTriggers = Array.from(document.querySelectorAll("[data-contact-export-kind]"));
+        const backupTriggers = Array.from(document.querySelectorAll("[data-json-backup-kind]"));
+        let activeExportKind = "";
+        let activeExportLabel = "";
+        let editorRemainingSeconds = null;
+        let editorTimeoutShown = false;
+        let editorTimeoutArmed = true;
+        let editorTimeoutSigningOut = false;
+        let editorLockWasActive = false;
+        let editorExtendInFlight = false;
+        let editorStatusPollGeneration = 0;
+        const editorTimeoutWarningSeconds = 120;
+        const editorTimeoutExtensionSeconds = 15 * 60;
+
+        const clearEditorTimeoutError = () => {
+          if (!editorTimeoutError) return;
+          editorTimeoutError.hidden = true;
+          editorTimeoutError.textContent = "";
+        };
+
+        const showEditorTimeoutError = (message) => {
+          if (!editorTimeoutError) return;
+          editorTimeoutError.textContent = message;
+          editorTimeoutError.hidden = !message;
+        };
+
+        const updateShareContactsNavVisibility = (visible) => {
+          if (!shareContactsNavLink) return;
+          shareContactsNavLink.hidden = !visible;
+        };
+
+        const refreshShareContactsNav = async () => {
+          try {
+            const response = await fetch("/google/editor/status", {
+              method: "GET",
+              headers: { "Accept": "application/json" },
+              cache: "no-store",
+            });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (typeof payload.share_contacts_visible === "boolean") {
+              updateShareContactsNavVisibility(payload.share_contacts_visible);
+            }
+          } catch (_error) {
+            return;
+          }
+        };
+
+        window.refreshShareContactsNav = refreshShareContactsNav;
+
+        const showBusyModal = (title, copy) => {
+          if (!busyModal || typeof busyModal.showModal !== "function") return;
+          if (busyModalTitle) {
+            busyModalTitle.textContent = title || "Working";
+          }
+          if (busyModalCopy) {
+            busyModalCopy.textContent = copy || "Please wait.";
+          }
+          if (!busyModal.open) {
+            busyModal.showModal();
+          }
+        };
+
+        const closeBusyModal = () => {
+          if (busyModal && busyModal.open) {
+            busyModal.close();
+          }
+        };
+
+        window.showBusyModal = showBusyModal;
+        window.closeBusyModal = closeBusyModal;
+
+        const formatDuration = (seconds) => {
+          const safeSeconds = Math.max(0, Number(seconds || 0));
+          const minutes = Math.floor(safeSeconds / 60);
+          const remainder = Math.floor(safeSeconds % 60);
+          return `${minutes}:${String(remainder).padStart(2, "0")}`;
+        };
+
+        const submitEditorSignout = () => {
+          if (editorTimeoutSigningOut) return;
+          editorTimeoutSigningOut = true;
+          const form = document.createElement("form");
+          form.method = "post";
+          form.action = "/google/editor/sign-out";
+          document.body.appendChild(form);
+          showBusyModal("Signing Out Editor", "Releasing the Editor lock.");
+          form.submit();
+        };
+
+        const updateEditorTimeoutCountdown = () => {
+          if (editorRemainingSeconds === null) return;
+          if (editorTimeoutCountdown) {
+            editorTimeoutCountdown.textContent = formatDuration(editorRemainingSeconds);
+          }
+          if (editorRemainingSeconds <= 0) {
+            submitEditorSignout();
+          }
+        };
+
+        const closeEditorTimeoutModal = () => {
+          editorTimeoutShown = false;
+          clearEditorTimeoutError();
+          if (editorTimeoutModal?.open) {
+            editorTimeoutModal.close();
+          }
+        };
+
+        const syncEditorTimeoutWarning = () => {
+          if (editorRemainingSeconds === null || editorTimeoutSigningOut || editorExtendInFlight) {
+            return;
+          }
+          if (editorRemainingSeconds > editorTimeoutWarningSeconds) {
+            editorTimeoutArmed = true;
+            if (editorTimeoutShown || editorTimeoutModal?.open) {
+              closeEditorTimeoutModal();
+            }
+            return;
+          }
+          if (editorTimeoutArmed && !editorTimeoutShown) {
+            showEditorTimeoutModal();
+          }
+        };
+
+        const showEditorTimeoutModal = () => {
+          if (!editorTimeoutModal || editorTimeoutSigningOut || editorExtendInFlight) return;
+          if (editorRemainingSeconds === null || editorRemainingSeconds > editorTimeoutWarningSeconds) {
+            return;
+          }
+          editorTimeoutShown = true;
+          if (editorTimeoutModal.open) return;
+          clearEditorTimeoutError();
+          if (busyModal?.open) {
+            closeBusyModal();
+          }
+          try {
+            if (typeof editorTimeoutModal.showModal === "function") {
+              editorTimeoutModal.showModal();
+            } else if (typeof editorTimeoutModal.show === "function") {
+              editorTimeoutModal.show();
+            }
+          } catch (_error) {
+            try {
+              if (typeof editorTimeoutModal.show === "function" && !editorTimeoutModal.open) {
+                editorTimeoutModal.show();
+              }
+            } catch (_fallbackError) {
+              return;
+            }
+          }
+        };
+
+        const dismissEditorTimeoutModal = (remainingSeconds) => {
+          // Ignore any status polls that were already in flight before this extend.
+          editorStatusPollGeneration += 1;
+          editorRemainingSeconds = Math.max(
+            Number(remainingSeconds || 0),
+            editorTimeoutExtensionSeconds,
+          );
+          // Stay disarmed until a later tick/poll sees remaining above the warning window.
+          editorTimeoutArmed = false;
+          closeEditorTimeoutModal();
+          updateEditorTimeoutCountdown();
+        };
+
+        const pollEditorLockStatus = async () => {
+          if (editorExtendInFlight) return;
+          const pollGeneration = editorStatusPollGeneration;
+          try {
+            const response = await fetch("/google/editor/status", {
+              method: "GET",
+              headers: { "Accept": "application/json" },
+              cache: "no-store",
+            });
+            if (pollGeneration !== editorStatusPollGeneration) return;
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (pollGeneration !== editorStatusPollGeneration) return;
+            if (typeof payload.share_contacts_visible === "boolean") {
+              updateShareContactsNavVisibility(payload.share_contacts_visible);
+            }
+            if (!payload.active) {
+              const shouldNavigate = (
+                editorLockWasActive
+                || editorRemainingSeconds !== null
+                || Boolean(editorTimeoutModal?.open)
+              );
+              editorRemainingSeconds = null;
+              editorTimeoutArmed = false;
+              editorLockWasActive = false;
+              closeEditorTimeoutModal();
+              closeBusyModal();
+              if (shouldNavigate && !editorTimeoutSigningOut) {
+                const path = window.location.pathname || "";
+                if (!path.startsWith("/presets/google-connect")) {
+                  window.location.replace("/presets/google-connect?notice=editor_signed_out");
+                }
+              }
+              return;
+            }
+            editorLockWasActive = true;
+            editorRemainingSeconds = Number(payload.remaining_seconds || 0);
+            updateEditorTimeoutCountdown();
+            syncEditorTimeoutWarning();
+          } catch (error) {
+            return;
+          }
+        };
+
+        if (editorTimeoutExtend) {
+          editorTimeoutExtend.addEventListener("click", async () => {
+            if (editorExtendInFlight) return;
+            editorExtendInFlight = true;
+            clearEditorTimeoutError();
+            editorTimeoutExtend.disabled = true;
+            showBusyModal("Adding Editor Time", "Adding 15 minutes to the active Editor session.");
+            try {
+              const response = await fetch("/google/editor/extend", {
+                method: "POST",
+                headers: { "Accept": "application/json" },
+              });
+              let payload = {};
+              try {
+                payload = await response.json();
+              } catch (_error) {
+                payload = {};
+              }
+              if (response.ok && payload.ok) {
+                dismissEditorTimeoutModal(payload.remaining_seconds);
+                return;
+              }
+              const statusMessage = {
+                failed: "Could not add Editor time on Google Drive. Try again or sign out.",
+                lost_lock: "Another Editor now holds the lock. Sign out and check who is editing.",
+                not_active: "This Editor session is no longer active. Sign out and sign in again.",
+              };
+              showEditorTimeoutError(
+                statusMessage[payload.status] || "Could not add Editor time. Try again or sign out.",
+              );
+            } catch (_error) {
+              showEditorTimeoutError("Could not add Editor time. Check your connection and try again.");
+            } finally {
+              editorExtendInFlight = false;
+              editorTimeoutExtend.disabled = false;
+              closeBusyModal();
+            }
+          });
+        }
+
+        if (editorTimeoutSignout) {
+          editorTimeoutSignout.addEventListener("click", submitEditorSignout);
+        }
+
+        pollEditorLockStatus();
+        window.setInterval(() => {
+          if (editorRemainingSeconds === null || editorExtendInFlight) return;
+          editorRemainingSeconds -= 1;
+          updateEditorTimeoutCountdown();
+          syncEditorTimeoutWarning();
+        }, 1000);
+        window.setInterval(pollEditorLockStatus, 5000);
+        window.addEventListener("focus", pollEditorLockStatus);
+        window.addEventListener("pageshow", pollEditorLockStatus);
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) {
+            pollEditorLockStatus();
+          }
+        });
+
+        const closeExportModal = () => {
+          if (exportModal && exportModal.open) {
+            exportModal.close();
+          }
+        };
+
+        const submitDriveExport = (fileKind) => {
+          const form = document.createElement("form");
+          form.method = "post";
+          form.action = `/contacts/export/${encodeURIComponent(fileKind)}/drive`;
+          document.body.appendChild(form);
+          showBusyModal("Saving to Drive", `Exporting the contacts list as ${activeExportLabel || fileKind} to Google Drive.`);
+          form.submit();
+        };
+
+        const fallbackDownload = (blob, filename) => {
+          const downloadUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+        };
+
+        const saveLocalExport = async (fileKind) => {
+          showBusyModal("Saving to Computer", `Preparing the contacts list as ${activeExportLabel || fileKind}.`);
+          const response = await fetch(`/contacts/export/${encodeURIComponent(fileKind)}`, {
+            method: "GET",
+            headers: { "Accept": "application/octet-stream" },
+          });
+          if (!response.ok) {
+            closeBusyModal();
+            window.location.href = "/contacts/?google_notice=contacts_export_local_failed";
+            return;
+          }
+          const blob = await response.blob();
+          const disposition = response.headers.get("Content-Disposition") || "";
+          const filenameMatch = disposition.match(/filename="([^"]+)"/);
+          const isCsvExport = fileKind === "csv" || fileKind === "google_csv";
+          const filename = filenameMatch ? filenameMatch[1] : `ContactsFreeShare_Contacts.${isCsvExport ? "csv" : "vcf"}`;
+
+          if (window.showSaveFilePicker) {
+            const exportMimeType = isCsvExport ? "text/csv" : "text/vcard";
+            const picker = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: activeExportLabel || fileKind.toUpperCase(),
+                  accept: {
+                    [exportMimeType]: [isCsvExport ? ".csv" : ".vcf"],
+                  },
+                },
+              ],
+            });
+            const writable = await picker.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            closeBusyModal();
+            return;
+          }
+
+          fallbackDownload(blob, filename);
+          closeBusyModal();
+        };
+
+        const backupEndpoint = (backupKind, destination) => {
+          const basePath = backupKind === "meetingdata" ? "/meetings/backup/json" : "/contacts/backup/json";
+          return destination === "drive" ? `${basePath}/drive` : basePath;
+        };
+
+        const backupFailureUrl = (backupKind, notice) => {
+          if (backupKind === "meetingdata") {
+            return `/meetings/v2/sections?notice=${encodeURIComponent(notice)}`;
+          }
+          return `/contacts/?google_notice=${encodeURIComponent(notice)}`;
+        };
+
+        const saveLocalBackup = async (backupKind, backupLabel) => {
+          showBusyModal("Saving Backup", `Preparing the ${backupLabel} JSON backup.`);
+          const response = await fetch(backupEndpoint(backupKind, "local"), {
+            method: "GET",
+            headers: { "Accept": "application/json" },
+          });
+          if (!response.ok) {
+            closeBusyModal();
+            window.location.href = backupFailureUrl(backupKind, "backup_local_failed");
+            return;
+          }
+          const blob = await response.blob();
+          const disposition = response.headers.get("Content-Disposition") || "";
+          const filenameMatch = disposition.match(/filename="([^"]+)"/);
+          const filename = filenameMatch ? filenameMatch[1] : `ContactsFreeShare_${backupLabel}.json`;
+
+          if (window.showSaveFilePicker) {
+            const picker = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: `${backupLabel} JSON Backup`,
+                  accept: { "application/json": [".json"] },
+                },
+              ],
+            });
+            const writable = await picker.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            closeBusyModal();
+            return;
+          }
+
+          fallbackDownload(blob, filename);
+          closeBusyModal();
+        };
+
+        const submitDriveBackup = (backupKind, backupLabel) => {
+          const form = document.createElement("form");
+          form.method = "post";
+          form.action = backupEndpoint(backupKind, "drive");
+          document.body.appendChild(form);
+          showBusyModal("Saving to Drive", `Saving the ${backupLabel} JSON backup to the Backups folder in Google Drive.`);
+          form.submit();
+        };
+
+        const busyTriggerSelector = "[data-busy-modal-title]";
+        const busyTriggers = Array.from(document.querySelectorAll(busyTriggerSelector));
+        busyTriggers.forEach((element) => {
+          if (element.tagName === "FORM") {
+            element.addEventListener("submit", () => {
+              showBusyModal(element.dataset.busyModalTitle, element.dataset.busyModalCopy);
+            });
+            return;
+          }
+          if (element.tagName === "BUTTON") {
+            element.addEventListener("click", (event) => {
+              if (event.defaultPrevented) return;
+              showBusyModal(element.dataset.busyModalTitle, element.dataset.busyModalCopy);
+            });
+            return;
+          }
+          if (element.tagName === "A") {
+            element.addEventListener("click", (event) => {
+              if (event.defaultPrevented) return;
+              if (event.button !== 0) return;
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              showBusyModal(element.dataset.busyModalTitle, element.dataset.busyModalCopy);
+            });
+          }
+        });
+
+        if (exportModal && exportModalTitle && exportModalCopy && exportLocalButton && exportDriveButton) {
+          exportTriggers.forEach((element) => {
+            element.addEventListener("click", () => {
+              activeExportKind = element.dataset.contactExportKind || "";
+              activeExportLabel = element.dataset.contactExportLabel || activeExportKind.toUpperCase();
+              exportModalTitle.textContent = `Export Contacts as ${activeExportLabel}`;
+              exportModalCopy.textContent = `Choose where to store the ${activeExportLabel} file containing the full contact list.`;
+              closeAllDropdowns();
+              exportModal.showModal();
+            });
+          });
+
+          exportLocalButton.addEventListener("click", async () => {
+            const fileKind = activeExportKind;
+            closeExportModal();
+            try {
+              await saveLocalExport(fileKind);
+            } catch (error) {
+              closeBusyModal();
+              if (error && error.name === "AbortError") {
+                return;
+              }
+              window.location.href = "/contacts/?google_notice=contacts_export_local_failed";
+            }
+          });
+
+          exportDriveButton.addEventListener("click", () => {
+            const fileKind = activeExportKind;
+            closeExportModal();
+            submitDriveExport(fileKind);
+          });
+        }
+
+        if (exportCancelButton && exportModal) {
+          exportCancelButton.addEventListener("click", () => {
+            closeExportModal();
+          });
+        }
+
+        backupTriggers.forEach((element) => {
+          element.addEventListener("click", async () => {
+            const backupKind = element.dataset.jsonBackupKind || "";
+            const destination = element.dataset.jsonBackupDestination || "";
+            const backupLabel = element.dataset.jsonBackupLabel || backupKind;
+            closeAllDropdowns();
+            if (destination === "drive") {
+              submitDriveBackup(backupKind, backupLabel);
+              return;
+            }
+            try {
+              await saveLocalBackup(backupKind, backupLabel);
+            } catch (error) {
+              closeBusyModal();
+              if (error && error.name === "AbortError") {
+                return;
+              }
+              window.location.href = backupFailureUrl(backupKind, "backup_local_failed");
+            }
+          });
+        });
+
+        document.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Node)) {
+            closeAllDropdowns();
+            return;
+          }
+          dropdowns.forEach((dropdown) => {
+            if (!dropdown.open) return;
+            if (dropdown.contains(target)) return;
+            closeDropdown(dropdown);
+          });
+          submenus.forEach((submenu) => {
+            if (!submenu.classList.contains("is-open")) return;
+            if (submenu.contains(target)) return;
+            submenu.classList.remove("is-open");
+          });
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape") return;
+          closeAllDropdowns();
+        });
+
+        const aboutButton = document.querySelector('[data-app-action="about"]');
+        const aboutModal = document.getElementById("about-app-modal");
+        if (aboutButton && aboutModal) {
+          aboutButton.addEventListener("click", () => {
+            closeAllDropdowns();
+            aboutModal.showModal();
+          });
+        }
+
+        const quitButton = document.querySelector('[data-app-action="quit"]');
+        const renderClosedState = () => {
+          document.body.innerHTML = `
+            <main class="wrap" style="padding-block: 4rem;">
+              <section style="max-width: 36rem; margin: 0 auto; padding: 2rem; border: 1px solid #d7d7d7; border-radius: 1rem; background: #fff;">
+                <h1 style="margin-top: 0;">ContactsFreeShare closed</h1>
+                <p>You can close this browser tab now.</p>
+              </section>
+            </main>
+          `;
+          document.title = "ContactsFreeShare Closed";
+        };
+
+        const closeContactsFreeShare = () => {
+          closeAllDropdowns();
+
+          window.open("", "_self");
+          window.close();
+
+          window.setTimeout(() => {
+            if (!document.hidden) {
+              renderClosedState();
+            }
+          }, 150);
+        };
+
+        window.closeContactsFreeShare = closeContactsFreeShare;
+
+        if (!quitButton) return;
+
+        quitButton.addEventListener("click", () => {
+          closeContactsFreeShare();
+        });
+      });
+    </script>
+    <script src="/static/js/app_modal.js?v=1"></script>
+    {% block extra_scripts %}{% endblock %}
+  </body>
+</html>

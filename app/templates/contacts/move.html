@@ -1,0 +1,559 @@
+{% extends "base.html" %}
+
+{% block title %}Move Contacts | Contacts Website{% endblock %}
+
+{% block body_class %}contact-move-page-body{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3"}) %}
+  <section class="panel page-top-panel meetingdata-filter-panel contact-edit-header" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+    <div class="contact-edit-header-content">
+      <div>
+        <div class="contact-edit-topbar">
+          <a class="back-crumb-link" href="{{ return_to }}"><span aria-hidden="true">←</span><span>Back</span></a>
+        </div>
+        <h2>Move Contacts</h2>
+        <p class="muted">
+          All {{ selected_count }} selected contact{% if selected_count != 1 %}s{% endif %}
+          will be moved to the Field and Meeting chosen below.
+        </p>
+      </div>
+      <div class="contact-edit-header-actions contact-move-header-actions">
+        <a class="contact-card-button contact-card-button-cancel" href="{{ return_to }}">Cancel</a>
+        <button type="submit" form="contact-move-form" class="contact-card-button contact-card-button-edit">Move Contacts</button>
+      </div>
+    </div>
+  </section>
+
+  <form method="post" action="/contacts/move-selected/apply" class="contact-edit-form" id="contact-move-form">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    {% for contact_id in selected_contact_ids %}
+      <input type="hidden" name="selected_contact_ids" value="{{ contact_id }}">
+    {% endfor %}
+
+    <section class="detail-grid contact-edit-grid">
+      <article class="panel">
+        <h3>Assignments</h3>
+        <div class="form-grid">
+          <label>
+            <span>Fields</span>
+            <select name="field_value" id="contact-move-field" required>
+              <option value=""></option>
+              {% for item in filters.fields %}
+                <option value="{{ item }}">{{ item }}</option>
+              {% endfor %}
+              <option value="__add_field__">+ Add Field</option>
+              <option value="__delete_field__">- Field</option>
+              <option value="__rename_field__">Rename Field</option>
+            </select>
+          </label>
+          <label>
+            <span>Meetings</span>
+            <select name="meeting_value" id="contact-move-meeting" required>
+              <option value=""></option>
+              {% for item in filters.meetings %}
+                <option value="{{ item }}">{{ item }}</option>
+              {% endfor %}
+              <option value="__add_meeting__">+ Add Meeting</option>
+              <option value="__delete_meeting__">- Meeting</option>
+              <option value="__rename_meeting__">Rename Meeting</option>
+            </select>
+          </label>
+          <label>
+            <span>Group membership</span>
+            <input type="text" id="contact-move-group-membership" value="" readonly>
+          </label>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h3>Selected Contacts</h3>
+        <ul class="stack-list">
+          {% for contact in selected_contacts %}
+            <li>
+              <strong>{{ contact.family_name|upper }}</strong>{% if contact.given_name %}, {{ contact.given_name }}{% endif %}
+              {% if contact.fields_text or contact.meetings_text %}
+                <span class="muted"> · {{ contact.fields_text or "No field" }} / {{ contact.meetings_text or "No meeting" }}</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </article>
+    </section>
+
+  </form>
+
+  <dialog class="app-modal" id="assignment-option-modal">
+    <form method="dialog" class="app-modal-panel" id="assignment-option-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="assignment-option-modal-title">Add Option</h3>
+        <p class="app-modal-copy" id="assignment-option-modal-copy">Enter a name for the new option.</p>
+      </div>
+      <label class="app-modal-field">
+        <span id="assignment-option-modal-label">Name</span>
+        <input type="text" id="assignment-option-modal-input" autocomplete="off">
+      </label>
+      <div class="app-modal-error" id="assignment-option-modal-error" aria-live="polite"></div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="assignment-option-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-edit" id="assignment-option-modal-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% set script_filters = filters|default({"fields": [], "meetings": [], "meetings_by_field": {}}) %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const sharedContactsGroupName = {{ shared_contacts_group_name|tojson }};
+      const fieldSelect = document.getElementById("contact-move-field");
+      const meetingSelect = document.getElementById("contact-move-meeting");
+      const groupMembershipInput = document.getElementById("contact-move-group-membership");
+      const optionModal = document.getElementById("assignment-option-modal");
+      const optionModalForm = document.getElementById("assignment-option-modal-form");
+      const optionModalTitle = document.getElementById("assignment-option-modal-title");
+      const optionModalCopy = document.getElementById("assignment-option-modal-copy");
+      const optionModalLabel = document.getElementById("assignment-option-modal-label");
+      const optionModalInput = document.getElementById("assignment-option-modal-input");
+      const optionModalError = document.getElementById("assignment-option-modal-error");
+      const optionModalCancel = document.getElementById("assignment-option-modal-cancel");
+      const optionModalSave = document.getElementById("assignment-option-modal-save");
+      const assignmentModal = window.AppModal?.create({
+        dialog: optionModal,
+        form: optionModalForm,
+        titleEl: optionModalTitle,
+        copyEl: optionModalCopy,
+        labelEl: optionModalLabel,
+        inputEl: optionModalInput,
+        errorEl: optionModalError,
+        cancelEl: optionModalCancel,
+        saveEl: optionModalSave,
+      });
+      const meetingsByField = {{ script_filters.meetings_by_field|default({})|tojson }};
+      const allMeetings = {{ script_filters.meetings|default([])|tojson }};
+      const addFieldSentinel = "__add_field__";
+      const addMeetingSentinel = "__add_meeting__";
+      const deleteFieldSentinel = "__delete_field__";
+      const deleteMeetingSentinel = "__delete_meeting__";
+      const renameFieldSentinel = "__rename_field__";
+      const renameMeetingSentinel = "__rename_meeting__";
+
+      const insertSortedOption = (select, value, defaultLabel, sentinelOptions, selectedValue) => {
+        if (!select || !value) return;
+        const options = Array.from(select.options)
+          .map((option) => ({ value: option.value, label: option.textContent || "" }))
+          .filter((option) => !sentinelOptions.some((sentinel) => sentinel.value === option.value));
+
+        if (!options.some((option) => option.value === value)) {
+          options.push({ value, label: value });
+        }
+
+        const defaultOption = options.find((option) => option.value === "");
+        const namedOptions = options
+          .filter((option) => option.value !== "")
+          .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+
+        select.innerHTML = "";
+        const blankOption = document.createElement("option");
+        blankOption.value = "";
+        blankOption.textContent = defaultOption?.label || defaultLabel;
+        if (!selectedValue) {
+          blankOption.selected = true;
+        }
+        select.appendChild(blankOption);
+
+        namedOptions.forEach((option) => {
+          const node = document.createElement("option");
+          node.value = option.value;
+          node.textContent = option.label;
+          if (option.value === selectedValue) {
+            node.selected = true;
+          }
+          select.appendChild(node);
+        });
+
+        sentinelOptions.forEach((sentinel) => {
+          const sentinelOption = document.createElement("option");
+          sentinelOption.value = sentinel.value;
+          sentinelOption.textContent = sentinel.label;
+          select.appendChild(sentinelOption);
+        });
+      };
+
+      const meetingsForField = (fieldName) => {
+        if (!fieldName) {
+          return allMeetings.slice();
+        }
+        return Array.isArray(meetingsByField[fieldName]) ? meetingsByField[fieldName].slice() : [];
+      };
+
+      const renderMeetingOptions = (fieldName, preferredMeeting = null) => {
+        if (!meetingSelect) return;
+        const meetings = meetingsForField(fieldName);
+        const preservedMeeting = preferredMeeting ?? meetingSelect.value;
+        meetingSelect.innerHTML = "";
+
+        const blankOption = document.createElement("option");
+        blankOption.value = "";
+        blankOption.textContent = "";
+        meetingSelect.appendChild(blankOption);
+
+        meetings.forEach((meetingName) => {
+          const option = document.createElement("option");
+          option.value = meetingName;
+          option.textContent = meetingName;
+          if (meetingName === preservedMeeting) {
+            option.selected = true;
+          }
+          meetingSelect.appendChild(option);
+        });
+
+        if (preservedMeeting && !meetings.includes(preservedMeeting)) {
+          meetingSelect.value = "";
+        }
+
+        [
+          { value: addMeetingSentinel, label: "+ Add Meeting" },
+          { value: deleteMeetingSentinel, label: "- Meeting" },
+          { value: renameMeetingSentinel, label: "Rename Meeting" },
+        ].forEach((sentinel) => {
+          const sentinelOption = document.createElement("option");
+          sentinelOption.value = sentinel.value;
+          sentinelOption.textContent = sentinel.label;
+          meetingSelect.appendChild(sentinelOption);
+        });
+      };
+
+      const createAssignmentOption = async (kind, value, parentValue = "") => {
+        const body = new URLSearchParams({ kind, value });
+        if (parentValue) {
+          body.set("parent_value", parentValue);
+        }
+        const response = await fetch("/contacts/assignment-options", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to save the new option.");
+        }
+        return String(payload.value || "").trim();
+      };
+
+      const removeAssignmentOption = async (kind, value) => {
+        const body = new URLSearchParams({ kind, value });
+        const response = await fetch("/contacts/assignment-options/remove", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to delete the option.");
+        }
+        return String(payload.value || "").trim();
+      };
+
+      const renameAssignmentOption = async (kind, oldValue, newValue) => {
+        const body = new URLSearchParams({ kind, old_value: oldValue, new_value: newValue });
+        const response = await fetch("/contacts/assignment-options/rename", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to rename the option.");
+        }
+        return payload;
+      };
+
+      const requestAssignmentOptionDialog = (config) => assignmentModal?.prompt(config) ?? Promise.resolve("");
+      const showMessageDialog = (config) => assignmentModal?.message(config) ?? Promise.resolve();
+
+      const updateGroupMembership = () => {
+        if (!fieldSelect || !meetingSelect || !groupMembershipInput) return;
+        const fieldValue = fieldSelect.value.trim();
+        const meetingValue = meetingSelect.value.trim();
+        if (!fieldValue || !meetingValue) {
+          groupMembershipInput.value = "";
+          return;
+        }
+        groupMembershipInput.value = `${fieldValue} - ${meetingValue} (Shared):::${sharedContactsGroupName}:::myContacts`;
+      };
+
+      renderMeetingOptions(fieldSelect?.value || "");
+      fieldSelect.dataset.previousValue = fieldSelect.value;
+      meetingSelect.dataset.previousValue = meetingSelect.value;
+
+      fieldSelect?.addEventListener("change", async () => {
+        const previousValue = fieldSelect.dataset.previousValue ?? "";
+        if (fieldSelect.value === addFieldSentinel) {
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Add Field",
+            copy: "Name the new Field. It will be inserted alphabetically into the list.",
+            label: "Field name",
+          });
+          if (!nextValue) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const savedValue = await createAssignmentOption("field", nextValue);
+            insertSortedOption(fieldSelect, savedValue, "", [
+              { value: addFieldSentinel, label: "+ Add Field" },
+              { value: deleteFieldSentinel, label: "- Field" },
+              { value: renameFieldSentinel, label: "Rename Field" },
+            ], savedValue);
+            meetingsByField[savedValue] = meetingsByField[savedValue] || [];
+            renderMeetingOptions(savedValue, "");
+            fieldSelect.dataset.previousValue = savedValue;
+            meetingSelect.dataset.previousValue = "";
+            updateGroupMembership();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Add Field",
+              copy: error.message || "Unable to add the new Field.",
+            });
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (fieldSelect.value === deleteFieldSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Delete Field",
+              copy: "Select a Field before using - Field.",
+            });
+            fieldSelect.value = "";
+            return;
+          }
+          const confirmed = await requestAssignmentOptionDialog({
+            title: "Delete Field",
+            copy: `Delete the Field "${previousValue}"? This only works when no contacts are assigned to that Field.`,
+            label: "Field name",
+            requireInput: false,
+            submitLabel: "Delete",
+          });
+          if (!confirmed) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            await removeAssignmentOption("field", previousValue);
+            Array.from(fieldSelect.options)
+              .filter((option) => option.value === previousValue)
+              .forEach((option) => option.remove());
+            delete meetingsByField[previousValue];
+            fieldSelect.value = "";
+            fieldSelect.dataset.previousValue = "";
+            renderMeetingOptions("", "");
+            meetingSelect.dataset.previousValue = "";
+            updateGroupMembership();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Delete Field",
+              copy: error.message || "Unable to delete the Field.",
+            });
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (fieldSelect.value === renameFieldSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Rename Field",
+              copy: "Select a Field before using Rename Field.",
+            });
+            fieldSelect.value = "";
+            return;
+          }
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Rename Field",
+            copy: `Current name: ${previousValue}`,
+            label: "New Field name",
+            initialValue: previousValue,
+            submitLabel: "Rename",
+          });
+          if (!nextValue) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const result = await renameAssignmentOption("field", previousValue, nextValue);
+            const savedValue = String(result.new_value || nextValue).trim();
+            insertSortedOption(fieldSelect, savedValue, "", [
+              { value: addFieldSentinel, label: "+ Add Field" },
+              { value: deleteFieldSentinel, label: "- Field" },
+              { value: renameFieldSentinel, label: "Rename Field" },
+            ], savedValue);
+            if (meetingsByField[previousValue]) {
+              meetingsByField[savedValue] = [...meetingsByField[previousValue]];
+              delete meetingsByField[previousValue];
+            }
+            renderMeetingOptions(savedValue, meetingSelect.value);
+            fieldSelect.dataset.previousValue = savedValue;
+            meetingSelect.dataset.previousValue = meetingSelect.value;
+            updateGroupMembership();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Rename Field",
+              copy: error.message || "Unable to rename the Field.",
+            });
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        renderMeetingOptions(fieldSelect.value);
+        fieldSelect.dataset.previousValue = fieldSelect.value;
+        meetingSelect.dataset.previousValue = meetingSelect.value;
+        updateGroupMembership();
+      });
+      meetingSelect?.addEventListener("change", async () => {
+        const previousValue = meetingSelect.dataset.previousValue ?? "";
+        if (meetingSelect.value === addMeetingSentinel) {
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Add Meeting",
+            copy: "Name the new Meeting. It will be inserted alphabetically into the list.",
+            label: "Meeting name",
+          });
+          if (!nextValue) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const savedValue = await createAssignmentOption("meeting", nextValue, fieldSelect.value || "");
+            if (!allMeetings.includes(savedValue)) {
+              allMeetings.push(savedValue);
+              allMeetings.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            }
+            if (fieldSelect.value) {
+              const fieldMeetings = meetingsByField[fieldSelect.value] || [];
+              if (!fieldMeetings.includes(savedValue)) {
+                fieldMeetings.push(savedValue);
+                fieldMeetings.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+              }
+              meetingsByField[fieldSelect.value] = fieldMeetings;
+            }
+            insertSortedOption(meetingSelect, savedValue, "", [
+              { value: addMeetingSentinel, label: "+ Add Meeting" },
+              { value: deleteMeetingSentinel, label: "- Meeting" },
+              { value: renameMeetingSentinel, label: "Rename Meeting" },
+            ], savedValue);
+            meetingSelect.dataset.previousValue = savedValue;
+            updateGroupMembership();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Add Meeting",
+              copy: error.message || "Unable to add the new Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (meetingSelect.value === deleteMeetingSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Delete Meeting",
+              copy: "Select a Meeting before using - Meeting.",
+            });
+            meetingSelect.value = "";
+            return;
+          }
+          const confirmed = await requestAssignmentOptionDialog({
+            title: "Delete Meeting",
+            copy: `Delete the Meeting "${previousValue}"? This only works when no contacts are assigned to that Meeting.`,
+            label: "Meeting name",
+            requireInput: false,
+            submitLabel: "Delete",
+          });
+          if (!confirmed) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            await removeAssignmentOption("meeting", previousValue);
+            allMeetings.splice(0, allMeetings.length, ...allMeetings.filter((item) => item !== previousValue));
+            Object.keys(meetingsByField).forEach((fieldName) => {
+              meetingsByField[fieldName] = (meetingsByField[fieldName] || []).filter((item) => item !== previousValue);
+            });
+            renderMeetingOptions(fieldSelect.value, "");
+            meetingSelect.dataset.previousValue = "";
+            updateGroupMembership();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Delete Meeting",
+              copy: error.message || "Unable to delete the Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (meetingSelect.value === renameMeetingSentinel) {
+          if (!previousValue) {
+            await showMessageDialog({
+              title: "Rename Meeting",
+              copy: "Select a Meeting before using Rename Meeting.",
+            });
+            meetingSelect.value = "";
+            return;
+          }
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Rename Meeting",
+            copy: `Current name: ${previousValue}`,
+            label: "New Meeting name",
+            initialValue: previousValue,
+            submitLabel: "Rename",
+          });
+          if (!nextValue) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const result = await renameAssignmentOption("meeting", previousValue, nextValue);
+            const savedValue = String(result.new_value || nextValue).trim();
+            if (!allMeetings.includes(savedValue)) {
+              allMeetings.push(savedValue);
+            }
+            const nextMeetings = allMeetings
+              .map((item) => item === previousValue ? savedValue : item)
+              .filter((item, index, items) => items.indexOf(item) === index)
+              .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            allMeetings.splice(0, allMeetings.length, ...nextMeetings);
+            Object.keys(meetingsByField).forEach((fieldName) => {
+              meetingsByField[fieldName] = (meetingsByField[fieldName] || [])
+                .map((item) => item === previousValue ? savedValue : item)
+                .filter((item, index, items) => items.indexOf(item) === index)
+                .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            });
+            insertSortedOption(meetingSelect, savedValue, "", [
+              { value: addMeetingSentinel, label: "+ Add Meeting" },
+              { value: deleteMeetingSentinel, label: "- Meeting" },
+              { value: renameMeetingSentinel, label: "Rename Meeting" },
+            ], savedValue);
+            meetingSelect.dataset.previousValue = savedValue;
+            updateGroupMembership();
+          } catch (error) {
+            await showMessageDialog({
+              title: "Rename Meeting",
+              copy: error.message || "Unable to rename the Meeting.",
+            });
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        meetingSelect.dataset.previousValue = meetingSelect.value;
+        updateGroupMembership();
+      });
+      updateGroupMembership();
+    });
+  </script>
+{% endblock %}

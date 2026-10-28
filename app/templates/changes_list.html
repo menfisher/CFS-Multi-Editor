@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Edits | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3"}) %}
+  {% set sync_state = google_sync.state if google_sync is defined and google_sync.state is defined else {} %}
+  {% set can_edit_changes = can_edit_changes|default(false) %}
+  {% set can_complete_changes = can_complete_changes|default(false) %}
+  {% set notice_key = request.query_params.get("notice", "") if request is defined else "" %}
+  <div class="changes-list-page">
+    <section class="panel page-top-panel meetingdata-filter-panel contacts-filter-panel changes-list-title-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+      <div class="contacts-filter-shell">
+        <div class="contacts-filter-title-row">
+          <div class="changes-list-title-copy">
+            <h2 class="contacts-result-count">Changes for Contacts / Meetings</h2>
+            <span class="changes-list-title-hint">Enter changes on row 1</span>
+          </div>
+          <div class="contacts-action-bar">
+            <button
+              type="button"
+              class="contacts-action-new"
+              id="changes-list-download-drive"
+              {% if not drive_ready %}disabled title="Connect Google Drive first."{% else %}title="Download Pending Edits uploaded from mobile."{% endif %}
+            >Download from Drive</button>
+            <button type="button" class="contacts-action-new is-active" id="changes-list-add-row" {% if not can_edit_changes %}disabled{% endif %}>Add Row</button>
+            {% if can_complete_changes %}
+              <button
+                type="button"
+                class="contacts-action-new changes-list-completed-button"
+                id="changes-list-completed"
+                data-can-complete="true"
+                title="Select a Changes cell first."
+                disabled
+              >Completed edit(s)</button>
+            {% endif %}
+            <a class="contact-card-button contact-card-button-restore changes-list-done-button" href="/presets/google-connect">Exit</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel changes-list-panel">
+      {% if notice_message %}
+        <div
+          class="notice is-info changes-list-warning"
+          {% if notice_key in ["changes_list_download_success", "changes_list_download_current"] %}
+            id="changes-list-temporary-notice"
+            data-auto-hide-ms="3600"
+          {% endif %}
+        >{{ notice_message }}</div>
+      {% endif %}
+      {% if not can_edit_changes %}
+        <div class="notice is-warning changes-list-warning">Sign in on Google Connect before editing the Changes List.</div>
+      {% endif %}
+      <div class="changes-list-table" id="changes-list-table">
+        <div class="changes-list-header">Automatic Date</div>
+        <div class="changes-list-header">Name/Event</div>
+        <div class="changes-list-header">Changes</div>
+        {% for entry in entries %}
+          <div class="changes-list-row-cell changes-list-date" data-row-id="{{ entry.id }}" data-field="automatic_date">{{ entry.automatic_date }}</div>
+          <div class="changes-list-name-cell changes-list-row-cell" data-row-id="{{ entry.id }}">
+            <input class="changes-list-input changes-list-name-input" data-row-id="{{ entry.id }}" data-field="name_event" value="{{ entry.name_event }}" autocomplete="off" {% if not can_edit_changes %}disabled{% endif %}>
+            {% if entry.contact_edit_url %}
+              <a class="changes-list-contact-link" href="{{ entry.contact_edit_url }}">Open contact edit</a>
+            {% endif %}
+          </div>
+          {% if entry.changes_text_has_diff %}
+            <div
+              class="changes-list-row-cell changes-list-changes-display{% if entry.completed_by %} is-completed{% endif %}"
+              data-row-id="{{ entry.id }}"
+              data-field="changes_text_display"
+              data-completed-by="{{ entry.completed_by }}"
+              tabindex="0"
+              aria-selected="false"
+              aria-label="Select changes for {{ entry.name_event or 'this row' }}"
+            >
+              <div class="changes-list-changes-body">{{ entry.changes_text_html | safe }}</div>
+              <input type="hidden" data-row-id="{{ entry.id }}" data-field="changes_text" value="{{ entry.changes_text }}">
+            </div>
+          {% else %}
+            <textarea class="changes-list-row-cell changes-list-textarea {% if entry.completed_by %}is-completed{% endif %}" data-row-id="{{ entry.id }}" data-field="changes_text" data-completed-by="{{ entry.completed_by }}" rows="1" {% if not can_edit_changes %}disabled{% endif %}>{{ entry.changes_text }}</textarea>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const changesPage = document.querySelector(".changes-list-page");
+      const titlePanel = document.querySelector(".changes-list-title-panel");
+      const table = document.getElementById("changes-list-table");
+      const addRowButton = document.getElementById("changes-list-add-row");
+      const completedButton = document.getElementById("changes-list-completed");
+      const canCompleteChanges = completedButton?.dataset.canComplete === "true";
+      const saveTimers = new Map();
+      let selectedChangesRowId = "";
+
+      const syncPanelOffset = () => {
+        if (!changesPage || !titlePanel) return;
+        changesPage.style.setProperty("--changes-list-title-panel-space", `${titlePanel.offsetHeight}px`);
+      };
+
+      const rowInputs = (rowId) => ({
+        nameEvent: table?.querySelector(`[data-row-id="${rowId}"][data-field="name_event"]`),
+        changesText: table?.querySelector(`[data-row-id="${rowId}"][data-field="changes_text"]`),
+        changesDisplay: table?.querySelector(`[data-row-id="${rowId}"][data-field="changes_text_display"]`),
+        automaticDate: table?.querySelector(`[data-row-id="${rowId}"][data-field="automatic_date"]`),
+      });
+
+      const changesCellForTarget = (target) => {
+        if (!(target instanceof Element)) {
+          return null;
+        }
+        return target.closest(".changes-list-textarea, .changes-list-changes-display");
+      };
+
+      const selectChangesCell = (cell) => {
+        if (!cell) {
+          return;
+        }
+        setSelectedChangesRow(cell.dataset.rowId || "");
+        if (cell.classList.contains("changes-list-changes-display")) {
+          cell.focus({ preventScroll: true });
+        }
+      };
+
+      const setSelectedChangesRow = (rowId) => {
+        selectedChangesRowId = rowId || "";
+        table?.querySelectorAll(".changes-list-textarea, .changes-list-changes-display").forEach((cell) => {
+          cell.classList.toggle("is-selected", cell.dataset.rowId === selectedChangesRowId);
+          if (cell.classList.contains("changes-list-changes-display")) {
+            cell.setAttribute("aria-selected", cell.dataset.rowId === selectedChangesRowId ? "true" : "false");
+          }
+        });
+        updateCompletedButton();
+      };
+
+      const updateCompletedButton = () => {
+        if (!completedButton) return;
+        completedButton.disabled = !canCompleteChanges || !selectedChangesRowId;
+        completedButton.title = canCompleteChanges
+          ? (selectedChangesRowId ? "Mark the selected Changes cell completed." : "Select a Changes cell first.")
+          : "Sign in as an Editor to mark changes completed.";
+      };
+
+      const updateContactLink = (rowId, entry) => {
+        const nameCell = table?.querySelector(`.changes-list-name-cell[data-row-id="${rowId}"]`);
+        if (!nameCell || !entry) {
+          return;
+        }
+        let link = nameCell.querySelector(".changes-list-contact-link");
+        if (entry.contact_edit_url) {
+          if (!link) {
+            link = document.createElement("a");
+            link.className = "changes-list-contact-link";
+            link.textContent = "Open contact edit";
+            nameCell.appendChild(link);
+          }
+          link.href = entry.contact_edit_url;
+        } else if (link) {
+          link.remove();
+        }
+      };
+
+      const applyEntryToChangesCell = (fields, entry) => {
+        if (!fields || !entry) {
+          return;
+        }
+        if (fields.automaticDate) {
+          fields.automaticDate.textContent = entry.automatic_date || "";
+        }
+        updateContactLink(String(entry.id || fields.nameEvent?.dataset.rowId || ""), entry);
+        if (fields.changesDisplay) {
+          const hiddenInput = fields.changesDisplay.querySelector('[data-field="changes_text"]');
+          if (hiddenInput) {
+            hiddenInput.value = entry.changes_text || "";
+          }
+          const body = fields.changesDisplay.querySelector(".changes-list-changes-body");
+          if (body) {
+            body.innerHTML = entry.changes_text_html || "";
+          }
+          if (entry.completed_by) {
+            fields.changesDisplay.classList.add("is-completed");
+            fields.changesDisplay.dataset.completedBy = entry.completed_by;
+          } else {
+            fields.changesDisplay.classList.remove("is-completed");
+            fields.changesDisplay.dataset.completedBy = "";
+          }
+          return;
+        }
+        if (fields.changesText?.tagName === "TEXTAREA") {
+          fields.changesText.value = entry.changes_text || "";
+          if (entry.completed_by) {
+            fields.changesText.classList.add("is-completed");
+            fields.changesText.dataset.completedBy = entry.completed_by;
+          } else {
+            fields.changesText.classList.remove("is-completed");
+            fields.changesText.dataset.completedBy = "";
+          }
+          autoSizeTextarea(fields.changesText);
+        }
+      };
+
+      const autoSizeTextarea = (textarea) => {
+        if (!textarea) return;
+        textarea.style.height = "auto";
+        textarea.style.height = `${Math.max(textarea.scrollHeight, 44)}px`;
+      };
+
+      const saveRow = async (rowId) => {
+        const fields = rowInputs(rowId);
+        const body = new URLSearchParams({
+          name_event: fields.nameEvent?.value || "",
+          changes_text: fields.changesText?.value || "",
+        });
+        const response = await fetch(`/changes-list/rows/${rowId}/save`, {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok || !payload.entry) return;
+        applyEntryToChangesCell(fields, payload.entry);
+        return payload.entry;
+      };
+
+      const scheduleSave = (rowId) => {
+        if (saveTimers.has(rowId)) {
+          window.clearTimeout(saveTimers.get(rowId));
+        }
+        saveTimers.set(rowId, window.setTimeout(() => {
+          saveTimers.delete(rowId);
+          saveRow(rowId);
+        }, 350));
+      };
+
+      const bindEditable = (element) => {
+        if (!element) return;
+        if (element.tagName === "TEXTAREA") {
+          autoSizeTextarea(element);
+          element.addEventListener("focus", () => {
+            selectChangesCell(element);
+          });
+          element.addEventListener("click", () => {
+            selectChangesCell(element);
+          });
+        }
+        element.addEventListener("input", () => {
+          if (element.tagName === "TEXTAREA") {
+            autoSizeTextarea(element);
+          }
+          scheduleSave(element.dataset.rowId);
+        });
+      };
+
+      const createNameCell = (entry) => {
+        const nameCell = document.createElement("div");
+        nameCell.className = "changes-list-name-cell changes-list-row-cell";
+        nameCell.dataset.rowId = entry.id;
+
+        const nameInput = document.createElement("input");
+        nameInput.className = "changes-list-input changes-list-name-input";
+        nameInput.dataset.rowId = entry.id;
+        nameInput.dataset.field = "name_event";
+        nameInput.autocomplete = "off";
+        nameInput.value = entry.name_event || "";
+        nameCell.appendChild(nameInput);
+
+        if (entry.contact_edit_url) {
+          const link = document.createElement("a");
+          link.className = "changes-list-contact-link";
+          link.href = entry.contact_edit_url;
+          link.textContent = "Open contact edit";
+          nameCell.appendChild(link);
+        }
+        return nameCell;
+      };
+
+      const appendEntry = (entry) => {
+        if (!table || !entry) return;
+        const dateCell = document.createElement("div");
+        dateCell.className = "changes-list-row-cell changes-list-date";
+        dateCell.dataset.rowId = entry.id;
+        dateCell.dataset.field = "automatic_date";
+        dateCell.textContent = entry.automatic_date || "";
+
+        const nameCell = createNameCell(entry);
+
+        const changesTextarea = document.createElement("textarea");
+        changesTextarea.className = "changes-list-row-cell changes-list-textarea";
+        changesTextarea.dataset.rowId = entry.id;
+        changesTextarea.dataset.field = "changes_text";
+        changesTextarea.dataset.completedBy = entry.completed_by || "";
+        changesTextarea.classList.toggle("is-completed", Boolean(entry.completed_by));
+        changesTextarea.rows = 1;
+        changesTextarea.value = entry.changes_text || "";
+
+        const firstDataCell = table.querySelector(".changes-list-row-cell");
+        if (firstDataCell) {
+          table.insertBefore(changesTextarea, firstDataCell);
+          table.insertBefore(nameCell, changesTextarea);
+          table.insertBefore(dateCell, nameCell);
+        } else {
+          table.append(dateCell, nameCell, changesTextarea);
+        }
+        bindEditable(nameCell.querySelector('[data-field="name_event"]'));
+        bindEditable(changesTextarea);
+      };
+
+      syncPanelOffset();
+      window.addEventListener("resize", syncPanelOffset);
+      table?.querySelectorAll("input:not([type='hidden']), textarea").forEach(bindEditable);
+      table?.querySelectorAll(".changes-list-changes-display").forEach((displayCell) => {
+        displayCell.setAttribute("role", "button");
+        displayCell.setAttribute("aria-selected", "false");
+        displayCell.addEventListener("mousedown", (event) => {
+          if (event.target.closest(".pending-change-diff, .pending-edit-old, .pending-edit-new")) {
+            return;
+          }
+          event.preventDefault();
+          selectChangesCell(displayCell);
+        });
+        displayCell.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectChangesCell(displayCell);
+          }
+        });
+      });
+      table?.addEventListener("mousedown", (event) => {
+        const changesCell = changesCellForTarget(event.target);
+        if (changesCell) {
+          selectChangesCell(changesCell);
+        }
+      });
+
+      addRowButton?.addEventListener("click", async () => {
+        const response = await fetch("/changes-list/rows", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Accept": "application/json" },
+        });
+        const payload = await response.json();
+        if (response.ok && payload.ok) {
+          appendEntry(payload.entry);
+        }
+      });
+
+      completedButton?.addEventListener("click", async () => {
+        const rowId = selectedChangesRowId;
+        if (!canCompleteChanges || !rowId) return;
+        if (saveTimers.has(rowId)) {
+          window.clearTimeout(saveTimers.get(rowId));
+          saveTimers.delete(rowId);
+        }
+        await saveRow(rowId);
+        const response = await fetch(`/changes-list/rows/${rowId}/complete`, {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Accept": "application/json" },
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok || !payload.entry) return;
+        const fields = rowInputs(rowId);
+        applyEntryToChangesCell(fields, payload.entry);
+        setSelectedChangesRow("");
+      });
+
+      const downloadDriveButton = document.getElementById("changes-list-download-drive");
+      downloadDriveButton?.addEventListener("click", async () => {
+        if (downloadDriveButton.disabled) {
+          return;
+        }
+        downloadDriveButton.disabled = true;
+        let redirecting = false;
+        if (window.showBusyModal) {
+          window.showBusyModal(
+            "Downloading from Drive",
+            "Checking Google Drive for Pending Edits uploaded from mobile. This may take a moment."
+          );
+        }
+        try {
+          const response = await fetch("/changes-list/download-from-drive", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.ok) {
+            window.closeBusyModal?.();
+            window.alert(payload?.error || "Could not download Pending Edits from Google Drive.");
+            return;
+          }
+          const notice = payload.updated ? "changes_list_download_success" : "changes_list_download_current";
+          redirecting = true;
+          window.location.href = `/changes-list?notice=${encodeURIComponent(notice)}`;
+        } catch (_error) {
+          window.closeBusyModal?.();
+          window.alert("Could not download Pending Edits from Google Drive. Check your connection and try again.");
+        } finally {
+          if (!redirecting) {
+            downloadDriveButton.disabled = false;
+          }
+        }
+      });
+
+      const temporaryNotice = document.getElementById("changes-list-temporary-notice");
+      if (window.location.search.includes("notice=")) {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("notice");
+        window.history.replaceState({}, "", cleanUrl);
+      }
+      if (temporaryNotice) {
+        const autoHideMs = Number.parseInt(temporaryNotice.dataset.autoHideMs || "3600", 10) || 3600;
+        window.setTimeout(() => {
+          temporaryNotice.remove();
+        }, autoHideMs);
+      }
+
+      updateCompletedButton();
+    });
+  </script>
+{% endblock %}

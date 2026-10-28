@@ -1,0 +1,1015 @@
+{% extends "base.html" %}
+
+{% block title %}Visual Meeting Editor | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3", "primary": "#f8f3e3", "secondary": "#edf5f7", "highlight": "#ffe3a1"}) %}
+  <div class="editor-page">
+    <form method="post" action="/meetings/v2/sections/{{ section.id }}/save">
+      <input type="hidden" name="return_to" value="editor">
+      <input type="hidden" name="editor_scroll_y" id="editor_scroll_y" value="0">
+
+      <section class="panel page-top-panel editor-panel-setup meetingdata-filter-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+        <div class="editor-header-layout">
+          <div class="editor-header-identity">
+            <h2>MeetingData Editor</h2>
+            <div class="editor-header-location">
+              <h3>{{ section.field_name }}</h3>
+              <select
+                id="meeting-editor-section-picker"
+                class="meeting-heading meeting-editor-section-picker"
+                aria-label="MeetingData meeting"
+              >
+                {% for meeting_section in section.field_meeting_sections %}
+                  <option
+                    value="/meetings/v2/sections/{{ meeting_section.id }}/editor"
+                    {% if meeting_section.id == section.id %}selected{% endif %}
+                  >
+                    {{ meeting_section.meeting_name }}
+                  </option>
+                {% endfor %}
+                <option value="__add_field_list__">+ Add Field list</option>
+                <option value="__organize_field_lists__">Organize Field lists</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="editor-preset-cluster">
+            <div class="editor-inline-heading">
+              <label class="form-label" for="book_layout_preset_id">Book Layout</label>
+              {% if section.book_layout and section.book_layout.book_layout_preset_id %}
+                <a class="small-link" href="/address-book/pdf?preset_id={{ section.book_layout.book_layout_preset_id }}">Edit Layout</a>
+              {% endif %}
+            </div>
+            <select id="book_layout_preset_id" name="book_layout_preset_id">
+              {% for preset in section.book_layout_presets %}
+                <option value="{{ preset.id }}" {% if section.book_layout and section.book_layout.book_layout_preset_id == preset.id %}selected{% endif %}>
+                  {{ preset.name }} ({{ preset.trim_width_in }}in x {{ preset.trim_height_in }}in)
+                </option>
+              {% endfor %}
+            </select>
+            <div class="editor-metrics-stack">
+              <div class="editor-metric-line"><strong>Printable Width</strong> - {{ "%.2f"|format(section.editor_canvas.usable_width_in) }} in</div>
+              <div class="editor-metric-line"><strong>Base Font</strong> - {{ section.editor_canvas.font_family }} {{ section.editor_canvas.base_font_size_pt }} pt</div>
+            </div>
+          </div>
+
+          <div class="editor-grid-settings-cluster">
+            <div class="editor-grid-cluster">
+              <div class="editor-grid-cluster-title">Layout Grid</div>
+              <label class="form-label" for="meeting_table_column_count">
+                Columns
+                <input id="meeting_table_column_count" name="meeting_table_column_count" type="number" min="8" step="1" value="{{ section.editor_canvas.column_count }}">
+              </label>
+              <label class="form-label" for="meeting_table_column_gap_px">
+                Gap
+                <input id="meeting_table_column_gap_px" name="meeting_table_column_gap_px" type="number" min="0" step="1" value="{{ section.editor_canvas.column_gap_px }}">
+              </label>
+            </div>
+            <label class="form-label editor-preview-scale-field" for="screen_preview_scale">
+              Preview Scale
+              <input id="screen_preview_scale" name="screen_preview_scale" type="number" min="40" step="1" value="{{ section.editor_canvas.screen_preview_scale }}">
+            </label>
+            <label class="form-label editor-meeting-font-size-field" for="meeting_base_font_size_pt">
+              Font Size
+              <select id="meeting_base_font_size_pt" name="meeting_base_font_size_pt">
+                {% for font_size in section.font_size_options %}
+                  <option value="{{ font_size }}" {% if "%.1f"|format(section.editor_canvas.base_font_size_pt) == font_size %}selected{% endif %}>{{ font_size }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="form-label editor-meeting-line-spacing-field" for="meeting_line_height">
+              Line Spacing
+              <input
+                id="meeting_line_height"
+                name="meeting_line_height"
+                type="number"
+                min="0.8"
+                max="3"
+                step="0.05"
+                value="{{ "%.2f"|format(section.editor_canvas.line_height) }}"
+              >
+            </label>
+          </div>
+
+          <div class="editor-header-summary">
+            <div class="editor-actions-links">
+              <div class="editor-top-button-stack">
+                <a class="map-link editor-preview-link" href="/meetings/v2/sections/{{ section.id }}/print-preview">Meeting Print Preview</a>
+                <button type="submit" class="primary-save-button editor-top-save-button">Save Layout</button>
+                <span class="muted editor-top-save-note">shortcut: Cmd/Ctrl+S</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="editor-actions editor-actions-canvas">
+          <h3>Visual Canvas - Book page width</h3>
+          <p class="canvas-note">Text in row cells below approximate page position. Use Meeting Print Preview to see actual placement</p>
+          <button type="button" class="danger-button delete-all-rows-button" id="delete-all-rows-button">
+            Delete All Rows
+          </button>
+        </div>
+
+        <div
+          class="wysiwyg-frame"
+          data-base-font-pt="{{ "%.1f"|format(section.editor_canvas.base_font_size_pt) }}"
+          data-line-height="{{ "%.2f"|format(section.editor_canvas.line_height) }}"
+          data-screen-preview-scale="{{ "%.4f"|format(section.editor_canvas.screen_preview_scale) }}"
+          data-usable-width-in="{{ "%.4f"|format(section.editor_canvas.usable_width_in) }}"
+          style="--editor-columns: {{ section.editor_canvas.column_count }}; --editor-column-width: {{ section.editor_canvas.column_width_px_preview }}px; --editor-column-gap: {{ section.editor_canvas.column_gap_px }}px; --editor-preview-width: {{ section.editor_canvas.preview_width_px }}px; --editor-preview-scale: {{ section.editor_canvas.screen_preview_scale }}; --editor-base-font-px: {{ (section.editor_canvas.base_font_size_pt / 72.0) * section.editor_canvas.screen_preview_scale }}px; --editor-line-height: {{ section.editor_canvas.line_height }}; --editor-display-line-height: {{ section.editor_canvas.line_height * 0.9 }}; --editor-font-family: '{{ section.editor_canvas.font_family }}';"
+        >
+          <div class="meeting-sheet-block wysiwyg-sheet-block">
+            {% for row in section.rows %}
+            {% set row_fill_color = row_colors.primary if loop.index0 % 2 == 0 else row_colors.secondary %}
+            <section class="meeting-sheet-row wysiwyg-sheet-row {% if row.is_underlined_row %}wysiwyg-row-underlined{% endif %}" id="row-{{ row.id }}" data-effective-font-pt="{{ "%.1f"|format(row.effective_font_size_pt) }}" style="--row-base-font-px: {{ (row.effective_font_size_pt / 72.0) * section.editor_canvas.screen_preview_scale }}px; --editor-row-fill: {{ row_fill_color }}; --editor-row-hover: {{ row_colors.highlight }};">
+              <input type="hidden" name="row_ids" value="{{ row.id }}">
+              <div class="meeting-sheet-gutter wysiwyg-gutter">
+                <input type="hidden" name="label_text_{{ row.id }}" value="{{ row.label_text or '' }}">
+                <input type="hidden" name="row_notes_{{ row.id }}" value="{{ row.notes or '' }}">
+                <div class="wysiwyg-row-toolbar">
+                  <div class="wysiwyg-row-id">
+                    <strong>Row {{ row.row_order }}</strong>
+                  </div>
+                  <div class="wysiwyg-row-control wysiwyg-row-control-kind">
+                    <label class="form-label form-label-inline" for="row_order_{{ row.id }}">Order</label>
+                    <input id="row_order_{{ row.id }}" name="row_order_{{ row.id }}" type="number" value="{{ row.row_order }}">
+                  </div>
+                  <div class="wysiwyg-row-control">
+                    <span class="form-label form-label-inline">Kind</span>
+                    <div class="wysiwyg-row-kind-picker" data-row-kind-picker>
+                      <input type="hidden" name="row_kind_{{ row.id }}" value="{{ row.row_kind_primary }}" data-row-kind-primary-hidden>
+                      {% for kind in ["content", "blank", "divider", "column_flow"] %}
+                        <label class="wysiwyg-kind-chip {% if row.row_kind_primary == kind %}is-active{% endif %}">
+                          <input
+                            type="radio"
+                            name="row_kind_primary_{{ row.id }}"
+                            value="{{ kind }}"
+                            data-row-kind-primary
+                            {% if row.row_kind_primary == kind %}checked{% endif %}
+                          >
+                          <span>{{ "column flow" if kind == "column_flow" else kind }}</span>
+                        </label>
+                      {% endfor %}
+                      {% for kind in ["underlined", "table_start", "table_end"] %}
+                        {% if kind == "table_start" %}
+                          <div class="wysiwyg-kind-chip-stack">
+                            <label class="wysiwyg-kind-chip {% if kind in row.row_kind_tags %}is-active{% endif %}">
+                              <input
+                                type="checkbox"
+                                name="row_kind_{{ row.id }}"
+                                value="{{ kind }}"
+                                data-row-kind-modifier
+                                {% if kind in row.row_kind_tags %}checked{% endif %}
+                              >
+                              <span>table start</span>
+                            </label>
+                            {% if not section.is_field_end_list %}
+                            <label
+                              class="wysiwyg-row-group-toggle {% if not row.is_table_start_row %}wysiwyg-row-group-toggle-hidden{% endif %}"
+                              data-table-start-option-wrap
+                              for="no_meeting_association_{{ row.id }}"
+                            >
+                              <input
+                                id="no_meeting_association_{{ row.id }}"
+                                name="no_meeting_association_{{ row.id }}"
+                                type="checkbox"
+                                value="1"
+                                data-table-start-option
+                                {% if row.no_meeting_association %}checked{% endif %}
+                                {% if not row.is_table_start_row %}disabled{% endif %}
+                              >
+                              <span>no meeting association</span>
+                            </label>
+                            <label
+                              class="wysiwyg-row-group-toggle {% if not row.is_table_start_row %}wysiwyg-row-group-toggle-hidden{% endif %}"
+                              data-table-start-option-wrap
+                              for="group_with_table_below_{{ row.id }}"
+                            >
+                              <input
+                                id="group_with_table_below_{{ row.id }}"
+                                name="group_with_table_below_{{ row.id }}"
+                                type="checkbox"
+                                value="1"
+                                data-table-start-option
+                                {% if row.group_with_table_below %}checked{% endif %}
+                                {% if not row.is_table_start_row %}disabled{% endif %}
+                              >
+                              <span>group with table below</span>
+                            </label>
+                            {% else %}
+                            <div
+                              class="wysiwyg-row-group-toggle-pair {% if not row.is_table_start_row %}wysiwyg-row-group-toggle-hidden{% endif %}"
+                              data-table-start-option-wrap
+                            >
+                              <label class="wysiwyg-row-group-toggle" for="print_new_page_{{ row.id }}">
+                                <input
+                                  id="print_new_page_{{ row.id }}"
+                                  name="print_new_page_{{ row.id }}"
+                                  type="checkbox"
+                                  value="1"
+                                  data-table-start-option
+                                  {% if row.print_new_page %}checked{% endif %}
+                                  {% if not row.is_table_start_row %}disabled{% endif %}
+                                >
+                                <span>print new page</span>
+                              </label>
+                              <label class="wysiwyg-row-group-toggle" for="group_with_table_below_{{ row.id }}">
+                                <input
+                                  id="group_with_table_below_{{ row.id }}"
+                                  name="group_with_table_below_{{ row.id }}"
+                                  type="checkbox"
+                                  value="1"
+                                  data-table-start-option
+                                  {% if row.group_with_table_below %}checked{% endif %}
+                                  {% if not row.is_table_start_row %}disabled{% endif %}
+                                >
+                                <span>group with table below</span>
+                              </label>
+                            </div>
+                            {% endif %}
+                          </div>
+                        {% else %}
+                          <label class="wysiwyg-kind-chip {% if kind in row.row_kind_tags %}is-active{% endif %}">
+                            <input
+                              type="checkbox"
+                              name="row_kind_{{ row.id }}"
+                              value="{{ kind }}"
+                              data-row-kind-modifier
+                              {% if kind in row.row_kind_tags %}checked{% endif %}
+                            >
+                            <span>{{ "table end" if kind == "table_end" else kind }}</span>
+                          </label>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div class="wysiwyg-row-control wysiwyg-row-control-format">
+                    <label class="form-label form-label-inline" for="format_code_{{ row.id }}">Font size</label>
+                    <select id="format_code_{{ row.id }}" name="format_code_{{ row.id }}" class="wysiwyg-row-font-size-input" data-row-font-size-input>
+                      <option value="">
+                        {{ "%.1f"|format(row.effective_font_size_pt) }}
+                      </option>
+                      {% for size in ["5.0", "5.5", "6.0", "6.5", "7.0", "7.5", "8.0", "8.5", "9.0", "9.5", "10.0", "10.5", "11.0", "11.5", "12.0"] %}
+                        <option value="{{ size }}" {% if row.font_size_input_value == size %}selected{% endif %}>{{ size }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="row-action-bar">
+                    <div class="insert-split" data-insert-split>
+                      <button
+                        type="submit"
+                        class="compact-button insert-split-main"
+                        data-insert-main
+                        data-editor-action="insert-row"
+                        formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/insert-below/{% if (section.last_insert_type or 'blank') == 'clone' %}clone{% elif (section.last_insert_type or 'blank') == 'new' %}new{% elif (section.last_insert_type or 'blank') == 'divider' %}divider{% else %}blank{% endif %}"
+                        formmethod="post"
+                      >
+                        Insert {% if (section.last_insert_type or 'blank') == 'clone' %}Cloned Row Below{% elif (section.last_insert_type or 'blank') == 'new' %}New Row Below{% elif (section.last_insert_type or 'blank') == 'divider' %}Divider Line Below{% else %}Blank Row Below{% endif %}
+                      </button>
+                      <details class="insert-dropdown" data-insert-details>
+                        <summary class="compact-button insert-split-toggle" data-insert-toggle aria-haspopup="true">
+                          ▾
+                        </summary>
+                        <div class="insert-menu-list" data-insert-menu>
+                          <button
+                          type="submit"
+                          class="insert-menu-item"
+                          data-insert-choice="new"
+                          data-editor-action="insert-row"
+                          formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/insert-below/new"
+                          formmethod="post"
+                        >
+                          New Row
+                          </button>
+                          <button
+                          type="submit"
+                          class="insert-menu-item"
+                          data-insert-choice="divider"
+                          data-editor-action="insert-row"
+                          formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/insert-below/divider"
+                          formmethod="post"
+                        >
+                          Divider Line
+                          </button>
+                          <button
+                          type="submit"
+                          class="insert-menu-item"
+                          data-insert-choice="blank"
+                          data-editor-action="insert-row"
+                          formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/insert-below/blank"
+                          formmethod="post"
+                        >
+                          Blank Row
+                          </button>
+                          <button
+                          type="submit"
+                          class="insert-menu-item"
+                          data-insert-choice="clone"
+                          data-editor-action="insert-row"
+                          formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/insert-below/clone"
+                          formmethod="post"
+                        >
+                          Cloned Row
+                          </button>
+                        </div>
+                      </details>
+                    </div>
+                    {% if row.is_column_flow_row %}
+                      <div class="insert-split-group">
+                        <button
+                          type="submit"
+                          class="compact-button insert-main-button"
+                          data-editor-action="add-cell"
+                          formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/cells/add"
+                          formmethod="post"
+                        >
+                          Add Column
+                        </button>
+                        {% if row.flow_primary_columns %}
+                          <details class="insert-dropdown" data-insert-details>
+                            <summary class="compact-button insert-split-toggle" data-insert-toggle aria-haspopup="true">
+                              ▾
+                            </summary>
+                            <div class="insert-menu-list" data-insert-menu>
+                              {% for primary in row.flow_primary_columns %}
+                                <button
+                                  type="submit"
+                                  class="insert-menu-item"
+                                  name="under_cell_id"
+                                  value="{{ primary.layout_cell.id }}"
+                                  data-editor-action="add-stacked-cell"
+                                  formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/cells/add-stacked"
+                                  formmethod="post"
+                                >
+                                  Add Stacked Col (Col {{ loop.index }})
+                                </button>
+                              {% endfor %}
+                            </div>
+                          </details>
+                        {% endif %}
+                      </div>
+                    {% else %}
+                      <button
+                        type="submit"
+                        class="compact-button"
+                        data-editor-action="add-cell"
+                        formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/cells/add"
+                        formmethod="post"
+                      >
+                        Add Cell
+                      </button>
+                    {% endif %}
+                    <button
+                      type="submit"
+                      class="danger-button compact-button compact-button-danger"
+                      data-editor-action="delete-row"
+                      formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/delete"
+                      formmethod="post"
+                    >
+                      Delete Row
+                    </button>
+                  </div>
+                </div>
+
+                <div class="wysiwyg-row-guide">
+                  {% for col in range(1, section.editor_canvas.column_count + 1) %}
+                    <div class="wysiwyg-row-guide-col">{{ col }}</div>
+                  {% endfor %}
+                </div>
+
+                {% if row.is_column_flow_row %}
+                  {% for cell in row.cells %}
+                    <input type="hidden" name="cell_ids" value="{{ cell.id }}">
+                    <input id="col_start_{{ cell.id }}" name="col_start_{{ cell.id }}" class="sr-only" type="number" value="{{ cell.col_start }}">
+                    <input id="col_span_{{ cell.id }}" name="col_span_{{ cell.id }}" class="sr-only" type="number" value="{{ cell.col_span }}">
+                    <input id="text_align_{{ cell.id }}" name="text_align_{{ cell.id }}" class="sr-only" type="text" value="{{ cell.text_align or 'left' }}">
+                    <input id="is_bold_{{ cell.id }}" name="is_bold_{{ cell.id }}" class="sr-only" type="number" value="{{ 1 if cell.is_bold else 0 }}">
+                    <input id="is_italic_{{ cell.id }}" name="is_italic_{{ cell.id }}" class="sr-only" type="number" value="{{ 1 if cell.is_italic else 0 }}">
+                    <input id="is_underlined_{{ cell.id }}" name="is_underlined_{{ cell.id }}" class="sr-only" type="number" value="{{ 1 if cell.is_underlined else 0 }}">
+                    <input id="flow_min_lines_{{ cell.id }}" name="flow_min_lines_{{ cell.id }}" class="sr-only" type="number" value="{{ cell.flow_min_lines or '' }}">
+                    <textarea class="sr-only" id="text_value_{{ cell.id }}" name="text_value_{{ cell.id }}">{{ cell.text_value }}</textarea>
+                  {% endfor %}
+                  <div class="meeting-sheet-grid wysiwyg-grid flow-row-grid">
+                    {% for slot in row.flow_column_slots %}
+                      {% set primary = slot.columns[0] %}
+                      <div
+                        class="flow-column-slot"
+                        style="grid-column: {{ slot.col_start }} / span {{ slot.col_span }};"
+                      >
+                        <section
+                          class="meeting-sheet-cell wysiwyg-cell flow-column-card"
+                          data-cell-id="{{ primary.layout_cell.id }}"
+                          data-col-start-input="col_start_{{ primary.layout_cell.id }}"
+                          data-col-span-input="col_span_{{ primary.layout_cell.id }}"
+                          data-align-input="text_align_{{ primary.layout_cell.id }}"
+                          data-text-input="text_value_{{ primary.layout_cell.id }}"
+                          data-row-id="{{ row.id }}"
+                          data-full-width="0"
+                          data-is-stacked="0"
+                          data-align="{{ primary.layout_cell.text_align or 'left' }}"
+                        >
+                          <input type="hidden" name="flow_column_cell_ids" value="{{ primary.layout_cell.id }}">
+                          <input type="hidden" name="flow_column_row_{{ primary.layout_cell.id }}" value="{{ row.id }}">
+                          <div class="wysiwyg-cell-toolbar flow-column-header">
+                            <div class="wysiwyg-cell-toolbar-actions flow-column-toolbar">
+                              <button
+                                type="button"
+                                class="wysiwyg-move-handle"
+                                title="Drag to move column"
+                              >
+                                Move
+                              </button>
+                              <div class="wysiwyg-align-controls flow-column-align-controls">
+                                <button type="button" class="wysiwyg-align-button" data-align-choice="left" title="Left align">L</button>
+                                <button type="button" class="wysiwyg-align-button" data-align-choice="center" title="Center align">C</button>
+                                <button type="button" class="wysiwyg-align-button" data-align-choice="right" title="Right align">R</button>
+                              </div>
+                              <button
+                                type="submit"
+                                class="danger-button danger-button-small danger-button-cell"
+                                data-editor-action="delete-flow-column"
+                                formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/columns/{{ primary.layout_cell.id }}/delete"
+                                formmethod="post"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                          <div class="flow-items">
+                            <div class="flow-add-wrap {% if primary.has_item %}flow-add-wrap-hidden{% endif %}">
+                              <button type="button" class="compact-button flow-add-button" data-flow-add>Add Name</button>
+                            </div>
+                            <div class="flow-empty muted {% if primary.has_item %}flow-empty-hidden{% endif %}">No names yet.</div>
+                            <div
+                              class="flow-column-editor preserve-breaks {% if not primary.has_item %}flow-column-editor-hidden{% endif %}"
+                              contenteditable="true"
+                              spellcheck="false"
+                              style="--flow-min-lines: {{ primary.text_rows }}"
+                            >{{ (primary.editor_html or primary.combined_text or "")|safe }}</div>
+                            <textarea
+                              class="sr-only"
+                              id="flow_column_text_{{ primary.layout_cell.id }}"
+                              name="flow_column_text_{{ primary.layout_cell.id }}"
+                            >{{ primary.combined_text }}</textarea>
+                          </div>
+                        </section>
+                        <div class="wysiwyg-resize-handle-left" title="Drag to extend left"></div>
+                        <div class="wysiwyg-resize-handle" title="Drag to extend right"></div>
+                      </div>
+                    {% endfor %}
+                    {% for slot in row.flow_column_slots %}
+                      {% for column in slot.columns %}
+                        {% if column.is_stacked %}
+                          <section
+                            class="meeting-sheet-cell wysiwyg-cell flow-column-card flow-column-card-stacked flow-column-stacked-grid-cell"
+                            style="grid-column: {{ column.col_start }} / span {{ column.col_span }};"
+                            data-stack-under-cell-id="{{ column.layout_cell.stack_under_cell_id }}"
+                            data-cell-id="{{ column.layout_cell.id }}"
+                            data-col-start-input="col_start_{{ column.layout_cell.id }}"
+                            data-col-span-input="col_span_{{ column.layout_cell.id }}"
+                            data-align-input="text_align_{{ column.layout_cell.id }}"
+                            data-flow-min-lines-input="flow_min_lines_{{ column.layout_cell.id }}"
+                            data-text-input="text_value_{{ column.layout_cell.id }}"
+                            data-row-id="{{ row.id }}"
+                            data-full-width="0"
+                            data-is-stacked="1"
+                            data-align="{{ column.layout_cell.text_align or 'left' }}"
+                          >
+                            <input type="hidden" name="flow_column_cell_ids" value="{{ column.layout_cell.id }}">
+                            <input type="hidden" name="flow_column_row_{{ column.layout_cell.id }}" value="{{ row.id }}">
+                            <div class="wysiwyg-cell-toolbar flow-column-header">
+                              <div class="wysiwyg-cell-toolbar-actions flow-column-toolbar flow-column-toolbar-stacked">
+                                <button
+                                  type="button"
+                                  class="wysiwyg-move-handle"
+                                  title="Drag to move stacked column"
+                                >
+                                  Move
+                                </button>
+                                <span class="flow-column-stacked-label">Stacked</span>
+                                <div class="wysiwyg-align-controls flow-column-align-controls">
+                                  <button type="button" class="wysiwyg-align-button" data-align-choice="left" title="Left align">L</button>
+                                  <button type="button" class="wysiwyg-align-button" data-align-choice="center" title="Center align">C</button>
+                                  <button type="button" class="wysiwyg-align-button" data-align-choice="right" title="Right align">R</button>
+                                </div>
+                                <button
+                                  type="submit"
+                                  class="danger-button danger-button-small danger-button-cell"
+                                  data-editor-action="delete-flow-column"
+                                  formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/columns/{{ column.layout_cell.id }}/delete"
+                                  formmethod="post"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                            <div class="flow-items">
+                              <div class="flow-add-wrap {% if column.has_item %}flow-add-wrap-hidden{% endif %}">
+                                <button type="button" class="compact-button flow-add-button" data-flow-add>Add Name</button>
+                              </div>
+                              <div class="flow-empty muted {% if column.has_item %}flow-empty-hidden{% endif %}">No names yet.</div>
+                              <div
+                                class="flow-column-editor preserve-breaks {% if not column.has_item %}flow-column-editor-hidden{% endif %}"
+                                contenteditable="true"
+                                spellcheck="false"
+                                style="--flow-min-lines: {{ column.text_rows }}"
+                              >{{ (column.editor_html or column.combined_text or "")|safe }}</div>
+                              <textarea
+                                class="sr-only"
+                                id="flow_column_text_{{ column.layout_cell.id }}"
+                                name="flow_column_text_{{ column.layout_cell.id }}"
+                              >{{ column.combined_text }}</textarea>
+                            </div>
+                            <div class="wysiwyg-resize-handle-left" title="Drag to extend left"></div>
+                            <div class="wysiwyg-resize-handle" title="Drag to extend right"></div>
+                            <div class="wysiwyg-resize-handle-bottom" title="Drag to extend height"></div>
+                          </section>
+                        {% endif %}
+                      {% endfor %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                <div class="meeting-sheet-grid wysiwyg-grid {% if row.is_blank_row or row.is_divider_row %}wysiwyg-grid-blank{% endif %}">
+                {% for cell in row.cells %}
+                  {% set is_full_width = cell.col_start == 1 and cell.col_span == section.editor_canvas.column_count %}
+                  {% set stored_align = cell.text_align or '' %}
+                  {% if is_full_width %}
+                    {% if stored_align in ['force-left', 'right'] %}
+                      {% set effective_align = 'left' if stored_align == 'force-left' else 'right' %}
+                      {% set align_value = stored_align %}
+                    {% else %}
+                      {% set effective_align = 'center' %}
+                      {% set align_value = 'auto' %}
+                    {% endif %}
+                  {% else %}
+                    {% if stored_align == 'right' %}
+                      {% set effective_align = 'right' %}
+                      {% set align_value = 'right' %}
+                    {% elif stored_align == 'center' %}
+                      {% set effective_align = 'center' %}
+                      {% set align_value = 'center' %}
+                    {% else %}
+                      {% set effective_align = 'left' %}
+                      {% set align_value = 'left' %}
+                    {% endif %}
+                  {% endif %}
+                  <input type="hidden" name="cell_ids" value="{{ cell.id }}">
+                  <div
+                    class="meeting-sheet-cell wysiwyg-cell {% if cell.is_title %}meeting-sheet-cell-title{% endif %} {% if row.is_blank_row or row.is_divider_row %}wysiwyg-cell-hidden{% endif %} {% if cell.is_bold %}wysiwyg-cell-bold{% endif %} {% if cell.is_italic %}wysiwyg-cell-italic{% endif %} {% if cell.is_underlined %}wysiwyg-cell-underlined{% endif %}"
+                    data-cell-id="{{ cell.id }}"
+                    data-col-start-input="col_start_{{ cell.id }}"
+                    data-col-span-input="col_span_{{ cell.id }}"
+                    data-text-input="text_value_{{ cell.id }}"
+                    data-align-input="text_align_{{ cell.id }}"
+                    data-bold-input="is_bold_{{ cell.id }}"
+                    data-italic-input="is_italic_{{ cell.id }}"
+                    data-underlined-input="is_underlined_{{ cell.id }}"
+                    data-row-id="{{ row.id }}"
+                    data-full-width="{% if is_full_width %}1{% else %}0{% endif %}"
+                    data-align="{{ effective_align }}"
+                    style="grid-column: {{ cell.col_start }} / span {{ cell.col_span }}; --cell-font-scale: {{ cell.font_scale or 1.0 }};"
+                  >
+                    <input id="col_start_{{ cell.id }}" name="col_start_{{ cell.id }}" class="sr-only" type="number" min="1" max="{{ section.editor_canvas.column_count }}" value="{{ cell.col_start }}">
+                    <input id="col_span_{{ cell.id }}" name="col_span_{{ cell.id }}" class="sr-only" type="number" min="1" max="{{ section.editor_canvas.column_count }}" value="{{ cell.col_span }}">
+                    <input id="text_align_{{ cell.id }}" name="text_align_{{ cell.id }}" class="sr-only" type="text" value="{{ align_value }}">
+                    <input id="is_bold_{{ cell.id }}" name="is_bold_{{ cell.id }}" class="sr-only" type="number" value="{{ 1 if cell.is_bold else 0 }}">
+                    <input id="is_italic_{{ cell.id }}" name="is_italic_{{ cell.id }}" class="sr-only" type="number" value="{{ 1 if cell.is_italic else 0 }}">
+                    <input id="is_underlined_{{ cell.id }}" name="is_underlined_{{ cell.id }}" class="sr-only" type="number" value="{{ 1 if cell.is_underlined else 0 }}">
+                    <div class="wysiwyg-cell-toolbar">
+                      <div class="wysiwyg-cell-toolbar-actions">
+                        <button type="button" class="wysiwyg-move-handle" title="Drag to move">Move</button>
+                        <div class="wysiwyg-align-controls">
+                          <button type="button" class="wysiwyg-align-button" data-align-choice="left" title="Left align">L</button>
+                          <button type="button" class="wysiwyg-align-button" data-align-choice="center" title="Center align">C</button>
+                          <button type="button" class="wysiwyg-align-button" data-align-choice="right" title="Right align">R</button>
+                        </div>
+                        <button
+                          type="submit"
+                          class="danger-button danger-button-small danger-button-cell"
+                          data-editor-action="delete-cell"
+                          formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/cells/{{ cell.id }}/delete"
+                          formmethod="post"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      class="wysiwyg-inline-text preserve-breaks"
+                      contenteditable="true"
+                      spellcheck="false"
+                    >{{ (cell.text_value or "")|safe }}</div>
+                    <textarea
+                      class="wysiwyg-cell-text sr-only"
+                      id="text_value_{{ cell.id }}"
+                      name="text_value_{{ cell.id }}"
+                      rows="4"
+                    >{{ cell.text_value }}</textarea>
+                    <div class="wysiwyg-resize-handle-left" title="Drag to extend left"></div>
+                    <div class="wysiwyg-resize-handle" title="Drag to extend right"></div>
+                  </div>
+                {% endfor %}
+                {% if row.is_blank_row and not row.cells %}
+                  <div class="wysiwyg-blank-row-spacer" style="grid-column: 1 / -1"></div>
+                {% endif %}
+                {% if row.is_divider_row and not row.cells %}
+                  <div class="wysiwyg-divider-row-spacer" style="grid-column: 1 / -1"></div>
+                {% endif %}
+                </div>
+                {% endif %}
+              </div>
+            </section>
+          {% endfor %}
+          </div>
+        </div>
+      </section>
+
+    </form>
+
+    <form method="post" action="/meetings/v2/sections/{{ section.id }}/delete" id="delete-meetingdata-section-form" hidden></form>
+
+    <dialog class="app-modal" id="editor-field-list-option-modal">
+      <form method="dialog" class="app-modal-panel" id="editor-field-list-option-modal-form">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title" id="editor-field-list-option-modal-title">Field list</h3>
+          <p class="app-modal-copy" id="editor-field-list-option-modal-copy">Enter a value.</p>
+        </div>
+        <label class="app-modal-field">
+          <span id="editor-field-list-option-modal-label">Name</span>
+          <input type="text" id="editor-field-list-option-modal-input" autocomplete="off">
+        </label>
+        <div class="app-modal-error" id="editor-field-list-option-modal-error" aria-live="polite"></div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="editor-field-list-option-modal-cancel">Cancel</button>
+          <button type="submit" class="contact-card-button contact-card-button-edit" id="editor-field-list-option-modal-save" value="save">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="app-modal field-end-list-order-modal" id="editor-field-list-order-modal">
+      <form method="dialog" class="app-modal-panel" id="editor-field-list-order-form">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title">Organize Field lists</h3>
+          <p class="app-modal-copy" id="editor-field-list-order-copy">These lists print at the end of the selected Field.</p>
+        </div>
+        <ul class="field-end-list-order-items" id="editor-field-list-order-items"></ul>
+        <div class="app-modal-error" id="editor-field-list-order-error" aria-live="polite"></div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="editor-field-list-order-cancel">Cancel</button>
+          <button type="submit" class="contact-card-button contact-card-button-edit" id="editor-field-list-order-save">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="app-modal" id="delete-meetingdata-section-modal">
+      <form method="dialog" class="app-modal-panel" id="delete-meetingdata-section-modal-form">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title" id="delete-meetingdata-section-modal-title">Delete All Rows</h3>
+          <p class="app-modal-copy" id="delete-meetingdata-section-modal-copy">Deleting all rows will also remove this meeting from the MeetingData list.</p>
+        </div>
+        <label class="app-modal-field" style="display:none;">
+          <span id="delete-meetingdata-section-modal-label">Name</span>
+          <input type="text" id="delete-meetingdata-section-modal-input" autocomplete="off">
+        </label>
+        <div class="app-modal-error" id="delete-meetingdata-section-modal-error" aria-live="polite"></div>
+        <div class="app-modal-actions">
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="delete-meetingdata-section-modal-cancel">Cancel</button>
+          <button type="submit" class="contact-card-button" id="delete-meetingdata-section-modal-save" value="save">Delete All Rows</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="/static/js/meeting_editor.js?v=30"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const deleteButton = document.getElementById("delete-all-rows-button");
+      const deleteForm = document.getElementById("delete-meetingdata-section-form");
+      const deleteModal = window.AppModal?.create({
+        dialog: document.getElementById("delete-meetingdata-section-modal"),
+        form: document.getElementById("delete-meetingdata-section-modal-form"),
+        titleEl: document.getElementById("delete-meetingdata-section-modal-title"),
+        copyEl: document.getElementById("delete-meetingdata-section-modal-copy"),
+        labelEl: document.getElementById("delete-meetingdata-section-modal-label"),
+        inputEl: document.getElementById("delete-meetingdata-section-modal-input"),
+        errorEl: document.getElementById("delete-meetingdata-section-modal-error"),
+        cancelEl: document.getElementById("delete-meetingdata-section-modal-cancel"),
+        saveEl: document.getElementById("delete-meetingdata-section-modal-save"),
+      });
+      if (!deleteButton || !deleteForm || !deleteModal) return;
+
+      deleteButton.addEventListener("click", async () => {
+        const confirmed = await deleteModal.prompt({
+          title: "Delete All Rows",
+          copy: "Deleting all rows will also remove this meeting from the MeetingData list.",
+          label: "Delete",
+          requireInput: false,
+          submitLabel: "Delete All Rows",
+        });
+        if (!confirmed) return;
+        deleteForm.submit();
+      });
+    });
+  </script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const meetingPicker = document.getElementById("meeting-editor-section-picker");
+      const fieldName = {{ section.field_name|tojson }};
+      const currentMeetingName = {{ section.meeting_name|tojson }};
+      const addFieldListSentinel = "__add_field_list__";
+      const organizeFieldListsSentinel = "__organize_field_lists__";
+      let fieldEndLists = {{ (section.field_end_lists or [])|tojson }};
+      let pendingFallbackUrl = "";
+      const fieldListModal = window.AppModal?.create({
+        dialog: document.getElementById("editor-field-list-option-modal"),
+        form: document.getElementById("editor-field-list-option-modal-form"),
+        titleEl: document.getElementById("editor-field-list-option-modal-title"),
+        copyEl: document.getElementById("editor-field-list-option-modal-copy"),
+        labelEl: document.getElementById("editor-field-list-option-modal-label"),
+        inputEl: document.getElementById("editor-field-list-option-modal-input"),
+        errorEl: document.getElementById("editor-field-list-option-modal-error"),
+        cancelEl: document.getElementById("editor-field-list-option-modal-cancel"),
+        saveEl: document.getElementById("editor-field-list-option-modal-save"),
+      });
+      const fieldListOrderModal = document.getElementById("editor-field-list-order-modal");
+      const fieldListOrderForm = document.getElementById("editor-field-list-order-form");
+      const fieldListOrderCopy = document.getElementById("editor-field-list-order-copy");
+      const fieldListOrderItems = document.getElementById("editor-field-list-order-items");
+      const fieldListOrderError = document.getElementById("editor-field-list-order-error");
+      const fieldListOrderCancel = document.getElementById("editor-field-list-order-cancel");
+      if (!meetingPicker) return;
+
+      const requestOptionDialog = (config) => fieldListModal?.prompt(config) ?? Promise.resolve("");
+      const showMessageDialog = (config) => fieldListModal?.message(config) ?? Promise.resolve();
+
+      const callOptionApi = async (url, body) => {
+        const params = new URLSearchParams();
+        Object.entries(body || {}).forEach(([key, value]) => {
+          if (Array.isArray(value)) {
+            value.forEach((item) => params.append(key, item));
+            return;
+          }
+          params.set(key, value);
+        });
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to save the Field list.");
+        }
+        return payload;
+      };
+
+      const applySavedLists = (payload, fallbackNames) => {
+        const savedLists = Array.isArray(payload?.lists)
+          ? payload.lists.map((item) => String(item.list_name || "").trim()).filter(Boolean)
+          : fallbackNames;
+        fieldEndLists = savedLists.slice();
+        return fieldEndLists;
+      };
+
+      const updatePickerMeetingLabel = (oldName, newName) => {
+        if (!meetingPicker || !oldName || !newName || oldName === newName) return;
+        Array.from(meetingPicker.options).forEach((option) => {
+          if ((option.textContent || "").trim() === oldName) {
+            option.textContent = newName;
+          }
+        });
+      };
+
+      const removePickerMeeting = (listName) => {
+        if (!meetingPicker || !listName) return;
+        Array.from(meetingPicker.options)
+          .filter((option) => (option.textContent || "").trim() === listName)
+          .forEach((option) => option.remove());
+      };
+
+      const renameFieldList = async (listName) => {
+        const nextValue = await requestOptionDialog({
+          title: "Rename Field list",
+          copy: `Current name: ${listName}`,
+          label: "New Field list name",
+          initialValue: listName,
+          submitLabel: "Rename",
+        });
+        if (!nextValue || nextValue === listName) return;
+        try {
+          const payload = await callOptionApi("/meetings/v2/field-end-lists/rename", {
+            field_name: fieldName,
+            old_list_name: listName,
+            new_list_name: nextValue,
+          });
+          const savedName = String(payload.list_name || nextValue).trim();
+          const nextOrder = currentFieldListOrder().map((name) => (name === listName ? savedName : name));
+          applySavedLists(payload, nextOrder);
+          updatePickerMeetingLabel(listName, savedName);
+          renderFieldListOrderItems(nextOrder);
+        } catch (error) {
+          if (fieldListOrderError) {
+            fieldListOrderError.textContent = error.message || "Unable to rename the Field list.";
+          }
+        }
+      };
+
+      const deleteFieldList = async (listName) => {
+        const confirmed = await requestOptionDialog({
+          title: "Delete Field list",
+          copy: `Delete Field list “${listName}”? This removes its MeetingData section.`,
+          label: "Field list name",
+          requireInput: false,
+          submitLabel: "Delete",
+        });
+        if (!confirmed) return;
+        try {
+          const payload = await callOptionApi("/meetings/v2/field-end-lists/remove", {
+            field_name: fieldName,
+            list_name: listName,
+          });
+          const nextOrder = currentFieldListOrder().filter((name) => name !== listName);
+          applySavedLists(payload, nextOrder);
+          removePickerMeeting(listName);
+          if (listName === currentMeetingName) {
+            pendingFallbackUrl = String(payload.fallback_editor_url || "").trim() || "/meetings/v2/sections";
+          }
+          renderFieldListOrderItems(nextOrder);
+        } catch (error) {
+          if (fieldListOrderError) {
+            fieldListOrderError.textContent = error.message || "Unable to delete the Field list.";
+          }
+        }
+      };
+
+      const renderFieldListOrderItems = (listNames) => {
+        if (!fieldListOrderItems) return;
+        fieldListOrderItems.innerHTML = "";
+        if (!listNames.length) {
+          const empty = document.createElement("li");
+          empty.className = "field-end-list-order-empty";
+          empty.textContent = "This Field has no Field lists yet.";
+          fieldListOrderItems.appendChild(empty);
+          return;
+        }
+        listNames.forEach((listName, index) => {
+          const item = document.createElement("li");
+          item.className = "field-end-list-order-item";
+          item.dataset.listName = listName;
+          const label = document.createElement("span");
+          label.textContent = listName;
+          const actions = document.createElement("div");
+          actions.className = "field-end-list-order-actions";
+          const upButton = document.createElement("button");
+          upButton.type = "button";
+          upButton.className = "contact-card-button";
+          upButton.textContent = "Up";
+          upButton.disabled = index === 0;
+          upButton.addEventListener("click", () => {
+            const next = currentFieldListOrder();
+            if (index === 0) return;
+            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+            renderFieldListOrderItems(next);
+          });
+          const downButton = document.createElement("button");
+          downButton.type = "button";
+          downButton.className = "contact-card-button";
+          downButton.textContent = "Down";
+          downButton.disabled = index === listNames.length - 1;
+          downButton.addEventListener("click", () => {
+            const next = currentFieldListOrder();
+            if (index >= next.length - 1) return;
+            [next[index + 1], next[index]] = [next[index], next[index + 1]];
+            renderFieldListOrderItems(next);
+          });
+          const renameButton = document.createElement("button");
+          renameButton.type = "button";
+          renameButton.className = "contact-card-button";
+          renameButton.textContent = "Rename";
+          renameButton.addEventListener("click", () => {
+            renameFieldList(listName);
+          });
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "contact-card-button";
+          deleteButton.textContent = "Delete";
+          deleteButton.addEventListener("click", () => {
+            deleteFieldList(listName);
+          });
+          actions.append(upButton, downButton, renameButton, deleteButton);
+          item.append(label, actions);
+          fieldListOrderItems.appendChild(item);
+        });
+      };
+
+      const currentFieldListOrder = () => Array.from(fieldListOrderItems?.querySelectorAll(".field-end-list-order-item") || [])
+        .map((item) => item.dataset.listName || "")
+        .filter(Boolean);
+
+      const openFieldListOrderModal = () => new Promise((resolve) => {
+        if (!fieldListOrderModal || !fieldListOrderForm) {
+          resolve(null);
+          return;
+        }
+        const lists = fieldEndLists.slice();
+        if (fieldListOrderCopy) {
+          fieldListOrderCopy.textContent = lists.length
+            ? `These lists print at the end of ${fieldName}. Use Up and Down to set the print order.`
+            : "Add a Field list first to set the print order.";
+        }
+        if (fieldListOrderError) fieldListOrderError.textContent = "";
+        renderFieldListOrderItems(lists);
+        const cleanup = () => {
+          fieldListOrderForm.removeEventListener("submit", handleSubmit);
+          fieldListOrderModal.removeEventListener("close", handleClose);
+          fieldListOrderCancel?.removeEventListener("click", handleCancel);
+        };
+        const handleSubmit = (event) => {
+          event.preventDefault();
+          const nextOrder = currentFieldListOrder();
+          cleanup();
+          resolve(nextOrder);
+          if (fieldListOrderModal.open) fieldListOrderModal.close();
+        };
+        const handleCancel = () => {
+          cleanup();
+          resolve(null);
+          if (fieldListOrderModal.open) fieldListOrderModal.close();
+        };
+        const handleClose = () => {
+          cleanup();
+          resolve(null);
+        };
+        fieldListOrderForm.addEventListener("submit", handleSubmit);
+        fieldListOrderCancel?.addEventListener("click", handleCancel);
+        fieldListOrderModal.addEventListener("close", handleClose);
+        if (!fieldListOrderModal.open) fieldListOrderModal.showModal();
+      });
+
+      meetingPicker.dataset.previousValue = meetingPicker.value;
+
+      meetingPicker.addEventListener("change", async () => {
+        const previousValue = meetingPicker.dataset.previousValue ?? "";
+        if (meetingPicker.value === addFieldListSentinel) {
+          const nextValue = await requestOptionDialog({
+            title: "Add Field list",
+            copy: `Name the list that should print at the end of ${fieldName}. You can add lines on its MeetingData Editor after you save.`,
+            label: "Field list name",
+          });
+          meetingPicker.value = previousValue;
+          if (!nextValue) return;
+          try {
+            const payload = await callOptionApi("/meetings/v2/field-end-lists", {
+              field_name: fieldName,
+              list_name: nextValue,
+            });
+            const editorUrl = String(payload.editor_url || "").trim();
+            if (editorUrl) {
+              window.location.href = editorUrl;
+              return;
+            }
+            throw new Error("Unable to open the new Field list.");
+          } catch (error) {
+            await showMessageDialog({
+              title: "Add Field list",
+              copy: error.message || "Unable to add the Field list.",
+            });
+          }
+          return;
+        }
+        if (meetingPicker.value === organizeFieldListsSentinel) {
+          const nextOrder = await openFieldListOrderModal();
+          meetingPicker.value = previousValue;
+          if (nextOrder && nextOrder.length) {
+            try {
+              const payload = await callOptionApi("/meetings/v2/field-end-lists/reorder", {
+                field_name: fieldName,
+                list_names: nextOrder,
+              });
+              applySavedLists(payload, nextOrder);
+            } catch (error) {
+              await showMessageDialog({
+                title: "Organize Field lists",
+                copy: error.message || "Unable to save the Field list order.",
+              });
+            }
+          }
+          if (pendingFallbackUrl) {
+            window.location.href = pendingFallbackUrl;
+          }
+          return;
+        }
+        if (meetingPicker.value) {
+          window.location.href = meetingPicker.value;
+        }
+      });
+    });
+  </script>
+{% endblock %}

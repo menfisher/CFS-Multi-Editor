@@ -1,0 +1,227 @@
+<style>
+    #app nav {
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+    }
+
+    #app main table th {
+        position: sticky;
+        top: 64px;
+        z-index: 900;
+        background: #f5f7f8;
+        border-bottom: 1px solid #d7dde2;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    }
+
+    @media only screen and (max-width: 992px) {
+        #app main table th {
+            top: 56px;
+        }
+    }
+
+    #app .brand-logo{
+        padding: 0px 15px;
+    }
+    
+    #app nav li span {
+        display: block;
+        padding: 0 15px;
+    }
+
+    #app .build-tag {
+        font-size: 11px;
+        opacity: 0.9;
+        letter-spacing: 0.2px;
+    }
+
+    #app .shared-help-text {
+        margin: -2px 0 12px 2px;
+        font-size: 0.95rem;
+    }
+
+    #app .share-notify-option {
+        margin: 10px 0 0 2px;
+    }
+
+    #app .share-notify-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+    
+    #app .user-image {
+        max-height: 64px;
+        padding: 10px 15px;
+    }
+    
+    #app .modal-footer {
+        padding: 0px 24px 24px 24px;
+    }
+    
+    #app .modal-footer .btn {
+        margin: 0px;
+    }
+
+    #app .sync-rotating {
+        animation: sync-spin 1s linear infinite;
+    }
+
+    #app .owner-sync-btn {
+        min-width: 120px;
+        width: 120px;
+        background-color: #26a69a !important;
+        text-align: center;
+    }
+
+    #app .owner-sync-btn.is-syncing {
+        background-color: #b0b7bd !important;
+    }
+
+    #app .owner-sync-btn.is-zero {
+        background-color: #26a69a !important;
+    }
+
+    #app .owner-reset-sync-btn {
+        margin-left: 6px;
+        min-width: 78px;
+        width: 78px;
+        background-color: #90a4ae;
+        color: #fff;
+        text-transform: uppercase;
+        font-weight: 500;
+    }
+
+    #app .owner-groups-table,
+    #app .shared-groups-table {
+        width: 100%;
+        table-layout: fixed;
+    }
+
+    #app .owner-groups-table th:nth-child(1),
+    #app .owner-groups-table td:nth-child(1) { width: 30%; }
+    #app .owner-groups-table th:nth-child(2),
+    #app .owner-groups-table td:nth-child(2) { width: 20%; }
+    #app .owner-groups-table th:nth-child(3),
+    #app .owner-groups-table td:nth-child(3) { width: 9%; }
+    #app .owner-groups-table th:nth-child(4),
+    #app .owner-groups-table td:nth-child(4) { width: 10%; }
+    #app .owner-groups-table th:nth-child(5),
+    #app .owner-groups-table td:nth-child(5) { width: 22%; }
+    #app .owner-groups-table th:nth-child(6),
+    #app .owner-groups-table td:nth-child(6) { width: 9%; }
+
+    #app .shared-groups-table th:nth-child(1),
+    #app .shared-groups-table td:nth-child(1) { width: 31%; }
+    #app .shared-groups-table th:nth-child(2),
+    #app .shared-groups-table td:nth-child(2) { width: 21%; }
+    #app .shared-groups-table th:nth-child(3),
+    #app .shared-groups-table td:nth-child(3) { width: 7%; text-align: right; }
+    #app .shared-groups-table th:nth-child(4),
+    #app .shared-groups-table td:nth-child(4) { width: 19%; }
+    #app .shared-groups-table th:nth-child(5),
+    #app .shared-groups-table td:nth-child(5) { width: 10%; }
+
+    #app .shared-groups-table td {
+        overflow: hidden;
+        vertical-align: middle;
+        font-size: 0.9rem;
+        line-height: 1.2;
+    }
+
+    #app .shared-col-name,
+    #app .shared-col-owner {
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+
+    #app .shared-col-contacts,
+    #app .shared-col-sync {
+        white-space: nowrap;
+        padding-left: 12px;
+    }
+
+    #app .shared-col-contacts {
+        padding-right: 24px;
+    }
+
+    #app .shared-col-status {
+        white-space: normal;
+        padding-left: 12px;
+        padding-right: 8px;
+    }
+
+    #app .shared-groups-table th:nth-child(5),
+    #app .shared-groups-table td:nth-child(5) {
+        text-align: right;
+    }
+
+    #app .shared-groups-table th:nth-child(3) {
+        padding-right: 24px;
+    }
+
+    #app .shared-groups-table th:nth-child(4) {
+        padding-left: 14px;
+    }
+
+    #app .shared-col-sync .btn {
+        margin-left: auto;
+        display: inline-block;
+    }
+
+    @keyframes sync-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    
+    [v-cloak] > * {
+        display: none;
+    }
+    
+    [v-cloak]::before {
+        content: "";
+        box-sizing: border-box;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 60px;
+        height: 60px;
+        margin-top: -30px;
+        margin-left: -30px;
+        border-radius: 50%;
+        border: 6px solid #eee;
+        border-top-color: #26A69A;
+        animation: spinner 0.7s linear infinite;
+        text-indent: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    
+    @keyframes spinner {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    #app .page-footer .container {
+        width: 92%;
+    }
+
+    #app .page-footer .col.l6.s12 {
+        width: 100%;
+    }
+
+    #app .page-footer .col.l6.s12 h5 {
+        text-align: center;
+    }
+
+    #app .page-footer .col.l6.s12 p {
+        text-align: center;
+        max-width: 900px;
+        margin: 0 auto 32px auto;
+    }
+
+</style>

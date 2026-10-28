@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "../../../../backup3-27-26"
+		},
+		{
+			"path": "../../../../3-27-26"
+		},
+		{
+			"path": "../../.."
+		}
+	],
+	"settings": {},
+	"extensions": {
+		"recommendations": [
+			"openai.chatgpt"
+		]
+	}
+}

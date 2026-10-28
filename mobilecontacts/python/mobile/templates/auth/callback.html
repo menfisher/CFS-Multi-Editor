@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "includes/mobile_head.html" %}
+  <title>Finishing sign-in</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=33">
+</head>
+<body class="mobile-shell mobile-home-page">
+  <main class="mobile-panel mobile-home-panel">
+    <h1>Finishing sign-in</h1>
+    <p class="mobile-home-lead" id="mobile-auth-callback-message">Completing Google sign-in…</p>
+  </main>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code") || "";
+      const state = params.get("state") || "";
+      const oauthError = params.get("error") || "";
+      const messageEl = document.getElementById("mobile-auth-callback-message");
+
+      if (oauthError) {
+        const detail = params.get("error_description") || oauthError;
+        window.location.replace(`/?error=${encodeURIComponent(detail)}`);
+        return;
+      }
+
+      if (!code) {
+        window.location.replace(
+          "/?error=" + encodeURIComponent(
+            "Google sign-in did not finish. If ngrok shows a warning page, tap Visit Site, then try again."
+          )
+        );
+        return;
+      }
+
+      if (messageEl) {
+        messageEl.textContent = "Completing Google sign-in…";
+      }
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 90000);
+
+      const body = new URLSearchParams({ code, state });
+      fetch("/auth/exchange", {
+        method: "POST",
+        credentials: "same-origin",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+        },
+        body: body.toString(),
+      })
+        .then(async (response) => {
+          window.clearTimeout(timeoutId);
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.ok) {
+            throw new Error(payload?.error || `Sign-in failed (${response.status}).`);
+          }
+          if (messageEl) {
+            messageEl.textContent = "Signed in. Opening app…";
+          }
+          window.location.replace(payload.redirect || "/");
+        })
+        .catch((error) => {
+          window.clearTimeout(timeoutId);
+          const detail = error?.name === "AbortError"
+            ? "Sign-in is taking too long. Go back and try again, or restart the mobile server."
+            : (error?.message || "Google sign-in failed.");
+          if (messageEl) {
+            messageEl.textContent = detail;
+          }
+          window.setTimeout(() => {
+            window.location.replace("/?error=" + encodeURIComponent(detail));
+          }, 2500);
+        });
+    });
+  </script>
+</body>
+</html>

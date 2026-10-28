@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Address Book PDF Preview | Contacts Website{% endblock %}
+
+{% block content %}
+  <section class="panel address-book-pdf-viewer-panel">
+    <div class="address-book-pdf-viewer-header">
+      <div>
+        <h2>Address Book PDF Preview</h2>
+        <p class="muted">{{ filename }}</p>
+      </div>
+      <div class="address-book-pdf-viewer-actions">
+        <a class="contact-card-button contact-card-button-edit" href="/address-book/pdf/download/{{ filename }}">Save to computer</a>
+        <button type="button" class="contact-card-button contact-card-button-edit" id="address-book-pdf-print-button">Print</button>
+        <a class="contact-card-button contact-card-button-cancel" href="/address-book/pdf{% if preset_id %}?preset_id={{ preset_id }}{% endif %}">{{ "Back to Editor" if is_editor_session else "Back to Address Book" }}</a>
+      </div>
+    </div>
+    {% if notice_message %}
+      <div class="notice is-info">{{ notice_message }}</div>
+    {% endif %}
+    <iframe
+      class="address-book-pdf-viewer-frame"
+      src="/address-book/pdf/file/{{ filename }}?v={{ pdf_cache_bust }}"
+      title="Address Book PDF preview"
+    ></iframe>
+  </section>
+  <script>
+    (() => {
+      const printButton = document.getElementById("address-book-pdf-print-button");
+      // Print the real PDF document (vector), not the preview iframe and not a
+      // rasterized html canvas. Iframe printing often "fits" and clips ~0.25";
+      // canvas printing keeps scale but destroys sharpness.
+      const pdfUrl = "/address-book/pdf/file/{{ filename }}?v={{ pdf_cache_bust }}";
+      const openPrintDialog = () => {
+        // Do not use noopener — it makes window.open() return null, so we used
+        // to navigate to the raw PDF with no print dialog.
+        const printWindow = window.open(pdfUrl, "_blank");
+        if (!printWindow) {
+          window.alert(
+            "Allow pop-ups for this site, then click Print again.\n\nOr open the PDF and press Ctrl+P (Cmd+P on Mac)."
+          );
+          return;
+        }
+        let tries = 0;
+        const tryPrint = () => {
+          tries += 1;
+          try {
+            printWindow.focus();
+            printWindow.print();
+          } catch (_error) {
+            // PDF viewers finish loading after open; keep retrying briefly.
+          }
+          if (tries < 6) {
+            window.setTimeout(tryPrint, 500);
+          }
+        };
+        window.setTimeout(tryPrint, 400);
+        try {
+          printWindow.addEventListener("load", () => window.setTimeout(tryPrint, 200));
+        } catch (_error) {
+          // Some browsers block listeners on PDF tabs; timeouts still run.
+        }
+      };
+      printButton?.addEventListener("click", openPrintDialog);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("autoprint") === "1") {
+        window.setTimeout(openPrintDialog, 300);
+      }
+    })();
+  </script>
+{% endblock %}

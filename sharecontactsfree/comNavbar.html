@@ -1,0 +1,27 @@
+<nav>
+    <div class="nav-wrapper">
+        <a href="<?!= getPageUrl() ?>" class="brand-logo"><i class="material-icons">share</i>Contacts</a>
+        <a href="#" data-target="mobile-menu" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+        
+        <ul id="nav-mobile" class="right hide-on-med-and-down">
+            <template v-if="!hasLoadError">
+                <li><span><i class="material-icons left">account_circle</i>{{profile.email || profile.displayName}}</span></li>
+                <li><span><i class="material-icons left">email</i>{{profile.email}}</span></li>
+                <li v-if="viewMode === 'shared'"><a href="<?!= getPageUrl() ?>?mode=shared"><i class="material-icons left" >refresh</i>Refresh</a></li>
+                <li v-else><a href="<?!= getPageUrl() ?>"><i class="material-icons left" >refresh</i>Refresh</a></li>
+                <li><span class="build-tag">{{appBuildTag}}</span></li>
+            </template>
+            
+        </ul>
+    </div>
+</nav>
+
+<ul class="sidenav" id="mobile-menu">
+    <template v-if="!hasLoadError">
+        <li><span><i class="material-icons left">account_circle</i>{{profile.displayName}}</span></li>  
+        <li><span><i class="material-icons left">email</i>{{profile.email}}</span></li>
+        <li v-if="viewMode === 'shared'"><a href="<?!= getPageUrl() ?>?mode=shared"><i class="material-icons left" >refresh</i>Refresh</a></li>
+        <li v-else><a href="<?!= getPageUrl() ?>"><i class="material-icons left" >refresh</i>Refresh</a></li>
+        <li><span class="build-tag">{{appBuildTag}}</span></li>
+    </template>
+</ul>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "includes/mobile_head.html" %}
+  <title>Mobile Contacts</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=41">
+</head>
+<body class="mobile-shell mobile-home-page">
+  <main class="mobile-panel mobile-home-panel">
+    <h1>Contacts Mobile</h1>
+    <p class="mobile-home-lead">Sign in to view and edit contacts on your phone.</p>
+    {% if error %}
+      <p class="mobile-error">{{ error }}</p>
+    {% endif %}
+    <p class="mobile-home-hint" id="mobile-standalone-signin-hint" hidden>
+      Google sign-in must run in Safari or Chrome — not from a Home Screen app icon.
+      Open <a href="https://mobile.contactsfreeshare.org/">mobile.contactsfreeshare.org</a> in your phone browser, then sign in.
+    </p>
+
+    {% if not multi_editor_enabled %}
+    <a class="mobile-button mobile-home-primary-button" id="mobile-home-google-signin" href="/auth/login">Sign in with Google</a>
+    {% endif %}
+
+    <section class="mobile-home-multi-editor">
+      <h2>{% if multi_editor_enabled %}Sign in{% else %}Multi-Editor sign in{% endif %}</h2>
+      {% if multi_editor_enabled %}
+      <p class="mobile-home-hint">Choose Pending Edits or Editor, enter your name, then sign in with Google.</p>
+      {% else %}
+      <p class="mobile-home-hint">Choose Editor or Pending Edits access, then connect Google.</p>
+      {% endif %}
+      <form method="post" action="/auth/login" class="mobile-home-signin-form" id="mobile-home-signin-form">
+        <label class="mobile-form-field">
+          <span>Access role</span>
+          <select name="access_role" id="mobile-access-role">
+            <option value="editor">Editor</option>
+            <option value="non_editor">Pending Edits</option>
+          </select>
+        </label>
+        <label class="mobile-form-field">
+          <span id="mobile-access-name-label">Editor name</span>
+          <input type="text" name="access_name" maxlength="40" autocomplete="name" required>
+        </label>
+        <label class="mobile-form-field" id="mobile-editor-secret-field">
+          <span>Editor password</span>
+          <input type="password" name="editor_secret" autocomplete="current-password">
+        </label>
+        <button type="submit" class="mobile-button">Sign in with role</button>
+      </form>
+    </section>
+  </main>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("error")) {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("error");
+        window.history.replaceState({}, "", cleanUrl);
+      }
+
+      const isStandalone =
+        window.navigator.standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches;
+      const standaloneHint = document.getElementById("mobile-standalone-signin-hint");
+      const signInForm = document.getElementById("mobile-home-signin-form");
+      const googleSignInLink = document.getElementById("mobile-home-google-signin");
+      const blockStandaloneSignIn = (event) => {
+        if (!isStandalone) {
+          return;
+        }
+        event.preventDefault();
+        if (standaloneHint) {
+          standaloneHint.hidden = false;
+          standaloneHint.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+        window.alert(
+          "Google blocks sign-in from the Home Screen app. Open mobile.contactsfreeshare.org in Safari or Chrome, then sign in there."
+        );
+      };
+      if (isStandalone && standaloneHint) {
+        standaloneHint.hidden = false;
+      }
+      signInForm?.addEventListener("submit", blockStandaloneSignIn);
+      googleSignInLink?.addEventListener("click", blockStandaloneSignIn);
+
+      const roleSelect = document.getElementById("mobile-access-role");
+      const nameLabel = document.getElementById("mobile-access-name-label");
+      const secretField = document.getElementById("mobile-editor-secret-field");
+      const secretInput = secretField?.querySelector("input");
+      const syncRoleFields = () => {
+        const isEditor = roleSelect?.value === "editor";
+        if (nameLabel) {
+          nameLabel.textContent = isEditor ? "Editor name" : "Your initials";
+        }
+        if (secretField) {
+          secretField.hidden = !isEditor;
+        }
+        if (secretInput) {
+          secretInput.required = isEditor;
+          if (!isEditor) {
+            secretInput.value = "";
+          }
+        }
+      };
+      roleSelect?.addEventListener("change", syncRoleFields);
+      syncRoleFields();
+    });
+  </script>
+</body>
+</html>

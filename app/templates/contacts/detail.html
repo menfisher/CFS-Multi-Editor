@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}{% if contact.family_name and contact.given_name %}{{ contact.family_name }}, {{ contact.given_name }}{% elif contact.family_name %}{{ contact.family_name }}{% elif contact.given_name %}{{ contact.given_name }}{% else %}Contact{% endif %} | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3"}) %}
+  {% if contact.family_name and contact.given_name %}
+    {% set contact_display_name = contact.family_name ~ ", " ~ contact.given_name %}
+  {% elif contact.family_name %}
+    {% set contact_display_name = contact.family_name %}
+  {% elif contact.given_name %}
+    {% set contact_display_name = contact.given_name %}
+  {% else %}
+    {% set contact_display_name = "" %}
+  {% endif %}
+  <div class="contact-detail-page">
+  <section class="panel page-top-panel meetingdata-filter-panel contact-card-header" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+    <div class="contact-detail-topbar">
+      <p class="crumb"><a class="back-crumb-link" href="{{ return_to }}"><span aria-hidden="true">←</span><span>Back</span></a></p>
+      <div class="contact-detail-card-actions">
+        {% if is_moved_contact %}
+          <a href="/contacts/{{ contact.id }}/edit?return_to={{ return_to|urlencode }}&restore=1" class="contact-card-button contact-card-button-restore">Restore</a>
+          <a href="/contacts/{{ contact.id }}/edit?return_to={{ return_to|urlencode }}" class="contact-card-button contact-card-button-edit">Edit</a>
+          <form method="post" action="/contacts/{{ contact.id }}/delete" class="contact-card-delete-form" data-contact-delete-form>
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <button type="submit" class="contact-card-button contact-card-button-delete">Delete</button>
+          </form>
+        {% elif is_deleted_contact %}
+          <a href="/contacts/{{ contact.id }}/edit?return_to={{ return_to|urlencode }}" class="contact-card-button contact-card-button-edit">Edit</a>
+          <a href="/contacts/{{ contact.id }}/edit?return_to={{ return_to|urlencode }}&restore=1" class="contact-card-button contact-card-button-restore">Restore</a>
+          <form method="post" action="/contacts/{{ contact.id }}/delete" class="contact-card-delete-form" data-contact-delete-form>
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <input type="hidden" name="permanent_delete" value="1">
+            <button type="submit" class="contact-card-button contact-card-button-delete">Delete</button>
+          </form>
+        {% else %}
+          <a href="/contacts/{{ contact.id }}/edit?return_to={{ return_to|urlencode }}" class="contact-card-button contact-card-button-edit">Edit</a>
+          <form method="post" action="/contacts/{{ contact.id }}/delete" class="contact-card-delete-form" data-contact-delete-form>
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <button type="submit" class="contact-card-button contact-card-button-delete">Delete</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    <div class="contact-detail-heading">
+      <div class="contact-detail-identity">
+        {% if contact.photo %}
+          <img class="contact-avatar contact-avatar-large" src="{{ contact.photo }}" alt="" loading="eager" referrerpolicy="no-referrer">
+        {% endif %}
+        <div>
+          {% if contact_display_name %}
+            <h2>{{ contact_display_name }}</h2>
+          {% endif %}
+          {% if contact.do_not_print %}
+            <div class="contact-do-not-print-badge">Do Not Print</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="contact-detail-column">
+        <div class="contact-detail-column-title">Phones</div>
+        {% if contact.phones %}
+          <ul class="contact-detail-list">
+            {% for item in contact.phones %}
+              {% if item.phone_value %}
+                <li class="contact-detail-line">
+                  <span class="contact-detail-value">{{ item.phone_value }}</span>
+                  {% if item.phone_type %}
+                    <span class="contact-detail-type"> - {{ item.phone_type }}</span>
+                  {% endif %}
+                  <span class="contact-detail-actions">
+                    <a
+                      class="contact-detail-action"
+                      href="tel:{{ item.phone_value|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"
+                      aria-label="Call {{ item.phone_value }}"
+                      title="Call"
+                    >&#128222;</a>
+                    <a
+                      class="contact-detail-action"
+                      href="sms:{{ item.phone_value|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"
+                      aria-label="Text {{ item.phone_value }}"
+                      title="Text"
+                    >&#128172;</a>
+                  </span>
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+      <div class="contact-detail-column">
+        <div class="contact-detail-column-title">Emails</div>
+        {% if contact.emails %}
+          <ul class="contact-detail-list">
+            {% for item in contact.emails %}
+              {% if item.email_value %}
+                <li class="contact-detail-line">
+                  <span class="contact-detail-value">{{ item.email_value }}</span>
+                  {% if item.email_type %}
+                    <span class="contact-detail-type"> - {{ item.email_type }}</span>
+                  {% endif %}
+                  <span class="contact-detail-actions">
+                    <a
+                      class="contact-detail-action contact-detail-action-email"
+                      href="mailto:{{ item.email_value }}"
+                      aria-label="Email {{ item.email_value }}"
+                      title="Email"
+                    >&#9993;&#65038;</a>
+                  </span>
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+      <div class="contact-detail-column">
+        <div class="contact-detail-column-title">Relationships</div>
+        {% if contact.relationships %}
+          <ul class="contact-detail-list">
+            {% for item in contact.relationships %}
+              {% if item.relation_value %}
+                <li class="contact-detail-line">
+                  <span class="contact-detail-value">{{ item.relation_value }}</span>
+                  {% if item.relation_type %}
+                    <span class="contact-detail-type"> - {{ item.relation_type }}</span>
+                  {% endif %}
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+    <div class="chip-row">
+      {% for item in contact.fields_list %}
+        <span class="chip">{{ item }}</span>
+      {% endfor %}
+      {% for item in contact.meetings_list %}
+        <span class="chip chip-muted">{{ item }}</span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="detail-grid contact-detail-panels">
+    <article class="panel contact-detail-panel contact-detail-panel-addresses">
+      <h3>Addresses</h3>
+      {% if contact.addresses %}
+        <div class="address-grid contact-address-grid">
+          {% for item in contact.addresses %}
+            <article class="subcard contact-address-card">
+              <div class="subcard-title">{{ item.address_type or ("Address " ~ item.position) }}</div>
+              <div class="address-lines {% if not item.coordinates %}address-lines-plain{% endif %}">
+                {% for line in item.formatted_lines %}
+                  <div>{{ line }}</div>
+                {% endfor %}
+              </div>
+              {% if item.coordinates %}
+                <div class="muted">Coordinates: {{ item.coordinates }}</div>
+                <div class="address-actions">
+                  <a class="map-link" href="{{ item.map_url }}" target="_blank" rel="noreferrer">Google Maps</a>
+                  <a class="map-link map-link-secondary" href="{{ item.apple_map_url }}" target="_blank" rel="noreferrer">Apple Maps</a>
+                </div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">No address values stored.</p>
+      {% endif %}
+    </article>
+
+    <article class="panel contact-detail-panel contact-detail-panel-misc">
+      <h3>Miscellaneous</h3>
+      <dl class="meta-list contact-detail-meta">
+        <div>
+          <dt>Notes</dt>
+          <dd>
+            {% if contact.notes %}
+              <div class="notes preserve-breaks">{{ contact_notes_html(contact.notes) }}</div>
+            {% else %}
+              <span class="empty">No notes stored.</span>
+            {% endif %}
+          </dd>
+        </div>
+        <div>
+          <dt>Custom Fields</dt>
+          <dd>
+            {% if contact.custom_fields %}
+              <ul class="stack-list contact-detail-inline-list">
+                {% for item in contact.custom_fields %}
+                  <li><strong>{{ item.field_type }}</strong> {{ item.field_value }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="empty">No custom fields stored.</span>
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="panel contact-detail-panel contact-detail-panel-details">
+      <h3>Details</h3>
+      <dl class="meta-list contact-detail-meta">
+        <div>
+          <dt>Birthday</dt>
+          <dd>{{ contact.birthday or "no entry" }}</dd>
+        </div>
+        <div>
+          <dt>Group Membership</dt>
+          <dd class="preserve-breaks">{{ contact.group_membership or "" }}</dd>
+        </div>
+        <div class="contact-detail-note-row">
+          <dd>
+            <strong>1 - Meeting home, 2 - Elder</strong>
+            {% if contact.mtg_home_elder_flag %}
+              <div class="preserve-breaks">{{ contact.mtg_home_elder_flag }}</div>
+            {% else %}
+              <div class="preserve-breaks">no entry</div>
+            {% endif %}
+          </dd>
+        </div>
+        <div class="contact-detail-note-row">
+          <dd>
+            <strong>Meets in different state</strong>
+            {% if contact.meets_in_state %}
+              <div class="preserve-breaks">{{ contact.meets_in_state }}</div>
+            {% else %}
+              <div class="preserve-breaks">no entry</div>
+            {% endif %}
+          </dd>
+        </div>
+          </dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="panel contact-detail-panel contact-detail-panel-admin">
+      <h3>Administration</h3>
+      <dl class="meta-list contact-detail-meta">
+        <div>
+          <dt>Google Contact ID</dt>
+          <dd>{{ contact.google_contact_id or "" }}</dd>
+        </div>
+        <div>
+          <dt>Google Etag</dt>
+          <dd>{{ contact.etag or "" }}</dd>
+        </div>
+        <div>
+          <dt>Last Updated</dt>
+          <dd>{{ contact.last_updated or "" }}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{{ contact.status or "" }}</dd>
+        </div>
+      </dl>
+    </article>
+  </section>
+  <dialog class="app-modal" id="contact-delete-modal">
+    <form method="dialog" class="app-modal-panel" id="contact-delete-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title">{{ "Permanently delete?" if is_deleted_contact else "Move Contact to Deleted?" }}</h3>
+        <p class="app-modal-copy">
+          {% if is_deleted_contact %}
+            This will delete {{ contact_display_name or "this contact" }} from Google Contacts on the next upload.
+          {% else %}
+            This will move {{ contact_display_name or "this contact" }} to Deleted.
+          {% endif %}
+        </p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="contact-delete-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-delete" id="contact-delete-modal-confirm" value="delete">{{ "Permanently delete" if is_deleted_contact else "Delete" }}</button>
+      </div>
+    </form>
+  </dialog>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const detailPage = document.querySelector(".contact-detail-page");
+      const headerPanel = document.querySelector(".contact-card-header");
+      const deleteForm = document.querySelector("[data-contact-delete-form]");
+      const deleteModal = document.getElementById("contact-delete-modal");
+      const deleteModalForm = document.getElementById("contact-delete-modal-form");
+      const deleteModalCancel = document.getElementById("contact-delete-modal-cancel");
+
+      if (deleteForm && deleteModal && deleteModalForm && deleteModalCancel) {
+        let allowDeleteSubmit = false;
+
+        deleteForm.addEventListener("submit", (event) => {
+          if (allowDeleteSubmit) {
+            allowDeleteSubmit = false;
+            return;
+          }
+          event.preventDefault();
+          deleteModal.showModal();
+        });
+
+        deleteModalForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          allowDeleteSubmit = true;
+          deleteModal.close();
+          deleteForm.requestSubmit();
+        });
+
+        deleteModalCancel.addEventListener("click", () => {
+          deleteModal.close();
+        });
+      }
+
+      if (!detailPage || !headerPanel) return;
+
+      const syncContactDetailHeaderOffset = () => {
+        detailPage.style.setProperty("--contact-detail-header-space", `${headerPanel.offsetHeight}px`);
+      };
+
+      syncContactDetailHeaderOffset();
+      window.addEventListener("resize", syncContactDetailHeaderOffset);
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}MeetingData Section | Contacts Website{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="crumb"><a href="/meetings/v2/sections">MeetingData</a></p>
+    <h2>{{ section.field_name }}</h2>
+    <p class="meeting-heading">{{ section.meeting_name }}</p>
+    <p><a class="map-link" href="/meetings/v2/sections/{{ section.id }}/editor">Open Visual Editor</a></p>
+    <dl class="meta-list">
+      <div><dt>Legacy Rows</dt><dd>{{ section.source_legacy_start_row or "" }} - {{ section.source_legacy_end_row or "" }}</dd></div>
+      <div><dt>Column Count</dt><dd>{{ section.layout.column_count }}</dd></div>
+      <div><dt>Column Pixel Width</dt><dd>{{ section.layout.column_pixel_width }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <div class="editor-actions">
+      <h3>Section Editor</h3>
+      <form method="post" action="/meetings/v2/sections/{{ section.id }}/rows/add">
+        <button type="submit">Add Row</button>
+      </form>
+    </div>
+
+    <form method="post" action="/meetings/v2/sections/{{ section.id }}/save">
+      <div class="panel editor-panel">
+        <label class="form-label" for="section_notes">Section Notes</label>
+        <textarea id="section_notes" name="section_notes" rows="3">{{ section.notes or "" }}</textarea>
+      </div>
+
+      <div class="editor-stack">
+        {% for row in section.rows %}
+          <section class="panel editor-row-panel">
+            <input type="hidden" name="row_ids" value="{{ row.id }}">
+            <div class="editor-actions">
+              <h4>Row {{ row.row_order }}</h4>
+              <button
+                type="submit"
+                class="danger-button"
+                formaction="/meetings/v2/sections/{{ section.id }}/rows/{{ row.id }}/delete"
+                formmethod="post"
+              >
+                Delete Row
+              </button>
+            </div>
+
+            <div class="editor-grid">
+              <div>
+                <label class="form-label" for="row_order_{{ row.id }}">Row Order</label>
+                <input id="row_order_{{ row.id }}" name="row_order_{{ row.id }}" type="number" value="{{ row.row_order }}">
+              </div>
+              <div>
+                <label class="form-label" for="row_kind_{{ row.id }}">Row Kind</label>
+                  <select id="row_kind_{{ row.id }}" name="row_kind_{{ row.id }}" multiple size="6">
+                  {% for kind in ["content", "blank", "divider", "column_flow", "underlined", "table_start", "table_end"] %}
+                    <option value="{{ kind }}" {% if kind in row.row_kind_tags %}selected{% endif %}>{{ "column flow" if kind == "column_flow" else "table start" if kind == "table_start" else "table end" if kind == "table_end" else kind }}</option>
+                  {% endfor %}
+                  </select>
+              </div>
+              <div>
+                <label class="form-label" for="format_code_{{ row.id }}">Format Code</label>
+                <input id="format_code_{{ row.id }}" name="format_code_{{ row.id }}" type="text" value="{{ row.format_code or '' }}">
+              </div>
+              <div>
+                <label class="form-label" for="label_text_{{ row.id }}">Label Text</label>
+                <input id="label_text_{{ row.id }}" name="label_text_{{ row.id }}" type="text" value="{{ row.label_text or '' }}">
+              </div>
+            </div>
+
+            <div class="editor-panel">
+              <label class="form-label" for="row_notes_{{ row.id }}">Row Notes</label>
+              <textarea id="row_notes_{{ row.id }}" name="row_notes_{{ row.id }}" rows="2">{{ row.notes or "" }}</textarea>
+            </div>
+
+            <div class="editor-cells">
+              {% for cell in row.cells %}
+                <article class="cell-editor-card">
+                  <input type="hidden" name="cell_ids" value="{{ cell.id }}">
+                  <div class="editor-grid">
+                    <div>
+                      <label class="form-label" for="col_start_{{ cell.id }}">Col Start</label>
+                      <input id="col_start_{{ cell.id }}" name="col_start_{{ cell.id }}" type="number" min="1" max="28" value="{{ cell.col_start }}">
+                    </div>
+                    <div>
+                      <label class="form-label" for="col_span_{{ cell.id }}">Col Span</label>
+                      <input id="col_span_{{ cell.id }}" name="col_span_{{ cell.id }}" type="number" min="1" max="28" value="{{ cell.col_span }}">
+                    </div>
+                  </div>
+                  <label class="form-label" for="text_value_{{ cell.id }}">Cell Text</label>
+                  <textarea id="text_value_{{ cell.id }}" name="text_value_{{ cell.id }}" rows="3">{{ cell.text_value }}</textarea>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+
+      <div class="editor-savebar">
+        <button type="submit">Save Section</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h3>v2 Section Preview</h3>
+    <div class="meeting-sheet-block">
+      {% for row in section.rows %}
+        <article class="meeting-sheet-row {% if row.is_underlined_row %}meeting-sheet-row-underlined{% endif %}">
+          <div class="meeting-sheet-gutter">
+            <span class="row-link">Row {{ row.row_order }}</span>
+            {% for label in row.row_kind_labels %}
+              <span class="format-pill">{{ label }}</span>
+            {% endfor %}
+            {% if row.format_code %}<span class="format-pill">{{ row.format_code }}</span>{% endif %}
+          </div>
+            <div class="meeting-sheet-grid">
+            {% if row.is_blank_row %}
+              <div class="wysiwyg-blank-row-spacer" style="grid-column: 1 / -1"></div>
+            {% elif row.is_divider_row %}
+              <div class="wysiwyg-divider-row-spacer" style="grid-column: 1 / -1"></div>
+            {% elif row.is_column_flow_row %}
+              {% for column in row.flow_columns %}
+                <div class="meeting-sheet-cell flow-column-card" style="grid-column: {{ column.col_start }} / span {{ column.col_span }}">
+                  <div class="flow-column-header">Column {{ column.column_index }}</div>
+                  {% if column.has_item %}
+                    <div class="flow-item-card-preview preserve-breaks">{{ column.combined_text|safe }}</div>
+                  {% else %}
+                    <div class="flow-empty muted">No names yet.</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            {% else %}
+              {% for cell in row.cells %}
+                <div
+                  class="meeting-sheet-cell {% if cell.is_title %}meeting-sheet-cell-title{% endif %}"
+                  {% if row.is_blank_row or row.is_divider_row %}style="display:none; grid-column: {{ cell.col_start }} / span {{ cell.col_span }}"{% else %}style="grid-column: {{ cell.col_start }} / span {{ cell.col_span }}"{% endif %}
+                >
+                  <div class="preserve-breaks">{{ cell.text_value|safe }}</div>
+                </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3>Editor Model Snapshot</h3>
+    <pre class="code-block">{{ section.editor_model | tojson(indent=2) }}</pre>
+  </section>
+{% endblock %}

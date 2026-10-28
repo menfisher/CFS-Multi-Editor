@@ -1,0 +1,385 @@
+{
+  "format": "contactsfreeshare.published_revisions.v1",
+  "revisions": [
+    {
+      "version": "1.242",
+      "date_display": "10/28/2026",
+      "description": "Add Field lists at the end of a Field, with organize and a Field-list-only print-new-page option. MeetingData italics, line spacing, and title/TOC font sizes. Save Layout no longer freezes."
+    },
+    {
+      "date_display": "10/12/2026",
+      "version": "1.241",
+      "description": "Address book PDFs keep the chosen font, including Verdana. Phone letters still reserve two initials plus a blank."
+    },
+    {
+      "date_display": "10/11/2026",
+      "version": "1.240",
+      "description": "Print the chosen address book font in the PDF and paper book. The insert before the table of contents uses the book margins. The error log keeps only recent messages."
+    },
+    {
+      "date_display": "10/9/2026",
+      "version": "1.239",
+      "description": "Raise the address book field/page footer off the cut edge without reflowing the contacts above it."
+    },
+    {
+      "date_display": "10/7/2026",
+      "version": "1.238",
+      "description": "Keep Multi-Editor and Single Editor from replacing each other. About now shows Multi-Editor, and update packages are named MultiEditor."
+    },
+    {
+      "date_display": "10/7/2026",
+      "version": "1.237",
+      "description": "Place the address book insert before the table of contents without counting it as a numbered page. Paper books can turn cut marks on or off. Inserted PDFs print at 600 dpi from the original file instead of a soft JPEG."
+    },
+    {
+      "date_display": "10/6/2026",
+      "version": "1.236",
+      "description": "Keep Husband and Wife labels through Google sync instead of importing Other. Contributor prints include Meeting Data. Addresses stay in the name column, the contacts page has a Notes column and a fitted toolbar, and pa/pb notes use the book font. The Editor tab no longer locks itself out when another tab is signed in as contributor."
+    },
+    {
+      "date_display": "10/6/2026",
+      "version": "1.235",
+      "description": "Stop contributor sign-out from uploading leftover Editor Drive work, take the Editor lock without a full Drive sync, and prefer IPv4 for Google. Wrapping child names keeps commas, Meets in different state has an info note, and install zips stay small by downloading Python packages on first launch."
+    },
+    {
+      "date_display": "10/6/2026",
+      "version": "1.234",
+      "description": "Reclaim your Editor lock after a dropped connection, and keep a much smaller Drive list from wiping local contacts. Blank Drive values no longer clear meeting/elder codes. Street 1 and 2 print on separate lines, wrapping names keep a trailing comma, unused All States codes drop out, and Notes explains pb/ and pa/ print codes."
+    },
+    {
+      "date_display": "9/23/2026",
+      "version": "1.233",
+      "description": "Meeting Data lists the field and meeting names from contacts before any meeting content is typed. Address Book, Field List, and Meeting Data open without rebuilding blank sections."
+    },
+    {
+      "date_display": "9/23/2026",
+      "version": "1.232",
+      "description": "A fully selected meeting can be left out of the address book table of contents. The All fields menu no longer shows a second Rename Field, and a renamed All-Contacts Shared Group Name stays after layout saves and Drive upload."
+    },
+    {
+      "date_display": "9/23/2026",
+      "version": "1.231",
+      "description": "The address book print order list scrolls when the fields and meetings are longer than the screen."
+    },
+    {
+      "date_display": "9/23/2026",
+      "version": "1.230",
+      "description": "Sync reads Job Title as the Field and Company as the Meeting, and re-reads every contact."
+    },
+    {
+      "date_display": "9/23/2026",
+      "version": "1.229",
+      "description": "Sync keeps the real Field and Meeting from Google instead of a catch-all Other Contacts label."
+    },
+    {
+      "date_display": "9/23/2026",
+      "version": "1.228",
+      "description": "Keep Google Contacts addresses on the same lines as the CFS contact card, and fix Upload failing with invalid argument."
+    },
+    {
+      "date_display": "9/22/2026",
+      "version": "1.227",
+      "description": "Copy Google Department into Job Title on Sync and Upload while leaving Department in place."
+    },
+    {
+      "date_display": "9/22/2026",
+      "version": "1.226",
+      "description": "Include contacts with no Field in Address Book and Field List, copy Google Department into Job Title, add Verdana and Tahoma, and stop meeting print from crashing when MeetingData is empty."
+    },
+    {
+      "date_display": "9/20/2026",
+      "version": "1.225",
+      "description": "Show street address 2 on its own line on the contact card and in Google Contacts, and speed up Share photo imports."
+    },
+    {
+      "date_display": "9/20/2026",
+      "version": "1.224",
+      "description": "Keep leftover finished shares from blocking new imports, auto-resume photo jobs after a watchdog slice, and create contacts for recipients added after others were already mapped."
+    },
+    {
+      "date_display": "9/17/2026",
+      "version": "1.223",
+      "description": "Swap left and right margins on even pages for side-spiral paper books so the extra gutter stays on the bound edge."
+    },
+    {
+      "date_display": "9/15/2026",
+      "version": "1.222",
+      "description": "Rename the catch-all shared group in place from Save Settings, and send Share invites with that Settings name plus keep-open and Retry copy."
+    },
+    {
+      "date_display": "9/13/2026",
+      "version": "1.221",
+      "description": "Left-flush paper-book front pages so 4-up duplex register matches the back."
+    },
+    {
+      "date_display": "9/7/2026",
+      "version": "1.220",
+      "description": "Prevent leftover contacts after Google recreates a person, and wrap long addresses on Address Book and Field List printouts."
+    },
+    {
+      "date_display": "7/30/2026",
+      "version": "1.219",
+      "description": "Keep the chosen Address Book cover picture filename visible under Choose picture until a new picture is selected."
+    },
+    {
+      "date_display": "7/26/2026",
+      "version": "1.218",
+      "description": "Speed up Editor Google sign-in with one-pass Drive storage resolve, unlock after contacts sync, and background non-critical Drive imports."
+    },
+    {
+      "date_display": "7/25/2026",
+      "version": "1.217",
+      "description": "Push pending photos to Google and shared accounts, calm the Google photo button until upload is needed, and stop sticky Drive revision reconcile on sign-in."
+    },
+    {
+      "date_display": "7/25/2026",
+      "version": "1.216",
+      "description": "Fix premature Editor timeout warnings after extending a session, and push mobile Editor contact edits to shared accounts."
+    },
+    {
+      "date_display": "7/23/2026",
+      "version": "1.215",
+      "description": "Host Help screenshots on GitHub Pages to keep update zips under size limits."
+    },
+    {
+      "date_display": "7/23/2026",
+      "version": "1.214",
+      "description": "Restore App Manual and Share Manual screenshots in Help."
+    },
+    {
+      "date_display": "7/23/2026",
+      "version": "1.213",
+      "description": "Structured address fields on desktop and mobile, cleaner address-book/field-list print lines, and Share Contacts recipient addresses keep street/city/state/ZIP."
+    },
+    {
+      "date_display": "7/21/2026",
+      "version": "1.212",
+      "description": "Faster Field List/Address Book opens; keep Completed Edit green after Drive download; fix phone letter codes/alignment; fix editor sign-out Contacts/MeetingData JSON backups."
+    },
+    {
+      "date_display": "7/17/2026",
+      "version": "1.211",
+      "description": "Drive Import backups on editor sign-out (one Contacts + one MeetingData JSON); Complete mtgs/page starts each field on a new page; prevent nav link-drag from ignoring Address Book clicks."
+    },
+    {
+      "date_display": "7/17/2026",
+      "version": "1.210",
+      "description": "Pending Edits complete is instant again; top menus open on click; Editor sign-in warns when a newer app version is available; shared-recipient photo sync retries failed uploads using the owner token."
+    },
+    {
+      "date_display": "7/16/2026",
+      "version": "1.209",
+      "description": "Same package as 1.35 under a version above the old 1.208 line: Pending Edits auto-export to Drive and newest-first sorting; more reliable Upload (share sync after Drive); mobile contact photo GCS sync; Google photo upload from remote URLs; PWA sign-in and mobile save UX fixes."
+    },
+    {
+      "date_display": "7/9/2026",
+      "version": "1.208",
+      "description": "Address book: order phones with spouses first then children; Notes pb//pa/ print directives; fix spacing after bold month labels; pa/ lines share a phone line; insert-file preview matches print."
+    },
+    {
+      "date_display": "7/2/2026",
+      "version": "1.207",
+      "description": "Fix MeetingData meetings that were hidden and falsely reported as already existing when re-added."
+    },
+    {
+      "date_display": "6/20/2026",
+      "version": "1.206",
+      "description": "New Help menu opens the built-in App Manual and Share App Manual right inside the app."
+    },
+    {
+      "date_display": "6/18/2026",
+      "version": "1.205",
+      "description": "Contact photo crop tool now saves at higher resolution (768x768) so cropped photos stay sharper in Google Contacts and shared imports."
+    },
+    {
+      "date_display": "6/14/2026",
+      "version": "1.204",
+      "description": "Share app: recipient imports run continuously (CPU no longer throttled), reset/relink re-imports use fast batch contact creation instead of one-at-a-time retries, imported contact photos now use full resolution instead of a small thumbnail, and photo import is configurable so contacts can be prioritized."
+    },
+    {
+      "date_display": "6/14/2026",
+      "version": "1.203",
+      "description": "Share app: re-sharing a group reuses a stable share ID and recovery only rebuilds groups a recipient actually received, fixing duplicate shared-group rows. Mobile contact sync recovers from expired Google sync tokens and downloads faster."
+    },
+    {
+      "date_display": "6/11/2026",
+      "version": "1.202",
+      "description": "Smaller Mac and Windows update packages; PyMuPDF downloads automatically on first PDF insert use."
+    },
+    {
+      "date_display": "6/9/2026",
+      "version": "1.201",
+      "description": "Fix Editor timeout extend loop, Drive sync edit-log ID collisions after remote updates, and faster lock extension."
+    },
+    {
+      "date_display": "6/9/2026",
+      "version": "1.200",
+      "description": "Address Book PDF add-file page after Table of Contents with corrected page numbers and PDF preview fixes."
+    },
+    {
+      "date_display": "6/8/2026",
+      "version": "1.199",
+      "description": "Configurable shared contacts group name and Google Drive folder picker fixes."
+    },
+    {
+      "date_display": "6/7/2026",
+      "version": "1.198",
+      "description": "MeetingData stacked column editor layout, rich text preservation, and print alignment fixes."
+    },
+    {
+      "date_display": "6/7/2026",
+      "version": "1.197",
+      "description": "Share recipient photo import and Cloud Run DB fixes; desktop sign-in sync skips stale Drive re-imports; mobile detail Drive sync and pending-edit improvements."
+    },
+    {
+      "date_display": "6/5/2026",
+      "version": "1.196",
+      "description": "Mobile OAuth and editor lock fixes; Drive shared app-field sync for meeting home/elder without contact edits; upload queue orphan handling; mobile refresh and Cloud Run custom domain."
+    },
+    {
+      "date_display": "6/5/2026",
+      "version": "1.195",
+      "description": "Mobile pending edits with photos and Cloud Run hosting; Drive incremental bootstrap and pending photo apply fixes; share recipient dismiss and recovery improvements."
+    },
+    {
+      "date_display": "6/2/2026",
+      "version": "1.194",
+      "description": "Compact contact edit layout with custom fields under assignments, smaller Google photo button, and meeting PDF table keep-together fix."
+    },
+    {
+      "date_display": "6/1/2026",
+      "version": "1.193",
+      "description": "Fix blank pages before meeting tables, PDF address italic and map links, share OAuth and database lock fixes, and mobile contacts viewer."
+    },
+    {
+      "date_display": "6/1/2026",
+      "version": "1.192",
+      "description": "Add parent_value database migration for field-scoped meeting filters; fixes Drive sync error on older installs. Includes recent sync, PDF, and address book layout improvements."
+    },
+    {
+      "date_display": "5/30/2026",
+      "version": "1.191",
+      "description": "Address book preview/print alignment: relationship suffix formatting, phone row pairing, TOC meeting headings, and layout font honored in PDF. Field meeting filters scoped to contacts in each field."
+    },
+    {
+      "date_display": "5/29/2026",
+      "version": "1.190",
+      "description": "Fix add field/meeting filters; Share app recipient invite connect, email labels, and OAuth reconnect."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.189",
+      "description": "Clear stale share sync messages when switching Google accounts."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.188",
+      "description": "Compact App Revisions diagnostic section showing update and error log paths only."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.187",
+      "description": "App Revisions page now shows complete published version history from the bundled release log."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.186",
+      "description": "Fix Mac Python 3.14 offline install (MarkupSafe wheels). Share sync recreates contacts when recipient copy was deleted."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.185",
+      "description": "Share app fixes: clear sync button when a group is unshared, and dismiss top notices after Sync or unshare."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.184",
+      "description": "Fix Windows in-app update when app folder is locked (robocopy fallback)."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.183",
+      "description": "Leaner install packages with wheel dedupe and platform filtering."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.182",
+      "description": "Share web auth bridge, Google Connect crash fixes, and offline Windows wheel bundles."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.178",
+      "description": "Fix Windows in-app update restart after shutdown."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.177",
+      "description": "Fix Windows fresh install share bridge and editor password autofill."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.176",
+      "description": "Limit Share Contacts nav to Editor sessions and refresh it live."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.175",
+      "description": "Google Connect layout, access roles, and sign-in improvements."
+    },
+    {
+      "date_display": "5/28/2026",
+      "version": "1.174",
+      "description": "Reuse CFS Google sign-in when opening Share Contacts."
+    },
+    {
+      "date_display": "5/27/2026",
+      "version": "1.172",
+      "description": "Fix SQLite closed-database crash on GoogleConnect."
+    },
+    {
+      "date_display": "5/27/2026",
+      "version": "1.171",
+      "description": "Share app persistence, recovery, and faster imports."
+    },
+    {
+      "date_display": "5/27/2026",
+      "version": "1.170",
+      "description": "App update publishing improvements."
+    },
+    {
+      "date_display": "5/27/2026",
+      "version": "1.169",
+      "description": "Sharing contacts feature added."
+    },
+    {
+      "date_display": "7/16/2026",
+      "version": "1.35",
+      "description": "Pending Edits auto-export to Drive and newest-first sorting; more reliable Upload (share sync after Drive); mobile contact photo GCS sync; Google photo upload from remote URLs; PWA sign-in and mobile save UX fixes."
+    },
+    {
+      "date_display": "7/16/2026",
+      "version": "1.34",
+      "description": "Stop mobile/Drive contact sync from creating duplicate contacts in CFS, and recover mobile Google token refresh on Cloud Run."
+    },
+    {
+      "date_display": "7/14/2026",
+      "version": "1.33",
+      "description": "Fix mobile pending edits so all editors see photo uploads on the Pending Edits list. Merge Drive changes on upload, import by content, and upload photos before the changes list."
+    },
+    {
+      "date_display": "7/14/2026",
+      "version": "1.32",
+      "description": "Preserve single-line shared contact addresses: keep formattedValue when sharing through the share app instead of splitting street and city/state onto separate lines."
+    },
+    {
+      "date_display": "7/11/2026",
+      "version": "1.31",
+      "description": "Drop drive.readonly OAuth scope; fix sign-in sync blocked by missing contact files; backup contacts and meetingdata to Drive on editor sign-out; stop stale project DB from shadowing live data; fix tel/sms links in address book PDFs on macOS Preview."
+    },
+    {
+      "date_display": "7/9/2026",
+      "version": "1.30",
+      "description": "Version numbering now uses major.minor (starting at 1.30). Address book: stacked meeting rows now leave a blank line before text below group columns, matching the MeetingData preview."
+    }
+  ]
+}

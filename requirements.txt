@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+certifi
+tzdata
+python-dotenv
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+# Installed on first Address Book PDF insert use in portable packages (see pymupdf_runtime.py).
+pymupdf

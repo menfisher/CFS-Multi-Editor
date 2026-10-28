@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.gs": "javascript",
+    "appsscript.json": "jsonc"
+  },
+  "editor.formatOnSave": false
+}

@@ -1,0 +1,2152 @@
+{% extends "base.html" %}
+
+{% block title %}Contacts | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3", "primary": "#f8f3e3", "secondary": "#edf5f7", "highlight": "#ffe3a1"}) %}
+  {% set google_notice = request.query_params.get("google_notice", "") if request is defined else "" %}
+  {% set temporary_google_notices = [
+    "contact_saved",
+    "import_success",
+    "upload_queue_empty",
+    "upload_pending",
+    "upload_success",
+    "contacts_export_drive_success",
+    "contacts_backup_drive_success",
+    "backup_import_success",
+    "google_sync_changes_none",
+    "google_sync_changes_success",
+    "google_sync_changes_conflicts",
+  ] %}
+  <div class="contacts-page">
+    {% set google_account_email = google_sync.account.email if google_sync is defined else "" %}
+    {% set pending_upload_count = google_sync.state.pending_upload_count if google_sync is defined else 0 %}
+    {% set settings_drive_pending = google_sync.state.settings_needs_drive_export if google_sync is defined else false %}
+    {% set contact_records_drive_pending = (google_sync.state.contact_records_needs_drive_export or google_sync.state.contacts_manifest_needs_drive_export) if google_sync is defined else false %}
+    {% set book_layouts_drive_pending = google_sync.state.book_layouts_needs_drive_export if google_sync is defined else false %}
+    {% set meetingdata_drive_pending = google_sync.state.meetingdata_needs_drive_export if google_sync is defined else false %}
+    {% set field_list_drive_pending = google_sync.state.field_list_needs_drive_export if google_sync is defined else false %}
+    {% set changes_list_drive_pending = google_sync.state.changes_list_needs_drive_export if google_sync is defined else false %}
+    {% set needs_drive_export = (settings_drive_pending or contact_records_drive_pending or book_layouts_drive_pending or meetingdata_drive_pending or field_list_drive_pending or changes_list_drive_pending) if google_sync is defined else false %}
+    {% set sync_error = google_sync.state.last_sync_error if google_sync is defined else "" %}
+    {% set bootstrap_status = google_sync.state.bootstrap_status if google_sync is defined else "idle" %}
+    {% set bootstrap_active = bootstrap_status == "running" %}
+    {% set bootstrap_failed = bootstrap_status == "failed" %}
+    {% set deleted_filter_active = meeting_filter|lower == "deleted" %}
+    {% set selection_notice = "" %}
+    <section class="panel page-top-panel meetingdata-filter-panel contacts-filter-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+      <div class="contacts-filter-shell">
+        <div class="contacts-filter-title-row">
+          <h2 class="contacts-result-count">Contacts - {{ contacts|length }}</h2>
+          <div class="contacts-action-bar" data-contacts-action-bar>
+            <button type="button" class="contacts-action-new is-active" data-contacts-action="new">New Contact</button>
+            <button type="button" class="contacts-action-link" data-contacts-action="message">Message</button>
+            <button type="button" class="contacts-action-link" data-contacts-action="email">Email</button>
+            <button type="button" class="contacts-action-link" data-contacts-action="delete">Delete</button>
+            <button type="button" class="contacts-action-link" data-contacts-action="move">Move</button>
+            <label class="contacts-unlisted-toc" data-unlisted-toc hidden>
+              <input type="checkbox" data-unlisted-toc-checkbox>
+              Unlisted in TOC
+            </label>
+            {% set contacts_editing_allowed = not google_sync.state.multi_editor_enabled or google_sync.state.editor_mode == "edit" %}
+            {% if contacts_editing_allowed and google_sync.account.status == "connected" %}
+              <form
+                method="post"
+                action="/google/sync-changes"
+                class="contacts-action-inline-form"
+                data-busy-modal-title="Syncing from Google Contacts"
+                data-busy-modal-copy="Merging Google contact changes. This can take several minutes. Leave this window open until the browser tab spinner stops."
+              >
+                <input type="hidden" name="return_to" value="{{ current_list_url }}">
+                <button type="submit" class="contacts-action-link" {% if bootstrap_active %}disabled{% endif %}>Sync from Google</button>
+              </form>
+            {% endif %}
+            <form method="post" action="/google/upload" class="contacts-action-inline-form" id="contacts-upload-form">
+              <input type="hidden" name="return_to" value="{{ current_list_url }}">
+              <button
+                type="submit"
+                class="contacts-action-link {% if not bootstrap_active and (pending_upload_count or needs_drive_export) and not google_sync.state.upload_in_progress %}contacts-upload-reminder{% endif %}"
+                data-contacts-action="upload"
+                data-upload-pending="{{ 'true' if not bootstrap_active and (pending_upload_count or needs_drive_export) and not google_sync.state.upload_in_progress else 'false' }}"
+                id="contacts-upload-button"
+                {% if bootstrap_active %}disabled{% endif %}
+              >Upload</button>
+            </form>
+          </div>
+        </div>
+
+        <form method="get" class="search-bar contacts-search-bar" id="contacts-filter-form">
+          <input type="search" name="q" value="{{ query }}" placeholder="Search by family or given name">
+          {% set selected_states = state_filters|default([]) %}
+          {% set selected_state_keys = selected_states|map('lower')|list %}
+          {% set available_states = filters.states|default([]) %}
+          <div class="contacts-state-filter" data-contacts-state-filter>
+            <button type="button" class="contacts-state-filter-trigger" id="contacts-state-filter-trigger" aria-haspopup="listbox" aria-expanded="false">
+              <span class="contacts-state-filter-trigger-label" id="contacts-state-filter-trigger-label">All states</span>
+            </button>
+            <div class="contacts-state-filter-menu" id="contacts-state-filter-menu" hidden role="listbox">
+              <div class="contacts-state-filter-actions">
+                <label class="contacts-state-filter-option">
+                  <input type="checkbox" data-state-all {% if not selected_states %}checked{% endif %}>
+                  <span>All states</span>
+                </label>
+                <button type="button" class="contacts-state-filter-clear" data-state-clear>Clear all</button>
+              </div>
+              {% for item in available_states %}
+                <label class="contacts-state-filter-option">
+                  <input type="checkbox" name="state" value="{{ item }}" {% if not selected_states or item|lower in selected_state_keys %}checked{% endif %}>
+                  <span>{{ item }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+          <select name="field" id="contacts-field-filter">
+            <option value="">All fields</option>
+            {% if field_filter and field_filter not in filters.fields and field_filter not in ["__add_field__", "__delete_field__", "__rename_field__"] %}
+              <option value="{{ field_filter }}" selected>{{ field_filter }}</option>
+            {% endif %}
+            {% for item in filters.fields %}
+              <option value="{{ item }}" {% if field_filter == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+            <option value="__add_field__">+ Add Field</option>
+            <option value="__delete_field__">- Field</option>
+            <option value="__rename_field__">Rename Field</option>
+          </select>
+          <select name="meeting" id="contacts-meeting-filter">
+            <option value="">All meetings</option>
+            {% if meeting_filter and meeting_filter not in filters.meetings %}
+              <option value="{{ meeting_filter }}" selected>{{ meeting_filter }}</option>
+            {% endif %}
+            {% for item in filters.meetings %}
+              <option value="{{ item }}" {% if meeting_filter == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+            <option value="__add_meeting__">+ Add Meeting</option>
+            <option value="__delete_meeting__">- Meeting</option>
+            <option value="__rename_meeting__">Rename Meeting</option>
+          </select>
+          <button type="button" class="contacts-search-button" id="contacts-clear-filters">Clear Search</button>
+        </form>
+      </div>
+    </section>
+
+    <section
+      class="panel google-sync-banner google-sync-banner-progress"
+      id="contacts-upload-progress"
+      {% if not google_sync.state.upload_in_progress %}hidden{% endif %}
+    >
+      Uploading local changes to Google and Drive.
+    </section>
+
+    {% if google_notice_message %}
+      <section class="panel google-sync-banner {% if google_notice in ["upload_queue_empty", "upload_pending", "editor_lock_blocked"] %}google-sync-banner-warn{% else %}google-sync-banner-info{% endif %}" {% if google_notice in temporary_google_notices %}id="contacts-temporary-notice" data-auto-hide-ms="3600"{% endif %}>
+        {{ google_notice_message }}
+      </section>
+    {% elif google_sync.state.multi_editor_enabled and google_sync.state.editor_mode != "edit" %}
+      <section class="panel google-sync-banner google-sync-banner-warn">
+        This app is in NO-EDIT mode. Sign in as an Editor on the <a href="/presets/google-connect">GoogleConnect</a> page to make changes.
+      </section>
+    {% elif bootstrap_active %}
+      <section class="panel google-sync-banner google-sync-banner-warn" id="contacts-bootstrap-status-banner">
+        Drive bootstrap in progress. Editing is temporarily unavailable. {{ google_sync.state.bootstrap_processed_contacts }} processed, {{ google_sync.state.bootstrap_remaining_contacts }} remaining.
+      </section>
+    {% elif bootstrap_failed %}
+      <section class="panel google-sync-banner google-sync-banner-warn" id="contacts-bootstrap-status-banner">
+        Drive bootstrap did not finish. Resume Upload before editing. {{ google_sync.state.bootstrap_processed_contacts }} processed, {{ google_sync.state.bootstrap_remaining_contacts }} remaining.
+      </section>
+    {% elif selection_notice %}
+      <section class="panel google-sync-banner google-sync-banner-warn" id="contacts-selection-notice">
+        {{ selection_notice }}
+      </section>
+    {% elif pending_upload_count or needs_drive_export %}
+      <section class="panel google-sync-banner google-sync-banner-warn" id="contacts-pending-upload-banner">
+        {% if sync_error %}
+          <strong>Last upload issue:</strong> {{ sync_error }}
+        {% endif %}
+        {% if pending_upload_count and needs_drive_export %}
+          {{ pending_upload_count }} Google contact change{% if pending_upload_count != 1 %}s{% endif %} and Drive changes are waiting to upload. Click Upload to send them now.
+        {% elif pending_upload_count %}
+          {{ pending_upload_count }} Google contact change{% if pending_upload_count != 1 %}s{% endif %} are waiting to upload. Click Upload to send them now.
+        {% elif settings_drive_pending %}
+          Settings changes are waiting to upload to Drive. Click Upload to send them now.
+        {% elif meetingdata_drive_pending %}
+          MeetingData changes are waiting to upload to Drive. Click Upload to send them now.
+        {% elif book_layouts_drive_pending %}
+          Address book layout changes are waiting to upload to Drive. Click Upload to send them now.
+        {% elif contact_records_drive_pending %}
+          Shared contact data is waiting to upload to Drive. Click Upload to send it now.
+        {% elif field_list_drive_pending %}
+          Field List changes are waiting to upload to Drive. Click Upload to send them now.
+        {% elif changes_list_drive_pending %}
+          Changes List updates are waiting to upload to Drive. Click Upload to send them now.
+        {% else %}
+          Drive changes are waiting to upload. Click Upload to send them now.
+        {% endif %}
+      </section>
+    {% elif not google_account_email %}
+      <section class="panel google-sync-banner google-sync-banner-info">
+        GoogleConnect is not configured yet. Use <a href="/presets/google-connect">GoogleConnect</a> before importing or uploading contacts.
+      </section>
+    {% elif sync_error %}
+      <section class="panel google-sync-banner google-sync-banner-warn">
+        {{ sync_error }}
+      </section>
+    {% endif %}
+
+    <section class="panel">
+      <form method="post" action="/contacts/delete-selected" id="contacts-bulk-delete-form" hidden>
+        <input type="hidden" name="return_to" value="{{ current_list_url }}">
+        {% if deleted_filter_active %}
+          <input type="hidden" name="permanent_delete" value="1">
+        {% endif %}
+        <div data-bulk-delete-inputs></div>
+      </form>
+      <form method="post" action="/contacts/move-selected" id="contacts-bulk-move-form" hidden>
+        <input type="hidden" name="return_to" value="{{ current_list_url }}">
+        <div data-bulk-move-inputs></div>
+      </form>
+      <table class="data-table contacts-table">
+        <thead>
+          <tr>
+            <th class="contacts-table-family-header">
+              <span class="contacts-table-family-label" data-selection-label>Names</span>
+              <div class="contacts-selection-tools" data-selection-tools hidden>
+                <button type="button" class="contacts-selection-clear" data-selection-clear aria-label="Clear selection">−</button>
+                <details class="contacts-selection-menu" data-selection-menu>
+                  <summary class="contacts-selection-toggle" aria-label="Selection options">▾</summary>
+                  <div class="contacts-selection-menu-list">
+                    <button type="button" class="contacts-selection-menu-item" data-selection-action="all">All</button>
+                    <button type="button" class="contacts-selection-menu-item" data-selection-action="none">None</button>
+                  </div>
+                </details>
+                <span class="contacts-selection-count" data-selection-count>0 selected</span>
+              </div>
+            </th>
+            <th class="contacts-col-fields">Fields</th>
+            <th class="contacts-col-meetings">Meetings</th>
+            <th class="contacts-col-phones">Phones</th>
+            <th class="contacts-col-addresses">Addresses</th>
+            <th class="contacts-col-notes">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for contact in contacts %}
+          {% set band_color = row_colors.primary if loop.index0 % 2 == 0 else row_colors.secondary %}
+          {% set contact_display_name = contact.family_name %}
+          {% set contact_is_deleted = "deleted" in ((contact.meetings_text or "")|lower).splitlines() %}
+          {% if contact.given_name %}
+            {% set contact_display_name = contact_display_name ~ ", " ~ contact.given_name %}
+          {% endif %}
+            <tr class="click-row click-row-banded contacts-table-row" data-contact-row data-contact-deleted="{{ 'true' if contact_is_deleted else 'false' }}" data-message-contact-name="{{ contact_display_name|forceescape }}" data-message-phones='{{ contact.message_phones|default([])|tojson|forceescape }}' data-message-emails='{{ contact.message_emails|default([])|tojson|forceescape }}' style="--row-band-color: {{ band_color }}; --row-hover-color: {{ row_colors.highlight }};" onclick="window.location='/contacts/{{ contact.id }}?return_to={{ current_list_url|urlencode }}'">
+              <td>
+                <div class="contact-name-cell">
+                  <input class="contacts-row-checkbox" type="checkbox" data-contact-select data-contact-id="{{ contact.id }}" data-contact-fields='{{ contact.fields_text|default("")|tojson|forceescape }}' data-contact-meetings='{{ contact.meetings_text|default("")|tojson|forceescape }}' aria-label="Select {{ contact.family_name }}, {{ contact.given_name }}" onclick="event.stopPropagation()">
+                  {% if contact.photo %}
+                    <img class="contact-avatar contact-avatar-small" src="{{ contact.photo }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+                  {% endif %}
+                  <a class="row-link" href="/contacts/{{ contact.id }}?return_to={{ current_list_url|urlencode }}"><strong>{{ contact.family_name|upper }}</strong>{% if contact.given_name %}, {{ contact.given_name }}{% endif %}</a>
+                </div>
+              </td>
+              <td class="preserve-breaks contacts-col-fields">{{ contact.fields_text }}</td>
+              <td class="preserve-breaks contacts-col-meetings">{{ contact.meetings_text }}</td>
+              <td class="preserve-breaks small-text contacts-col-phones">{{ contact.phone_summary or "" }}</td>
+              <td class="preserve-breaks small-text contacts-col-addresses">{{ contact.address_summary or "" }}</td>
+              <td class="preserve-breaks small-text contacts-col-notes">{{ contact_notes_html(contact.notes) }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6">No contacts found.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <dialog class="app-modal" id="assignment-option-modal">
+    <form method="dialog" class="app-modal-panel" id="assignment-option-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="assignment-option-modal-title">Add Option</h3>
+        <p class="app-modal-copy" id="assignment-option-modal-copy">Enter a name for the new option.</p>
+      </div>
+      <label class="app-modal-field">
+        <span id="assignment-option-modal-label">Name</span>
+        <input type="text" id="assignment-option-modal-input" autocomplete="off">
+      </label>
+      <div class="app-modal-error" id="assignment-option-modal-error" aria-live="polite"></div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="assignment-option-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-edit" id="assignment-option-modal-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="app-modal" id="contacts-delete-modal">
+    <form method="dialog" class="app-modal-panel" id="contacts-delete-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="contacts-delete-modal-title">Move Contacts to Deleted?</h3>
+        <p class="app-modal-copy" id="contacts-delete-modal-copy">Move selected contacts to Deleted?</p>
+      </div>
+      <label class="app-modal-field">
+        <span id="contacts-delete-modal-label">Confirmation</span>
+        <input type="text" id="contacts-delete-modal-input" autocomplete="off">
+      </label>
+      <div class="app-modal-error" id="contacts-delete-modal-error" aria-live="polite"></div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="contacts-delete-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-delete" id="contacts-delete-modal-confirm" value="confirm">Move to Deleted</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="app-modal" id="contacts-message-modal">
+    <form method="dialog" class="app-modal-panel contacts-message-panel" id="contacts-message-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title">Message Selected Contacts</h3>
+        <p class="app-modal-copy">
+          This sends separate messages through Mac Messages, or opens prepared messages through Windows Phone Link when a phone is paired.
+        </p>
+      </div>
+      <label class="app-modal-field contacts-message-field">
+        <span>Message</span>
+        <textarea id="contacts-message-body" rows="5" autocomplete="off" placeholder="Type the message to send separately to each selected number."></textarea>
+      </label>
+      <div class="contacts-message-summary" id="contacts-message-summary" aria-live="polite"></div>
+      <div class="contacts-message-phone-list" id="contacts-message-phone-list"></div>
+      <div class="contacts-message-skipped" id="contacts-message-skipped"></div>
+      <div class="app-modal-error" id="contacts-message-error" aria-live="polite"></div>
+      <div class="contacts-message-queue-status" id="contacts-message-queue-status" hidden></div>
+      <div class="app-modal-actions contacts-message-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="contacts-message-cancel">Close</button>
+        <button type="button" class="contact-card-button contact-card-button-edit" id="contacts-message-start">Send Separate Messages</button>
+        <button type="button" class="contact-card-button contact-card-button-edit" id="contacts-message-next" hidden>Next</button>
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="contacts-message-done" hidden>Done</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="app-modal contacts-email-modal" id="contacts-email-modal">
+    <form method="dialog" class="app-modal-panel contacts-message-panel contacts-email-panel" id="contacts-email-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title">Email Selected Contacts</h3>
+      </div>
+      <label class="app-modal-field">
+        <span>Subject</span>
+        <input type="text" id="contacts-email-subject" autocomplete="off">
+      </label>
+      <label class="app-modal-field contacts-message-field">
+        <span>Message</span>
+        <textarea id="contacts-email-body" rows="5" autocomplete="off"></textarea>
+      </label>
+      <div class="contacts-message-summary" id="contacts-email-summary" aria-live="polite"></div>
+      <div class="contacts-message-phone-list" id="contacts-email-list"></div>
+      <div class="contacts-message-skipped" id="contacts-email-skipped"></div>
+      <div class="app-modal-error" id="contacts-email-error" aria-live="polite"></div>
+      <div class="app-modal-actions contacts-message-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="contacts-email-cancel">Close</button>
+        <button type="button" class="contact-card-button contact-card-button-edit" id="contacts-email-open">Open Email</button>
+      </div>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% set script_filters = filters|default({"fields": [], "meetings": [], "meetings_by_field": {}}) %}
+  {% set script_meeting_filter = meeting_filter|default("") %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("contacts-filter-form");
+      const contactsPage = document.querySelector(".contacts-page");
+      const contactsFilterPanel = document.querySelector(".contacts-filter-panel");
+      const searchInput = form?.querySelector('input[name="q"]');
+      const fieldSelect = document.getElementById("contacts-field-filter");
+      const meetingSelect = document.getElementById("contacts-meeting-filter");
+      const clearFiltersButton = document.getElementById("contacts-clear-filters");
+      const optionModal = document.getElementById("assignment-option-modal");
+      const optionModalForm = document.getElementById("assignment-option-modal-form");
+      const optionModalTitle = document.getElementById("assignment-option-modal-title");
+      const optionModalCopy = document.getElementById("assignment-option-modal-copy");
+      const optionModalLabel = document.getElementById("assignment-option-modal-label");
+      const optionModalInput = document.getElementById("assignment-option-modal-input");
+      const optionModalError = document.getElementById("assignment-option-modal-error");
+      const optionModalCancel = document.getElementById("assignment-option-modal-cancel");
+      const optionModalSave = document.getElementById("assignment-option-modal-save");
+      const assignmentModal = window.AppModal?.create({
+        dialog: optionModal,
+        form: optionModalForm,
+        titleEl: optionModalTitle,
+        copyEl: optionModalCopy,
+        labelEl: optionModalLabel,
+        inputEl: optionModalInput,
+        errorEl: optionModalError,
+        cancelEl: optionModalCancel,
+        saveEl: optionModalSave,
+      });
+      const deleteModal = window.AppModal?.create({
+        dialog: document.getElementById("contacts-delete-modal"),
+        form: document.getElementById("contacts-delete-modal-form"),
+        titleEl: document.getElementById("contacts-delete-modal-title"),
+        copyEl: document.getElementById("contacts-delete-modal-copy"),
+        labelEl: document.getElementById("contacts-delete-modal-label"),
+        inputEl: document.getElementById("contacts-delete-modal-input"),
+        errorEl: document.getElementById("contacts-delete-modal-error"),
+        cancelEl: document.getElementById("contacts-delete-modal-cancel"),
+        saveEl: document.getElementById("contacts-delete-modal-confirm"),
+      });
+      const uploadForm = document.getElementById("contacts-upload-form");
+      const uploadButton = document.getElementById("contacts-upload-button");
+      const uploadProgressBanner = document.getElementById("contacts-upload-progress");
+      const pendingUploadBanner = document.getElementById("contacts-pending-upload-banner");
+      const bootstrapStatusBanner = document.getElementById("contacts-bootstrap-status-banner");
+      const selectionLabel = document.querySelector("[data-selection-label]");
+      const selectionTools = document.querySelector("[data-selection-tools]");
+      const selectionCount = document.querySelector("[data-selection-count]");
+      const selectionClear = document.querySelector("[data-selection-clear]");
+      const selectionMenu = document.querySelector("[data-selection-menu]");
+      const selectionNoticeContainer = document.getElementById("contacts-selection-notice");
+      const temporaryNotice = document.getElementById("contacts-temporary-notice");
+      const bulkDeleteForm = document.getElementById("contacts-bulk-delete-form");
+      const bulkDeleteInputs = document.querySelector("[data-bulk-delete-inputs]");
+      const bulkMoveForm = document.getElementById("contacts-bulk-move-form");
+      const bulkMoveInputs = document.querySelector("[data-bulk-move-inputs]");
+      const messageModal = document.getElementById("contacts-message-modal");
+      const messageModalForm = document.getElementById("contacts-message-modal-form");
+      const messageBodyInput = document.getElementById("contacts-message-body");
+      const messageSummary = document.getElementById("contacts-message-summary");
+      const messagePhoneList = document.getElementById("contacts-message-phone-list");
+      const messageSkipped = document.getElementById("contacts-message-skipped");
+      const messageError = document.getElementById("contacts-message-error");
+      const messageQueueStatus = document.getElementById("contacts-message-queue-status");
+      const messageCancelButton = document.getElementById("contacts-message-cancel");
+      const messageStartButton = document.getElementById("contacts-message-start");
+      const messageNextButton = document.getElementById("contacts-message-next");
+      const messageDoneButton = document.getElementById("contacts-message-done");
+      const emailModal = document.getElementById("contacts-email-modal");
+      const emailModalForm = document.getElementById("contacts-email-modal-form");
+      const emailSubjectInput = document.getElementById("contacts-email-subject");
+      const emailBodyInput = document.getElementById("contacts-email-body");
+      const emailSummary = document.getElementById("contacts-email-summary");
+      const emailList = document.getElementById("contacts-email-list");
+      const emailSkipped = document.getElementById("contacts-email-skipped");
+      const emailError = document.getElementById("contacts-email-error");
+      const emailCancelButton = document.getElementById("contacts-email-cancel");
+      const emailOpenButton = document.getElementById("contacts-email-open");
+      const rowCheckboxes = Array.from(document.querySelectorAll("[data-contact-select]"));
+      const messageActionButton = document.querySelector('[data-contacts-action="message"]');
+      const emailActionButton = document.querySelector('[data-contacts-action="email"]');
+      const deleteActionButton = document.querySelector('[data-contacts-action="delete"]');
+      const moveActionButton = document.querySelector('[data-contacts-action="move"]');
+      const newActionButton = document.querySelector('[data-contacts-action="new"]');
+      if (!form || !searchInput || !fieldSelect || !meetingSelect) return;
+
+      const syncContactsPanelOffset = () => {
+        if (!contactsPage || !contactsFilterPanel) return;
+        contactsPage.style.setProperty("--contacts-filter-panel-space", `${contactsFilterPanel.offsetHeight}px`);
+      };
+
+      syncContactsPanelOffset();
+      window.addEventListener("resize", syncContactsPanelOffset);
+
+      const meetingsByField = {{ script_filters.meetings_by_field|default({})|tojson }};
+      const allMeetings = {{ script_filters.meetings|default([])|tojson }};
+      const selectedMeeting = {{ script_meeting_filter|tojson }};
+      const deletedFilterActive = String(selectedMeeting || "").trim().toLowerCase() === "deleted";
+      const initialUploadState = {{ google_sync.state|tojson if google_sync is defined else {} }};
+      const editingAllowed = !initialUploadState.multi_editor_enabled || initialUploadState.editor_mode === "edit";
+      const meetingRosterCount = {{ meeting_roster_count|default(0)|tojson }};
+      const unlistedTocMeetings = {{ unlisted_toc_meetings|default([])|tojson }};
+      const unlistedTocControl = document.querySelector("[data-unlisted-toc]");
+      const unlistedTocCheckbox = document.querySelector("[data-unlisted-toc-checkbox]");
+      const unlistedTocKeys = new Set(
+        (Array.isArray(unlistedTocMeetings) ? unlistedTocMeetings : []).map((item) => {
+          const fieldName = String(item.field_name || "").trim().toLowerCase();
+          const meetingName = String(item.meeting_name || "").trim().toLowerCase();
+          return `${fieldName}\n${meetingName}`;
+        })
+      );
+      const addFieldSentinel = "__add_field__";
+      const addMeetingSentinel = "__add_meeting__";
+      const deleteFieldSentinel = "__delete_field__";
+      const deleteMeetingSentinel = "__delete_meeting__";
+      const renameFieldSentinel = "__rename_field__";
+      const renameMeetingSentinel = "__rename_meeting__";
+      const unassignedFieldName = "No Field";
+      const unassignedMeetingName = "No Meeting";
+      const isUnassignedField = (value) => String(value || "").trim().toLowerCase() === unassignedFieldName.toLowerCase();
+      const isUnassignedMeeting = (value) => String(value || "").trim().toLowerCase() === unassignedMeetingName.toLowerCase();
+
+      const insertSortedOption = (select, value, defaultLabel, sentinelOptions, selectedValue) => {
+        if (!select || !value) return;
+        const options = Array.from(select.options)
+          .map((option) => ({ value: option.value, label: option.textContent || "" }))
+          .filter((option) => !sentinelOptions.some((sentinel) => sentinel.value === option.value));
+
+        if (!options.some((option) => option.value === value)) {
+          options.push({ value, label: value });
+        }
+
+        const defaultOption = options.find((option) => option.value === "");
+        const namedOptions = options
+          .filter((option) => option.value !== "")
+          .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+
+        select.innerHTML = "";
+        const baseOption = document.createElement("option");
+        baseOption.value = "";
+        baseOption.textContent = defaultOption?.label || defaultLabel;
+        if (!selectedValue) {
+          baseOption.selected = true;
+        }
+        select.appendChild(baseOption);
+
+        namedOptions.forEach((option) => {
+          const node = document.createElement("option");
+          node.value = option.value;
+          node.textContent = option.label;
+          if (option.value === selectedValue) {
+            node.selected = true;
+          }
+          select.appendChild(node);
+        });
+
+        sentinelOptions.forEach((sentinel) => {
+          const sentinelOption = document.createElement("option");
+          sentinelOption.value = sentinel.value;
+          sentinelOption.textContent = sentinel.label;
+          select.appendChild(sentinelOption);
+        });
+      };
+
+      const meetingsForField = (fieldName) => {
+        if (!fieldName) {
+          return allMeetings.slice();
+        }
+        return Array.isArray(meetingsByField[fieldName]) ? meetingsByField[fieldName].slice() : [];
+      };
+
+      const renderMeetingOptions = (fieldName, preferredMeeting = null) => {
+        const meetings = meetingsForField(fieldName);
+        const preservedMeeting = preferredMeeting ?? (meetingSelect.value || selectedMeeting);
+        meetingSelect.innerHTML = "";
+
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = "All meetings";
+        meetingSelect.appendChild(defaultOption);
+
+        meetings.forEach((meetingName) => {
+          const option = document.createElement("option");
+          option.value = meetingName;
+          option.textContent = meetingName;
+          if (meetingName === preservedMeeting) {
+            option.selected = true;
+          }
+          meetingSelect.appendChild(option);
+        });
+
+        if (preservedMeeting && !meetings.includes(preservedMeeting)) {
+          meetingSelect.value = "";
+        }
+
+        [
+          { value: addMeetingSentinel, label: "+ Add Meeting" },
+          { value: deleteMeetingSentinel, label: "- Meeting" },
+          { value: renameMeetingSentinel, label: "Rename Meeting" },
+        ].forEach((sentinel) => {
+          const sentinelOption = document.createElement("option");
+          sentinelOption.value = sentinel.value;
+          sentinelOption.textContent = sentinel.label;
+          meetingSelect.appendChild(sentinelOption);
+        });
+      };
+
+      const stateFilterRoot = form.querySelector("[data-contacts-state-filter]");
+      const stateFilterTrigger = document.getElementById("contacts-state-filter-trigger");
+      const stateFilterTriggerLabel = document.getElementById("contacts-state-filter-trigger-label");
+      const stateFilterMenu = document.getElementById("contacts-state-filter-menu");
+
+      const stateCheckboxes = () => Array.from(form.querySelectorAll('input[name="state"]'));
+      const allStatesCheckbox = () => form.querySelector("[data-state-all]");
+
+      const setAllStateBoxes = (checked) => {
+        stateCheckboxes().forEach((checkbox) => {
+          checkbox.checked = checked;
+          checkbox.disabled = false;
+        });
+      };
+
+      const isAllStatesSelected = () => Boolean(allStatesCheckbox()?.checked);
+
+      const updateStateFilterLabel = () => {
+        if (!stateFilterTriggerLabel) return;
+        const selected = stateCheckboxes()
+          .filter((checkbox) => checkbox.checked)
+          .map((checkbox) => checkbox.value)
+          .filter(Boolean);
+        if (isAllStatesSelected() || !selected.length) {
+          stateFilterTriggerLabel.textContent = selected.length || isAllStatesSelected() ? "All states" : "No states";
+          return;
+        }
+        stateFilterTriggerLabel.textContent = selected.join(", ");
+      };
+
+      const resetStateFilter = () => {
+        const allCheckbox = allStatesCheckbox();
+        if (allCheckbox) allCheckbox.checked = true;
+        setAllStateBoxes(true);
+        updateStateFilterLabel();
+      };
+
+      const resetDropdownFilters = () => {
+        fieldSelect.value = "";
+        renderMeetingOptions("");
+        meetingSelect.value = "";
+        resetStateFilter();
+      };
+
+      const clearAllFilters = () => {
+        searchInput.value = "";
+        resetDropdownFilters();
+        form.requestSubmit();
+      };
+
+      let uploadStatusTimer = null;
+      let selectionNoticeTimer = null;
+
+      const buildNoticeRedirectUrl = (notice) => {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("google_notice", notice);
+        return nextUrl.toString();
+      };
+
+      const setUploadButtonState = (isUploading, hasPendingWork = false) => {
+        if (!uploadButton) return;
+        uploadButton.disabled = isUploading;
+        uploadButton.textContent = isUploading ? "Uploading..." : "Upload";
+        uploadButton.dataset.uploadPending = !isUploading && hasPendingWork ? "true" : "false";
+        if (isUploading || !hasPendingWork) {
+          uploadButton.classList.remove("contacts-upload-reminder");
+          uploadButton.classList.remove("is-active");
+        }
+      };
+
+      const hasPendingUploadWork = (status) => (
+        Number(status.pending_upload_count ?? status.pending_count ?? 0) > 0
+        || Boolean(status.shared_drive_needs_export ?? status.needs_drive_export)
+        || Boolean(status.settings_needs_drive_export)
+        || Boolean(status.contact_records_needs_drive_export)
+        || Boolean(status.contacts_manifest_needs_drive_export)
+        || Boolean(status.book_layouts_needs_drive_export)
+        || Boolean(status.meetingdata_needs_drive_export)
+        || Boolean(status.field_list_needs_drive_export)
+        || Boolean(status.changes_list_needs_drive_export)
+        || String(status.bootstrap_status || "") === "failed"
+        || String(status.bootstrap_status || "") === "running"
+        || Number(status.bootstrap_remaining_contacts ?? status.bootstrap_remaining ?? 0) > 0
+      );
+
+      const hasActiveBootstrapWork = (status) => (
+        String(status.bootstrap_status || "") === "running"
+      );
+
+      const hideBootstrapStatusBanner = () => {
+        if (!bootstrapStatusBanner) return;
+        bootstrapStatusBanner.hidden = true;
+      };
+
+      const hideUploadProgressBanner = () => {
+        if (!uploadProgressBanner) return;
+        uploadProgressBanner.hidden = true;
+        uploadProgressBanner.textContent = "";
+        uploadProgressBanner.classList.remove("google-sync-banner-processing");
+      };
+
+      const refreshUploadButtonStatus = async () => {
+        try {
+          const response = await fetch(`/google/upload/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) return;
+          if (payload.in_progress) {
+            setUploadButtonState(true);
+            renderUploadProgress(payload);
+            return;
+          }
+          const pending = hasPendingUploadWork(payload);
+          setUploadButtonState(false, pending);
+          if (!pending) {
+            hidePendingUploadBanner();
+            hideBootstrapStatusBanner();
+            hideUploadProgressBanner();
+          }
+        } catch (_error) {
+          return;
+        }
+      };
+
+      const clearUploadButtonIfNoPendingWork = async () => {
+        try {
+          const response = await fetch(`/google/upload/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok || payload.in_progress) return false;
+          const pending = hasPendingUploadWork(payload);
+          setUploadButtonState(false, pending);
+          if (!pending) {
+            hidePendingUploadBanner();
+            hideBootstrapStatusBanner();
+            hideUploadProgressBanner();
+          }
+          return !pending;
+        } catch (_error) {
+          return false;
+        }
+      };
+
+      const startUploadReminderCleanup = () => {
+        if (!uploadButton && !uploadProgressBanner && !pendingUploadBanner && !bootstrapStatusBanner) return;
+        window.setInterval(clearUploadButtonIfNoPendingWork, 1000);
+      };
+
+      const hidePendingUploadBanner = () => {
+        const banner = document.getElementById("contacts-pending-upload-banner") || pendingUploadBanner;
+        if (!banner) return;
+        banner.remove();
+      };
+
+      const reloadContactsAfterUpload = () => {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("google_notice");
+        nextUrl.searchParams.set("_upload_done", String(Date.now()));
+        window.setTimeout(() => {
+          window.location.replace(nextUrl.toString());
+        }, 150);
+      };
+
+      const waitForUploadStatusRefresh = () => new Promise((resolve) => {
+        window.setTimeout(resolve, 350);
+      });
+
+      const fetchUploadStatus = async () => {
+        try {
+          const response = await fetch(`/google/upload/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) return null;
+          return payload;
+        } catch (_error) {
+          return null;
+        }
+      };
+
+      const finalUploadStatus = async (initialStatus) => {
+        let status = typeof initialStatus === "object" && initialStatus ? initialStatus : { notice: initialStatus || "" };
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (
+            Boolean(status.in_progress)
+            || hasPendingUploadWork(status)
+            || ["upload_failed", "upload_pending", "upload_in_progress"].includes(String(status.notice || ""))
+          ) {
+            await waitForUploadStatusRefresh();
+            const nextStatus = await fetchUploadStatus();
+            if (nextStatus) {
+              status = nextStatus;
+              continue;
+            }
+            if (["upload_pending", "upload_in_progress"].includes(String(status.notice || ""))) {
+              return { ...status, pending_count: 0, pending_upload_count: 0, shared_drive_needs_export: false, needs_drive_export: false, notice: "upload_success" };
+            }
+            return status;
+          }
+          return status;
+        }
+        if (!Boolean(status.in_progress) && !hasPendingUploadWork(status) && ["upload_failed", "upload_pending"].includes(String(status.notice || ""))) {
+          return {
+            ...status,
+            notice: Number(status.processed_count || 0) > 0 ? "upload_success" : "upload_queue_empty",
+            last_error: "",
+          };
+        }
+        return status;
+      };
+
+      const pendingUploadMessageHtml = (status) => {
+        const pendingContacts = Number(status.pending_upload_count ?? status.pending_count ?? 0);
+        const settingsPending = Boolean(status.settings_needs_drive_export);
+        const contactRecordsPending = Boolean(status.contact_records_needs_drive_export || status.contacts_manifest_needs_drive_export);
+        const bookLayoutsPending = Boolean(status.book_layouts_needs_drive_export);
+        const meetingdataPending = Boolean(status.meetingdata_needs_drive_export);
+        const fieldListPending = Boolean(status.field_list_needs_drive_export);
+        const changesListPending = Boolean(status.changes_list_needs_drive_export);
+        const drivePending = Boolean(
+          settingsPending
+          || contactRecordsPending
+          || bookLayoutsPending
+          || meetingdataPending
+          || fieldListPending
+          || changesListPending
+          || status.shared_drive_needs_export
+          || status.needs_drive_export
+        );
+        if (pendingContacts && drivePending) {
+          return `${pendingContacts} Google contact change${pendingContacts === 1 ? "" : "s"} and Drive changes are waiting to upload. Click Upload to send them now.`;
+        }
+        if (pendingContacts) {
+          return `${pendingContacts} Google contact change${pendingContacts === 1 ? "" : "s"} are waiting to upload. Click Upload to send them now.`;
+        }
+        if (settingsPending) return "Settings changes are waiting to upload to Drive. Click Upload to send them now.";
+        if (meetingdataPending) return "MeetingData changes are waiting to upload to Drive. Click Upload to send them now.";
+        if (bookLayoutsPending) return "Address book layout changes are waiting to upload to Drive. Click Upload to send them now.";
+        if (contactRecordsPending) return "Shared contact data is waiting to upload to Drive. Click Upload to send it now.";
+        if (fieldListPending) return "Field List changes are waiting to upload to Drive. Click Upload to send them now.";
+        if (changesListPending) return "Changes List updates are waiting to upload to Drive. Click Upload to send them now.";
+        if (drivePending) return "Drive changes are waiting to upload. Click Upload to send them now.";
+        return "";
+      };
+
+      const showPendingUploadBannerForStatus = (status) => {
+        const message = pendingUploadMessageHtml(status);
+        if (!message) return;
+        let banner = document.getElementById("contacts-pending-upload-banner");
+        if (!banner) {
+          banner = document.createElement("section");
+          banner.id = "contacts-pending-upload-banner";
+          const filterPanel = document.querySelector(".contacts-filter-panel");
+          filterPanel?.insertAdjacentElement("afterend", banner);
+        }
+        banner.className = "panel google-sync-banner google-sync-banner-warn";
+        banner.innerHTML = message;
+        banner.hidden = false;
+      };
+
+      const showUploadResultNotice = (notice, status = null) => {
+        const messages = {
+          upload_success: "Upload completed.",
+          upload_queue_empty: "There are no local contact or shared app changes waiting to upload.",
+          upload_pending: "Upload is not finished. Click Upload again to continue.",
+          upload_failed: "Upload failed. Reconnect Google if this keeps happening, then click Upload again.",
+          upload_not_connected: "Reconnect Google before uploading.",
+        };
+        const resolvedNotice = typeof notice === "object" && notice ? (notice.notice || "upload_success") : (notice || "upload_success");
+        const lastError = typeof notice === "object" && notice
+          ? String(notice.last_error || "").trim()
+          : String(status?.last_error || "").trim();
+        let message = messages[resolvedNotice] || messages.upload_success;
+        if (lastError) {
+          message = `${message} ${lastError}`;
+        }
+        let noticeEl = document.getElementById("contacts-temporary-notice");
+        if (!noticeEl) {
+          noticeEl = document.createElement("section");
+          noticeEl.id = "contacts-temporary-notice";
+          const filterPanel = document.querySelector(".contacts-filter-panel");
+          filterPanel?.insertAdjacentElement("afterend", noticeEl);
+        }
+        noticeEl.className = `panel google-sync-banner ${resolvedNotice === "upload_pending" || resolvedNotice === "upload_failed" || resolvedNotice === "upload_not_connected" ? "google-sync-banner-warn" : "google-sync-banner-info"}`;
+        noticeEl.textContent = message;
+        window.setTimeout(() => {
+          if (noticeEl && noticeEl.isConnected) {
+            noticeEl.remove();
+          }
+        }, 3600);
+      };
+
+      const finishUploadInPlace = async (statusOrNotice) => {
+        stopUploadPolling();
+        const status = await finalUploadStatus(statusOrNotice);
+        if (status.in_progress) {
+          renderUploadProgress(status);
+          setUploadButtonState(true);
+          uploadStatusTimer = window.setTimeout(pollUploadStatus, 1000);
+          return;
+        }
+        const pending = hasPendingUploadWork(status);
+        setUploadButtonState(false, pending);
+        hideBootstrapStatusBanner();
+        hideUploadProgressBanner();
+        if (pending) {
+          if (status.last_error) {
+            showUploadResultNotice(status);
+          }
+          showPendingUploadBannerForStatus(status);
+          return;
+        }
+        hidePendingUploadBanner();
+        clearUploadButtonIfNoPendingWork();
+        showUploadResultNotice(status);
+        reloadContactsAfterUpload();
+      };
+
+      const renderUploadProgress = (status) => {
+        if (!uploadProgressBanner) return;
+        if (!Boolean(status.in_progress)) {
+          hideUploadProgressBanner();
+          return;
+        }
+        hideBootstrapStatusBanner();
+        const total = Number(status.total_count || 0);
+        const processed = Number(status.processed_count || 0);
+        const remaining = Number(status.remaining_count || Math.max(total - processed, 0));
+        const phase = String(status.phase || "").trim();
+        const currentContact = String(status.current_contact || "").trim();
+        const bootstrapStatus = String(status.bootstrap_status || "").trim();
+        const bootstrapProcessed = Number(status.bootstrap_processed || processed || 0);
+        const bootstrapRemaining = Number(status.bootstrap_remaining || remaining || 0);
+        const bootstrapActive = bootstrapStatus === "running" || bootstrapStatus === "failed" || (phase === "drive_bootstrap" && bootstrapRemaining > 0);
+        const pendingContacts = Number(status.pending_count || 0);
+        const drivePending = Boolean(status.shared_drive_needs_export ?? status.needs_drive_export) || currentContact === "Shared app data" || currentContact.startsWith("Drive:");
+        const contactTotal = Math.max(total - (drivePending ? 1 : 0), 0);
+        const contactProcessed = Math.min(processed, contactTotal);
+        const contactRemaining = Math.max(contactTotal - contactProcessed, 0);
+        let message = "";
+        if (bootstrapActive) {
+          message = `Drive bootstrap in progress. ${bootstrapProcessed} processed, ${bootstrapRemaining} remaining.`;
+        } else if (phase === "google_contacts" && currentContact === "Updating Google contact groups") {
+          message = "Updating Google contact groups...";
+        } else if (contactTotal > 0) {
+          message = `Uploading ${contactTotal} queued contact change${contactTotal === 1 ? "" : "s"} to Google. ${contactProcessed} processed, ${contactRemaining} remaining.`;
+        } else if (drivePending) {
+          message = currentContact.startsWith("Drive:") ? currentContact : "Processing shared app data for Drive upload...";
+        } else {
+          message = `Uploading ${pendingContacts} contact${pendingContacts === 1 ? "" : "s"} to Google.`;
+        }
+        uploadProgressBanner.classList.toggle("google-sync-banner-processing", drivePending);
+        uploadProgressBanner.textContent = message;
+        uploadProgressBanner.hidden = false;
+      };
+
+      const stopUploadPolling = () => {
+        if (!uploadStatusTimer) return;
+        window.clearTimeout(uploadStatusTimer);
+        uploadStatusTimer = null;
+      };
+
+      const pollUploadStatus = async () => {
+        try {
+          const response = await fetch(`/google/upload/status?_=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Accept": "application/json" },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            stopUploadPolling();
+            clearUploadButtonIfNoPendingWork();
+            return;
+          }
+          if (payload.in_progress) {
+            renderUploadProgress(payload);
+            setUploadButtonState(String(payload.phase || "") !== "drive_bootstrap");
+            uploadStatusTimer = window.setTimeout(pollUploadStatus, 1000);
+            return;
+          }
+          stopUploadPolling();
+          await finishUploadInPlace(payload);
+        } catch (_error) {
+          stopUploadPolling();
+          clearUploadButtonIfNoPendingWork();
+        }
+      };
+
+      const showSelectionNotice = (message) => {
+        if (!message) return;
+        let notice = document.getElementById("contacts-selection-notice") || selectionNoticeContainer;
+        if (!notice) {
+          notice = document.createElement("section");
+          notice.id = "contacts-selection-notice";
+          notice.className = "panel google-sync-banner google-sync-banner-warn";
+          const filterPanel = document.querySelector(".contacts-filter-panel");
+          filterPanel?.insertAdjacentElement("afterend", notice);
+        }
+        notice.textContent = message;
+        if (selectionNoticeTimer) {
+          window.clearTimeout(selectionNoticeTimer);
+        }
+        selectionNoticeTimer = window.setTimeout(() => {
+          if (notice && notice.isConnected) {
+            notice.remove();
+          }
+          selectionNoticeTimer = null;
+        }, 3200);
+      };
+
+      const clearSelectionNotice = () => {
+        if (selectionNoticeTimer) {
+          window.clearTimeout(selectionNoticeTimer);
+          selectionNoticeTimer = null;
+        }
+        const notice = document.getElementById("contacts-selection-notice");
+        if (!notice) return;
+        notice.remove();
+      };
+
+      const clearContactSelection = () => {
+        rowCheckboxes.forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        updateSelectionUi();
+      };
+
+      if (temporaryNotice) {
+        window.closeBusyModal?.();
+        const autoHideMs = Number(temporaryNotice.dataset.autoHideMs || 0);
+        const clearTemporaryNoticeUrl = () => {
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.delete("google_notice");
+          window.history.replaceState({}, "", nextUrl.toString());
+        };
+        clearTemporaryNoticeUrl();
+        if (autoHideMs > 0) {
+          window.setTimeout(() => {
+            temporaryNotice.remove();
+          }, autoHideMs);
+        }
+      }
+
+      renderMeetingOptions(fieldSelect.value);
+
+      const createAssignmentOption = async (kind, value, parentValue = "") => {
+        const body = new URLSearchParams({ kind, value });
+        if (parentValue) {
+          body.set("parent_value", parentValue);
+        }
+        const response = await fetch("/contacts/assignment-options", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to save the new option.");
+        }
+        return String(payload.value || "").trim();
+      };
+
+      const removeAssignmentOption = async (kind, value) => {
+        const body = new URLSearchParams({ kind, value });
+        const response = await fetch("/contacts/assignment-options/remove", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to delete the option.");
+        }
+        return String(payload.value || "").trim();
+      };
+
+      const renameAssignmentOption = async (kind, oldValue, newValue) => {
+        const body = new URLSearchParams({ kind, old_value: oldValue, new_value: newValue });
+        const response = await fetch("/contacts/assignment-options/rename", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to rename the option.");
+        }
+        return payload;
+      };
+
+      const requestAssignmentOptionDialog = (config) => assignmentModal?.prompt(config) ?? Promise.resolve("");
+
+      fieldSelect.addEventListener("change", async () => {
+        const previousValue = fieldSelect.dataset.previousValue ?? "";
+        if (fieldSelect.value === addFieldSentinel) {
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Add Field",
+            copy: "Name the new Field. It will be inserted alphabetically into the list.",
+            label: "Field name",
+          });
+          if (!nextValue) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const savedValue = await createAssignmentOption("field", nextValue);
+            insertSortedOption(fieldSelect, savedValue, "All fields", [
+              { value: addFieldSentinel, label: "+ Add Field" },
+              { value: deleteFieldSentinel, label: "- Field" },
+              { value: renameFieldSentinel, label: "Rename Field" },
+            ], "");
+            meetingsByField[savedValue] = meetingsByField[savedValue] || [];
+            renderMeetingOptions("", "");
+            fieldSelect.value = "";
+            fieldSelect.dataset.previousValue = "";
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            showSelectionNotice(error.message || "Unable to add the new Field.");
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (fieldSelect.value === deleteFieldSentinel) {
+          if (!previousValue) {
+            showSelectionNotice("Select a Field before using - Field.");
+            fieldSelect.value = "";
+            return;
+          }
+          if (isUnassignedField(previousValue)) {
+            showSelectionNotice("No Field is reserved for contacts that do not have a Field.");
+            fieldSelect.value = previousValue;
+            return;
+          }
+          const confirmed = await requestAssignmentOptionDialog({
+            title: "Delete Field",
+            copy: `Delete the Field "${previousValue}"? This only works when no contacts are assigned to that Field.`,
+            label: "Field name",
+            requireInput: false,
+            submitLabel: "Delete",
+          });
+          if (!confirmed) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            await removeAssignmentOption("field", previousValue);
+            Array.from(fieldSelect.options)
+              .filter((option) => option.value === previousValue)
+              .forEach((option) => option.remove());
+            delete meetingsByField[previousValue];
+            fieldSelect.value = "";
+            fieldSelect.dataset.previousValue = "";
+            renderMeetingOptions("", "");
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            showSelectionNotice(error.message || "Unable to delete the Field.");
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (fieldSelect.value === renameFieldSentinel) {
+          if (!previousValue) {
+            showSelectionNotice("Select a Field before using Rename Field.");
+            fieldSelect.value = "";
+            return;
+          }
+          if (isUnassignedField(previousValue)) {
+            showSelectionNotice("No Field is reserved for contacts that do not have a Field.");
+            fieldSelect.value = previousValue;
+            return;
+          }
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Rename Field",
+            copy: `Current name: ${previousValue}`,
+            label: "New Field name",
+            initialValue: previousValue,
+            submitLabel: "Rename",
+          });
+          if (!nextValue) {
+            fieldSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const result = await renameAssignmentOption("field", previousValue, nextValue);
+            const savedValue = String(result.new_value || nextValue).trim();
+            insertSortedOption(fieldSelect, savedValue, "All fields", [
+              { value: addFieldSentinel, label: "+ Add Field" },
+              { value: deleteFieldSentinel, label: "- Field" },
+              { value: renameFieldSentinel, label: "Rename Field" },
+            ], savedValue);
+            if (meetingsByField[previousValue]) {
+              meetingsByField[savedValue] = [...meetingsByField[previousValue]];
+              delete meetingsByField[previousValue];
+            }
+            fieldSelect.dataset.previousValue = savedValue;
+            form.requestSubmit();
+          } catch (error) {
+            showSelectionNotice(error.message || "Unable to rename the Field.");
+            fieldSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (searchInput.value.trim()) {
+          searchInput.value = "";
+        }
+        renderMeetingOptions(fieldSelect.value);
+        if (!fieldSelect.value) {
+          meetingSelect.value = "";
+        }
+        fieldSelect.dataset.previousValue = fieldSelect.value;
+        meetingSelect.dataset.previousValue = meetingSelect.value;
+        form.requestSubmit();
+      });
+
+      meetingSelect.addEventListener("change", async () => {
+        const previousValue = meetingSelect.dataset.previousValue ?? "";
+        if (meetingSelect.value === addMeetingSentinel) {
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Add Meeting",
+            copy: "Name the new Meeting. It will be inserted alphabetically into the list.",
+            label: "Meeting name",
+          });
+          if (!nextValue) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const savedValue = await createAssignmentOption("meeting", nextValue, fieldSelect.value || "");
+            if (!allMeetings.includes(savedValue)) {
+              allMeetings.push(savedValue);
+              allMeetings.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            }
+            if (fieldSelect.value) {
+              const fieldMeetings = meetingsByField[fieldSelect.value] || [];
+              if (!fieldMeetings.includes(savedValue)) {
+                fieldMeetings.push(savedValue);
+                fieldMeetings.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+              }
+              meetingsByField[fieldSelect.value] = fieldMeetings;
+            }
+            insertSortedOption(meetingSelect, savedValue, "All meetings", [
+              { value: addMeetingSentinel, label: "+ Add Meeting" },
+              { value: deleteMeetingSentinel, label: "- Meeting" },
+              { value: renameMeetingSentinel, label: " Rename Meeting" },
+            ], "");
+            renderMeetingOptions(fieldSelect.value, "");
+            meetingSelect.value = "";
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            showSelectionNotice(error.message || "Unable to add the new Meeting.");
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (meetingSelect.value === deleteMeetingSentinel) {
+          if (!previousValue) {
+            showSelectionNotice("Select a Meeting before using - Meeting.");
+            meetingSelect.value = "";
+            return;
+          }
+          if (isUnassignedMeeting(previousValue)) {
+            showSelectionNotice("No Meeting is reserved for contacts that do not have a Meeting.");
+            meetingSelect.value = previousValue;
+            return;
+          }
+          const confirmed = await requestAssignmentOptionDialog({
+            title: "Delete Meeting",
+            copy: `Delete the Meeting "${previousValue}"? This only works when no contacts are assigned to that Meeting.`,
+            label: "Meeting name",
+            requireInput: false,
+            submitLabel: "Delete",
+          });
+          if (!confirmed) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            await removeAssignmentOption("meeting", previousValue);
+            allMeetings.splice(0, allMeetings.length, ...allMeetings.filter((item) => item !== previousValue));
+            Object.keys(meetingsByField).forEach((fieldName) => {
+              meetingsByField[fieldName] = (meetingsByField[fieldName] || []).filter((item) => item !== previousValue);
+            });
+            renderMeetingOptions(fieldSelect.value, "");
+            meetingSelect.dataset.previousValue = "";
+            form.requestSubmit();
+          } catch (error) {
+            showSelectionNotice(error.message || "Unable to delete the Meeting.");
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (meetingSelect.value === renameMeetingSentinel) {
+          if (!previousValue) {
+            showSelectionNotice("Select a Meeting before using Rename Meeting.");
+            meetingSelect.value = "";
+            return;
+          }
+          if (isUnassignedMeeting(previousValue)) {
+            showSelectionNotice("No Meeting is reserved for contacts that do not have a Meeting.");
+            meetingSelect.value = previousValue;
+            return;
+          }
+          const nextValue = await requestAssignmentOptionDialog({
+            title: "Rename Meeting",
+            copy: `Current name: ${previousValue}`,
+            label: "New Meeting name",
+            initialValue: previousValue,
+            submitLabel: "Rename",
+          });
+          if (!nextValue) {
+            meetingSelect.value = previousValue || "";
+            return;
+          }
+          try {
+            const result = await renameAssignmentOption("meeting", previousValue, nextValue);
+            const savedValue = String(result.new_value || nextValue).trim();
+            if (!allMeetings.includes(savedValue)) {
+              allMeetings.push(savedValue);
+            }
+            const nextMeetings = allMeetings
+              .map((item) => item === previousValue ? savedValue : item)
+              .filter((item, index, items) => items.indexOf(item) === index)
+              .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            allMeetings.splice(0, allMeetings.length, ...nextMeetings);
+            Object.keys(meetingsByField).forEach((fieldName) => {
+              meetingsByField[fieldName] = (meetingsByField[fieldName] || [])
+                .map((item) => item === previousValue ? savedValue : item)
+                .filter((item, index, items) => items.indexOf(item) === index)
+                .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+            });
+            insertSortedOption(meetingSelect, savedValue, "All meetings", [
+              { value: addMeetingSentinel, label: "+ Add Meeting" },
+              { value: deleteMeetingSentinel, label: "- Meeting" },
+              { value: renameMeetingSentinel, label: "Rename Meeting" },
+            ], savedValue);
+            meetingSelect.dataset.previousValue = savedValue;
+            form.requestSubmit();
+          } catch (error) {
+            showSelectionNotice(error.message || "Unable to rename the Meeting.");
+            meetingSelect.value = previousValue || "";
+          }
+          return;
+        }
+        if (searchInput.value.trim()) {
+          searchInput.value = "";
+        }
+        meetingSelect.dataset.previousValue = meetingSelect.value;
+        form.requestSubmit();
+      });
+
+      searchInput.addEventListener("search", () => {
+        if (searchInput.value.trim()) return;
+        resetDropdownFilters();
+        form.requestSubmit();
+      });
+
+      searchInput.addEventListener("input", () => {
+        if (searchInput.value !== "") return;
+        resetDropdownFilters();
+        form.requestSubmit();
+      });
+
+      searchInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        if (searchInput.value.trim()) {
+          resetDropdownFilters();
+        }
+        form.requestSubmit();
+      });
+
+      form.addEventListener("submit", () => {
+        if (searchInput.value.trim()) {
+          resetDropdownFilters();
+        }
+        if (isAllStatesSelected()) {
+          stateCheckboxes().forEach((checkbox) => {
+            checkbox.disabled = true;
+          });
+        }
+      });
+
+      clearFiltersButton?.addEventListener("click", () => {
+        clearAllFilters();
+      });
+
+        const updateSelectionUi = () => {
+          const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+          const count = checked.length;
+
+        rowCheckboxes.forEach((checkbox) => {
+          checkbox.closest("[data-contact-row]")?.classList.toggle("is-selected", checkbox.checked);
+        });
+
+          if (count > 0) {
+            clearSelectionNotice();
+          }
+          updateUnlistedTocUi();
+
+          if (!selectionLabel || !selectionTools || !selectionCount) return;
+        selectionLabel.hidden = count > 0;
+        selectionTools.hidden = count === 0;
+          selectionCount.textContent = `${count} selected`;
+          if (count === 0) {
+            selectionMenu?.removeAttribute("open");
+          }
+        };
+
+        const splitAssignmentNames = (value) => String(value || "").replace(/\r/g, "\n").replace(/;/g, "\n").split("\n").map((item) => item.trim()).filter(Boolean);
+        const assignmentNamesFromDataset = (value) => {
+          const raw = String(value || "").trim();
+          if (!raw) return [];
+          try {
+            return splitAssignmentNames(JSON.parse(raw));
+          } catch (error) {
+            return splitAssignmentNames(raw);
+          }
+        };
+        const assignmentMenuSentinel = (value) => [
+          addFieldSentinel,
+          addMeetingSentinel,
+          deleteFieldSentinel,
+          deleteMeetingSentinel,
+          renameFieldSentinel,
+          renameMeetingSentinel,
+        ].includes(String(value || "").trim());
+        const tocPairKey = (fieldName, meetingName) => `${String(fieldName || "").trim().toLowerCase()}\n${String(meetingName || "").trim().toLowerCase()}`;
+        const selectedMeetingTocPairs = () => {
+          const meetingName = String(selectedMeeting || "").trim();
+          const fieldName = String(fieldSelect?.value || "").trim();
+          const searchText = String(searchInput?.value || "").trim();
+          if (!meetingName || meetingName.toLowerCase() === "deleted" || assignmentMenuSentinel(meetingName) || assignmentMenuSentinel(fieldName)) {
+            return [];
+          }
+          if (searchText || meetingRosterCount < 1 || rowCheckboxes.length !== meetingRosterCount) {
+            return [];
+          }
+          if (!rowCheckboxes.every((checkbox) => checkbox.checked)) {
+            return [];
+          }
+          if (fieldName) {
+            return [{ field: fieldName, meeting: meetingName }];
+          }
+          const pairs = [];
+          const seen = new Set();
+          rowCheckboxes.forEach((checkbox) => {
+            const meetings = assignmentNamesFromDataset(checkbox.dataset.contactMeetings);
+            if (!meetings.some((item) => item.toLowerCase() === meetingName.toLowerCase())) return;
+            const fields = assignmentNamesFromDataset(checkbox.dataset.contactFields);
+            (fields.length ? fields : [unassignedFieldName]).forEach((assignedField) => {
+              const key = tocPairKey(assignedField, meetingName);
+              if (seen.has(key)) return;
+              seen.add(key);
+              pairs.push({ field: assignedField, meeting: meetingName });
+            });
+          });
+          return pairs;
+        };
+        const updateUnlistedTocUi = () => {
+          if (!unlistedTocControl || !unlistedTocCheckbox) return;
+          const pairs = selectedMeetingTocPairs();
+          unlistedTocControl.hidden = pairs.length === 0;
+          if (!pairs.length) return;
+          unlistedTocCheckbox.disabled = !editingAllowed;
+          unlistedTocCheckbox.checked = pairs.every((pair) => unlistedTocKeys.has(tocPairKey(pair.field, pair.meeting)));
+        };
+
+      let messageTargets = [];
+      let messageQueue = [];
+      let messageQueueIndex = 0;
+
+      const resetMessageQueueUi = () => {
+        messageQueue = [];
+        messageQueueIndex = 0;
+        if (messageError) {
+          messageError.textContent = "";
+        }
+        if (messageQueueStatus) {
+          messageQueueStatus.hidden = true;
+          messageQueueStatus.textContent = "";
+        }
+        if (messageStartButton) {
+          messageStartButton.hidden = false;
+          messageStartButton.disabled = messageTargets.length === 0;
+          messageStartButton.textContent = "Send Separate Messages";
+        }
+        if (messageNextButton) {
+          messageNextButton.hidden = true;
+        }
+        if (messageDoneButton) {
+          messageDoneButton.hidden = true;
+        }
+        if (messageBodyInput) {
+          messageBodyInput.disabled = false;
+        }
+        messagePhoneList?.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
+          checkbox.disabled = false;
+        });
+      };
+
+      const normalizePhoneDigits = (value) => String(value || "").replace(/\D/g, "");
+
+      const contactNameFromRow = (row, checkbox) => {
+        const rowName = String(row?.dataset.messageContactName || "").trim();
+        if (rowName) return rowName;
+        return checkbox?.getAttribute("aria-label")?.replace(/^Select\s+/i, "").trim() || "Contact";
+      };
+
+      const parseContactPhones = (row) => {
+        try {
+          const phones = JSON.parse(row?.dataset.messagePhones || "[]");
+          return Array.isArray(phones) ? phones : [];
+        } catch (_error) {
+          return [];
+        }
+      };
+
+      const parseContactEmails = (row) => {
+        try {
+          const emails = JSON.parse(row?.dataset.messageEmails || "[]");
+          return Array.isArray(emails) ? emails : [];
+        } catch (_error) {
+          return [];
+        }
+      };
+
+      const isUsableEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
+      const collectMessageTargets = () => {
+        const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+        const eligible = [];
+        const skipped = [];
+
+        checked.forEach((checkbox) => {
+          const row = checkbox.closest("[data-contact-row]");
+          const contactName = contactNameFromRow(row, checkbox);
+          const phones = parseContactPhones(row);
+          let contactEligibleCount = 0;
+
+          phones.forEach((phone, phoneIndex) => {
+            const label = String(phone?.type || "").trim();
+            const number = String(phone?.value || "").trim();
+            const digits = normalizePhoneDigits(number);
+            if (["home", "nh", "work"].includes(label.toLowerCase())) return;
+            if (digits.length < 7) return;
+            contactEligibleCount += 1;
+            eligible.push({
+              key: `${checkbox.dataset.contactId || "contact"}-${phoneIndex}-${digits}`,
+              contactId: checkbox.dataset.contactId || "",
+              name: contactName,
+              label,
+              number,
+              digits,
+            });
+          });
+
+          if (contactEligibleCount === 0) {
+            skipped.push(contactName);
+          }
+        });
+
+        return { checkedCount: checked.length, eligible, skipped };
+      };
+
+      const renderMessageModal = () => {
+        const { checkedCount, eligible, skipped } = collectMessageTargets();
+        messageTargets = eligible;
+        resetMessageQueueUi();
+        if (messageBodyInput) {
+          messageBodyInput.value = "";
+        }
+        if (messageSummary) {
+          messageSummary.textContent = `${eligible.length} eligible phone number${eligible.length === 1 ? "" : "s"} from ${checkedCount} selected contact${checkedCount === 1 ? "" : "s"}. ${skipped.length} selected contact${skipped.length === 1 ? "" : "s"} skipped.`;
+        }
+        if (messagePhoneList) {
+          messagePhoneList.innerHTML = "";
+          if (eligible.length > 0) {
+            eligible.forEach((target, index) => {
+              const label = document.createElement("label");
+              label.className = "contacts-message-phone-row";
+
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.checked = true;
+              checkbox.dataset.messageTargetIndex = String(index);
+
+              const text = document.createElement("span");
+              const strong = document.createElement("strong");
+              strong.textContent = target.name;
+              text.appendChild(strong);
+              text.appendChild(document.createTextNode(` ${target.label}: ${target.number}`));
+
+              label.appendChild(checkbox);
+              label.appendChild(text);
+              messagePhoneList.appendChild(label);
+            });
+          } else {
+            messagePhoneList.innerHTML = '<p class="contacts-message-empty">No selected contacts have usable phone numbers.</p>';
+          }
+        }
+        if (messageSkipped) {
+          messageSkipped.textContent = skipped.length
+            ? `Skipped: ${skipped.join(", ")}`
+            : "";
+        }
+        if (messageStartButton) {
+          messageStartButton.disabled = eligible.length === 0;
+        }
+      };
+
+      const selectedMessageQueue = () => {
+        if (!messagePhoneList) return [];
+        return Array.from(messagePhoneList.querySelectorAll("[data-message-target-index]:checked"))
+          .map((checkbox) => messageTargets[Number(checkbox.dataset.messageTargetIndex)])
+          .filter(Boolean);
+      };
+
+      let emailTargets = [];
+
+      const collectEmailTargets = () => {
+        const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+        const eligible = [];
+        const skipped = [];
+        const seenEmails = new Set();
+
+        checked.forEach((checkbox) => {
+          const row = checkbox.closest("[data-contact-row]");
+          const contactName = contactNameFromRow(row, checkbox);
+          const emails = parseContactEmails(row);
+          let contactEligibleCount = 0;
+
+          emails.forEach((email, emailIndex) => {
+            const label = String(email?.type || "").trim();
+            const value = String(email?.value || "").trim();
+            const emailKey = value.toLowerCase();
+            if (!isUsableEmail(value) || seenEmails.has(emailKey)) return;
+            seenEmails.add(emailKey);
+            contactEligibleCount += 1;
+            eligible.push({
+              key: `${checkbox.dataset.contactId || "contact"}-${emailIndex}-${emailKey}`,
+              contactId: checkbox.dataset.contactId || "",
+              name: contactName,
+              label,
+              email: value,
+            });
+          });
+
+          if (contactEligibleCount === 0) {
+            skipped.push(contactName);
+          }
+        });
+
+        return { checkedCount: checked.length, eligible, skipped };
+      };
+
+      const renderEmailModal = () => {
+        const { checkedCount, eligible, skipped } = collectEmailTargets();
+        emailTargets = eligible;
+        if (emailError) {
+          emailError.textContent = "";
+        }
+        if (emailSubjectInput) {
+          emailSubjectInput.value = "";
+        }
+        if (emailBodyInput) {
+          emailBodyInput.value = "";
+        }
+        if (emailSummary) {
+          emailSummary.textContent = `${eligible.length} eligible email address${eligible.length === 1 ? "" : "es"} from ${checkedCount} selected contact${checkedCount === 1 ? "" : "s"}. ${skipped.length} selected contact${skipped.length === 1 ? "" : "s"} skipped.`;
+        }
+        if (emailList) {
+          emailList.innerHTML = "";
+          if (eligible.length > 0) {
+            eligible.forEach((target, index) => {
+              const label = document.createElement("label");
+              label.className = "contacts-message-phone-row";
+
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.checked = true;
+              checkbox.dataset.emailTargetIndex = String(index);
+
+              const text = document.createElement("span");
+              const strong = document.createElement("strong");
+              strong.textContent = target.name;
+              text.appendChild(strong);
+              text.appendChild(document.createTextNode(` ${target.label ? `${target.label}: ` : ""}${target.email}`));
+
+              label.appendChild(checkbox);
+              label.appendChild(text);
+              emailList.appendChild(label);
+            });
+          } else {
+            emailList.innerHTML = '<p class="contacts-message-empty">No selected contacts have usable email addresses.</p>';
+          }
+        }
+        if (emailSkipped) {
+          emailSkipped.textContent = skipped.length
+            ? `Skipped: ${skipped.join(", ")}`
+            : "";
+        }
+        if (emailOpenButton) {
+          emailOpenButton.disabled = eligible.length === 0;
+        }
+      };
+
+      const selectedEmailTargets = () => {
+        if (!emailList) return [];
+        return Array.from(emailList.querySelectorAll("[data-email-target-index]:checked"))
+          .map((checkbox) => emailTargets[Number(checkbox.dataset.emailTargetIndex)])
+          .filter(Boolean);
+      };
+
+      const encodeMailtoValue = (value) => encodeURIComponent(String(value || "")).replace(/%20/g, "%20");
+
+      messageActionButton?.addEventListener("click", () => {
+        const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+        if (checked.length <= 0) {
+          showSelectionNotice("Select one or more contacts before using Message.");
+          return;
+        }
+        renderMessageModal();
+        messageModal?.showModal();
+        window.setTimeout(() => messageBodyInput?.focus(), 0);
+      });
+
+      emailActionButton?.addEventListener("click", () => {
+        const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+        if (checked.length <= 0) {
+          showSelectionNotice("Select one or more contacts before using Email.");
+          return;
+        }
+        renderEmailModal();
+        emailModal?.showModal();
+        window.setTimeout(() => emailSubjectInput?.focus(), 0);
+      });
+
+      emailOpenButton?.addEventListener("click", () => {
+        if (emailError) {
+          emailError.textContent = "";
+        }
+        const selectedEmails = selectedEmailTargets();
+        if (selectedEmails.length <= 0) {
+          if (emailError) {
+            emailError.textContent = "Choose at least one email address.";
+          }
+          return;
+        }
+        const subject = emailSubjectInput?.value.trim() || "";
+        const body = emailBodyInput?.value.trim() || "";
+        const params = [
+          `bcc=${encodeMailtoValue(selectedEmails.map((target) => target.email).join(","))}`,
+        ];
+        if (subject) params.push(`subject=${encodeMailtoValue(subject)}`);
+        if (body) params.push(`body=${encodeMailtoValue(body)}`);
+        window.location.href = `mailto:?${params.join("&")}`;
+        clearContactSelection();
+        emailModal?.close();
+      });
+
+      emailCancelButton?.addEventListener("click", () => {
+        emailModal?.close();
+      });
+      emailModalForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+      });
+
+      messageStartButton?.addEventListener("click", async () => {
+        if (messageError) {
+          messageError.textContent = "";
+        }
+        const messageText = messageBodyInput?.value.trim() || "";
+        if (!messageText) {
+          if (messageError) {
+            messageError.textContent = "Type a message before sending.";
+          }
+          messageBodyInput?.focus();
+          return;
+        }
+        messageQueue = selectedMessageQueue();
+        if (messageQueue.length <= 0) {
+          if (messageError) {
+            messageError.textContent = "Choose at least one phone number.";
+          }
+          return;
+        }
+        if (messageStartButton) {
+          messageStartButton.disabled = true;
+          messageStartButton.textContent = "Sending...";
+        }
+        if (messageBodyInput) {
+          messageBodyInput.disabled = true;
+        }
+        messagePhoneList?.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
+          checkbox.disabled = true;
+        });
+        if (messageQueueStatus) {
+          messageQueueStatus.hidden = false;
+          messageQueueStatus.textContent = `Preparing ${messageQueue.length} separate message${messageQueue.length === 1 ? "" : "s"} through this computer's messaging app...`;
+        }
+
+        try {
+          const response = await fetch("/contacts/message/send", {
+            method: "POST",
+            cache: "no-store",
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message: messageText,
+              recipients: messageQueue.map((target) => ({
+                name: target.name,
+                label: target.label,
+                contact_id: target.contactId,
+                number: target.number,
+                digits: target.digits,
+              })),
+            }),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || "Messages could not be sent.");
+          }
+          const sentCount = Number(payload.sent_count || 0);
+          const openedCount = Number(payload.opened_count || 0);
+          const failedCount = Number(payload.failed_count || 0);
+          if (messageQueueStatus) {
+            messageQueueStatus.hidden = false;
+            if (openedCount > 0) {
+              messageQueueStatus.textContent = failedCount > 0
+                ? `Opened ${openedCount} prepared message${openedCount === 1 ? "" : "s"}. ${failedCount} failed. Send each message in Windows.`
+                : `Opened ${openedCount} prepared message${openedCount === 1 ? "" : "s"}. Send each message in Windows.`;
+            } else {
+              messageQueueStatus.textContent = failedCount > 0
+                ? `Sent ${sentCount} separate message${sentCount === 1 ? "" : "s"}. ${failedCount} failed.`
+                : `Sent ${sentCount} separate message${sentCount === 1 ? "" : "s"}.`;
+            }
+          }
+          if (failedCount > 0 && messageError) {
+            const failed = Array.isArray(payload.results)
+              ? payload.results.filter((result) => !result.ok).slice(0, 3)
+              : [];
+            messageError.textContent = failed.length
+              ? failed.map((result) => `${result.name}: ${result.error || "failed"}`).join(" ")
+              : (payload.error || "Some messages could not be sent.");
+          }
+          if (sentCount > 0 || openedCount > 0) {
+            clearContactSelection();
+          }
+          if (messageStartButton) {
+            messageStartButton.hidden = true;
+          }
+          if (messageDoneButton) {
+            messageDoneButton.hidden = false;
+          }
+        } catch (error) {
+          if (messageError) {
+            messageError.textContent = error.message || "Messages could not be sent.";
+          }
+          if (messageQueueStatus) {
+            messageQueueStatus.hidden = true;
+          }
+          if (messageStartButton) {
+            messageStartButton.disabled = false;
+            messageStartButton.textContent = "Send Separate Messages";
+          }
+          if (messageBodyInput) {
+            messageBodyInput.disabled = false;
+          }
+          messagePhoneList?.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
+            checkbox.disabled = false;
+          });
+        }
+      });
+
+      const closeMessageModal = () => {
+        messageModal?.close();
+      };
+
+      messageCancelButton?.addEventListener("click", closeMessageModal);
+      messageDoneButton?.addEventListener("click", closeMessageModal);
+      messageModalForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+      });
+      messageModal?.addEventListener("close", () => {
+        resetMessageQueueUi();
+      });
+
+      rowCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener("click", (event) => {
+          event.stopPropagation();
+        });
+        checkbox.addEventListener("change", updateSelectionUi);
+      });
+
+      unlistedTocCheckbox?.addEventListener("change", async () => {
+        const pairs = selectedMeetingTocPairs();
+        const unlisted = Boolean(unlistedTocCheckbox.checked);
+        if (!pairs.length || !editingAllowed) {
+          updateUnlistedTocUi();
+          return;
+        }
+        unlistedTocCheckbox.disabled = true;
+        try {
+          const response = await fetch("/contacts/meeting-toc-listing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ unlisted, meetings: pairs }),
+          });
+          if (!response.ok) {
+            throw new Error("The meeting listing could not be saved.");
+          }
+          pairs.forEach((pair) => {
+            const key = tocPairKey(pair.field, pair.meeting);
+            if (unlisted) {
+              unlistedTocKeys.add(key);
+            } else {
+              unlistedTocKeys.delete(key);
+            }
+          });
+        } catch (error) {
+          unlistedTocCheckbox.checked = !unlisted;
+        } finally {
+          unlistedTocCheckbox.disabled = !editingAllowed;
+        }
+      });
+
+      selectionClear?.addEventListener("click", () => {
+        rowCheckboxes.forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        updateSelectionUi();
+      });
+
+      document.querySelectorAll("[data-selection-action]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const action = button.dataset.selectionAction;
+          const nextChecked = action === "all";
+          rowCheckboxes.forEach((checkbox) => {
+            checkbox.checked = nextChecked;
+          });
+          selectionMenu?.removeAttribute("open");
+          updateSelectionUi();
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest("[data-selection-menu]")) {
+          selectionMenu?.removeAttribute("open");
+        }
+      });
+
+      const actionButtons = Array.from(document.querySelectorAll("[data-contacts-action]"))
+        .filter((button) => button.dataset.contactsAction !== "upload");
+      actionButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          actionButtons.forEach((item) => item.classList.remove("is-active"));
+          button.classList.add("is-active");
+        });
+      });
+
+      newActionButton?.addEventListener("click", () => {
+        if (!editingAllowed) {
+          return;
+        }
+        window.location.href = `/contacts/new?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+      });
+
+      uploadForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setUploadButtonState(true);
+        try {
+          const body = new FormData();
+          rowCheckboxes
+            .filter((checkbox) => checkbox.checked)
+            .forEach((checkbox) => {
+              const contactId = String(checkbox.dataset.contactId || "").trim();
+              if (contactId) {
+                body.append("selected_contact_ids", contactId);
+              }
+            });
+          const response = await fetch("/google/upload/start", {
+            method: "POST",
+            cache: "no-store",
+            body,
+            headers: {
+              "Accept": "application/json",
+            },
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            await finishUploadInPlace(payload.notice || "upload_failed");
+            return;
+          }
+          if (payload.in_progress || payload.started) {
+            hidePendingUploadBanner();
+            renderUploadProgress(payload);
+            stopUploadPolling();
+            uploadStatusTimer = window.setTimeout(pollUploadStatus, 1000);
+            return;
+          }
+          await finishUploadInPlace(payload);
+        } catch (_error) {
+          await finishUploadInPlace("upload_failed");
+        }
+      });
+
+      deleteActionButton?.addEventListener("click", async () => {
+        const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+        const count = checked.length;
+        if (count <= 0) {
+          showSelectionNotice("Select one or more contacts before using Delete.");
+          return;
+        }
+        if (!editingAllowed) {
+          clearContactSelection();
+          return;
+        }
+        if (!bulkDeleteForm || !bulkDeleteInputs) return;
+
+        const allSelectedDeleted = checked.every((checkbox) => {
+          return checkbox.closest("[data-contact-row]")?.dataset.contactDeleted === "true";
+        });
+        const permanentDeleteMode = deletedFilterActive || allSelectedDeleted;
+        const confirmed = await deleteModal?.prompt({
+          title: permanentDeleteMode ? "Permanently delete?" : "Move Contacts to Deleted?",
+          copy: permanentDeleteMode
+            ? `Permanently delete ${count} contact${count === 1 ? "" : "s"}? This will delete from Google Contacts on the next upload.`
+            : `Move ${count} contact${count === 1 ? "" : "s"} to Deleted?`,
+          label: "Confirmation",
+          requireInput: false,
+          submitLabel: permanentDeleteMode ? "Permanently delete" : "Move to Deleted",
+        });
+        if (!confirmed) return;
+
+        bulkDeleteInputs.innerHTML = "";
+        if (permanentDeleteMode && !deletedFilterActive) {
+          const permanentInput = document.createElement("input");
+          permanentInput.type = "hidden";
+          permanentInput.name = "permanent_delete";
+          permanentInput.value = "1";
+          bulkDeleteInputs.appendChild(permanentInput);
+        }
+        checked.forEach((checkbox) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "selected_contact_ids";
+          input.value = checkbox.dataset.contactId || "";
+          bulkDeleteInputs.appendChild(input);
+        });
+        bulkDeleteForm.requestSubmit();
+      });
+
+      moveActionButton?.addEventListener("click", () => {
+        const checked = rowCheckboxes.filter((checkbox) => checkbox.checked);
+        const count = checked.length;
+        if (count <= 0) {
+          showSelectionNotice("Select one or more contacts before using Move.");
+          return;
+        }
+        if (!bulkMoveForm || !bulkMoveInputs) return;
+
+        bulkMoveInputs.innerHTML = "";
+        checked.forEach((checkbox) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "selected_contact_ids";
+          input.value = checkbox.dataset.contactId || "";
+          bulkMoveInputs.appendChild(input);
+        });
+        bulkMoveForm.requestSubmit();
+      });
+
+      const selectedStateSignature = () => {
+        if (isAllStatesSelected()) return "";
+        return stateCheckboxes()
+          .filter((checkbox) => checkbox.checked)
+          .map((checkbox) => checkbox.value)
+          .filter(Boolean)
+          .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }))
+          .join("\n");
+      };
+
+      let stateFilterSignature = selectedStateSignature();
+
+      const closeStateFilterMenu = () => {
+        if (!stateFilterMenu || !stateFilterTrigger) return;
+        const wasOpen = !stateFilterMenu.hidden;
+        stateFilterMenu.hidden = true;
+        stateFilterTrigger.setAttribute("aria-expanded", "false");
+        if (!wasOpen) return;
+        const nextSignature = selectedStateSignature();
+        if (nextSignature === stateFilterSignature) return;
+        stateFilterSignature = nextSignature;
+        form.requestSubmit();
+      };
+
+      const openStateFilterMenu = () => {
+        if (!stateFilterMenu || !stateFilterTrigger) return;
+        stateFilterSignature = selectedStateSignature();
+        stateFilterMenu.hidden = false;
+        stateFilterTrigger.setAttribute("aria-expanded", "true");
+      };
+
+      stateFilterTrigger?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!stateFilterMenu) return;
+        if (stateFilterMenu.hidden) {
+          openStateFilterMenu();
+        } else {
+          closeStateFilterMenu();
+        }
+      });
+
+      stateFilterMenu?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const clearButton = event.target.closest("[data-state-clear]");
+        if (!clearButton) return;
+        const allCheckbox = allStatesCheckbox();
+        if (allCheckbox) allCheckbox.checked = false;
+        setAllStateBoxes(false);
+        updateStateFilterLabel();
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!stateFilterRoot) return;
+        if (stateFilterRoot.contains(event.target)) return;
+        closeStateFilterMenu();
+      });
+
+      stateFilterMenu?.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+        const allCheckbox = allStatesCheckbox();
+        const boxes = stateCheckboxes();
+        if (target.hasAttribute("data-state-all")) {
+          if (allCheckbox) allCheckbox.checked = true;
+          setAllStateBoxes(true);
+        } else if (target.name === "state" && allCheckbox) {
+          allCheckbox.checked = boxes.length > 0 && boxes.every((checkbox) => checkbox.checked);
+        }
+        updateStateFilterLabel();
+      });
+
+      updateStateFilterLabel();
+      updateSelectionUi();
+      fieldSelect.dataset.previousValue = fieldSelect.value;
+      meetingSelect.dataset.previousValue = meetingSelect.value;
+      if (initialUploadState && (initialUploadState.upload_in_progress || hasActiveBootstrapWork(initialUploadState))) {
+        hidePendingUploadBanner();
+        renderUploadProgress({
+          in_progress: true,
+          phase: initialUploadState.upload_phase || "",
+          total_count: initialUploadState.upload_total_count || 0,
+          processed_count: initialUploadState.upload_processed_count || 0,
+          remaining_count: initialUploadState.upload_remaining_count || 0,
+          current_contact: initialUploadState.upload_current_contact || "",
+          pending_count: initialUploadState.pending_upload_count || 0,
+          needs_drive_export: initialUploadState.needs_drive_export || false,
+          shared_drive_needs_export: initialUploadState.shared_drive_needs_export || false,
+          settings_needs_drive_export: initialUploadState.settings_needs_drive_export || false,
+          contact_records_needs_drive_export: initialUploadState.contact_records_needs_drive_export || false,
+          contacts_manifest_needs_drive_export: initialUploadState.contacts_manifest_needs_drive_export || false,
+          book_layouts_needs_drive_export: initialUploadState.book_layouts_needs_drive_export || false,
+          bootstrap_status: initialUploadState.bootstrap_status || "idle",
+          bootstrap_processed: initialUploadState.bootstrap_processed_contacts || 0,
+          bootstrap_remaining: initialUploadState.bootstrap_remaining_contacts || 0,
+        });
+        setUploadButtonState(String(initialUploadState.bootstrap_status || "") === "running", hasPendingUploadWork(initialUploadState));
+        uploadStatusTimer = window.setTimeout(pollUploadStatus, 1000);
+      } else {
+        setUploadButtonState(false, hasPendingUploadWork(initialUploadState || {}));
+        refreshUploadButtonStatus();
+      }
+      startUploadReminderCleanup();
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+
+{% block title %}Field List | Contacts Website{% endblock %}
+
+{% block body_class %}field-list-page-body{% endblock %}
+
+{% block content %}
+  <div class="field-list-page">
+    <section class="panel field-list-workspace">
+      <aside class="field-list-sidebar">
+        <form method="post" action="/field-list/print" target="_blank" id="field-list-print-form" data-field-list-print-form hidden>
+          <input type="hidden" name="template_id" value="{{ selected_template.id }}">
+          <input type="hidden" name="items_json" value='{{ field_list_payload_json|safe }}' data-field-list-print-items-json>
+        </form>
+
+        <div class="field-list-picker-panel">
+          <label class="form-label" for="field-list-field-picker">
+            <span>All Fields</span>
+            <select id="field-list-field-picker" class="field-list-template-picker" data-field-list-field-picker>
+              <option value="">All Fields</option>
+            </select>
+          </label>
+          <label class="form-label" for="field-list-meeting-picker">
+            <span>All Meetings</span>
+            <select id="field-list-meeting-picker" class="field-list-template-picker" data-field-list-meeting-picker>
+              <option value="">All Meetings</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="field-list-settings-group field-list-page-options-palette">
+          <div class="subcard-title">Page options</div>
+          <div class="field-list-setting-label field-list-address-title">Address alignment</div>
+          <div class="field-list-inline-options">
+            <label class="field-list-radio-row">
+              <input type="radio" name="address_align" value="left" data-field-list-setting="addressAlign" {% if address_book_settings.address_align == "left" %}checked{% endif %}>
+              <span>Left justified</span>
+            </label>
+            <label class="field-list-radio-row">
+              <input type="radio" name="address_align" value="right" data-field-list-setting="addressAlign" {% if address_book_settings.address_align != "left" %}checked{% endif %}>
+              <span>Right justified</span>
+            </label>
+          </div>
+          <div class="field-list-bible-controls">
+            <label class="field-list-checkbox-row field-list-bible-checkbox">
+              <input type="checkbox" name="include_bible_study_union_info" value="1" data-field-list-setting="includeBibleStudyUnionInfo" {% if address_book_settings.include_bible_study_union_info %}checked{% endif %}>
+              <span>Bible study</span>
+            </label>
+            <label class="form-label field-list-bible-size-option {% if not address_book_settings.include_bible_study_union_info %}is-disabled{% endif %}">
+              <span>Bible study size</span>
+              <select name="bible_study_font_size_pt" data-field-list-setting="bibleStudyFontSizePt" {% if not address_book_settings.include_bible_study_union_info %}disabled{% endif %}>
+                {% for size in ["6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15"] %}
+                  <option value="{{ size }}" {% if "%.1f"|format(address_book_settings.bible_study_font_size_pt) == "%.1f"|format(size|float) %}selected{% endif %}>{{ "%.1f"|format(size|float) }}</option>
+                {% endfor %}
+              </select>
+              <small>Preview 1st mtg</small>
+            </label>
+            <div class="field-list-bible-align-options {% if not address_book_settings.include_bible_study_union_info %}is-disabled{% endif %}">
+              <label class="field-list-radio-row">
+                <input type="radio" name="bible_study_union_align" value="left" data-field-list-setting="bibleStudyUnionAlign" {% if address_book_settings.bible_study_union_align == "left" %}checked{% endif %} {% if not address_book_settings.include_bible_study_union_info %}disabled{% endif %}>
+                <span>Left Justify</span>
+              </label>
+              <label class="field-list-radio-row">
+                <input type="radio" name="bible_study_union_align" value="center" data-field-list-setting="bibleStudyUnionAlign" {% if address_book_settings.bible_study_union_align != "left" %}checked{% endif %} {% if not address_book_settings.include_bible_study_union_info %}disabled{% endif %}>
+                <span>Center</span>
+              </label>
+            </div>
+          </div>
+          <div class="field-list-setting-label field-list-separator-title">Separator lines</div>
+          <div class="field-list-inline-options field-list-separator-options">
+            <label class="field-list-checkbox-row">
+              <input type="checkbox" name="separator_lines" value="1" data-field-list-setting="separatorLines" {% if address_book_settings.separator_lines %}checked{% endif %}>
+              <span>Horizontal</span>
+            </label>
+            <label class="field-list-checkbox-row" data-separator-vertical-option>
+              <input type="checkbox" name="separator_vertical_lines" value="1" data-field-list-setting="separatorVerticalLines" {% if address_book_settings.separator_vertical_lines %}checked{% endif %}>
+              <span>Vertical</span>
+            </label>
+          </div>
+          <div class="field-list-page-print-options">
+            <label class="field-list-checkbox-row field-list-print-meeting-home-option">
+              <input type="checkbox" name="print_meeting_home_first" value="1" checked>
+              <span>Print meeting home first</span>
+            </label>
+            <label class="field-list-checkbox-row field-list-print-page-option">
+              <input type="checkbox" name="print_page_numbers" value="1" checked>
+              <span>Page numbers</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-list-settings-group" data-field-list-setting-group>
+          <div class="subcard-title">Columns</div>
+          <div class="field-list-column-choice-stack">
+            <section class="field-list-print-mode-stack field-list-column-choice-card">
+              <label class="field-list-radio-row field-list-column-choice-title">
+                <input type="radio" name="page_column_count" value="1" data-field-list-setting="pageColumnCount" {% if address_book_settings.page_column_count != 2 %}checked{% endif %}>
+                <span>One Column</span>
+              </label>
+              <div class="field-list-column-choice-menu">
+                <label class="field-list-radio-row">
+                  <input type="radio" name="one_column_print_mode" value="meeting" checked>
+                  <span>Print by Meeting</span>
+                </label>
+                <label class="field-list-radio-row">
+                  <input type="radio" name="one_column_print_mode" value="alphabetical">
+                  <span>Alphabetical names</span>
+                </label>
+                <label class="field-list-radio-row field-list-radio-submenu-row">
+                  <input type="radio" name="one_column_print_mode" value="compact">
+                  <span>Compact List</span>
+                </label>
+              </div>
+              <label class="form-label field-list-column-adjustment" data-column-width-option>
+                <span>Column Width</span>
+                <input type="number" name="column_width_in" min="1" max="8.5" step="0.05" value="{{ address_book_settings.column_width_in }}" data-field-list-setting="columnWidthIn">
+              </label>
+            </section>
+            <section class="field-list-print-mode-stack field-list-column-choice-card">
+              <label class="field-list-radio-row field-list-column-choice-title">
+                <input type="radio" name="page_column_count" value="2" data-field-list-setting="pageColumnCount" {% if address_book_settings.page_column_count == 2 %}checked{% endif %}>
+                <span>Two Columns</span>
+              </label>
+              <div class="field-list-column-choice-menu">
+                <label class="field-list-radio-row">
+                  <input type="radio" name="two_column_print_mode" value="meeting" checked>
+                  <span>Print by Meeting</span>
+                </label>
+                <label class="field-list-radio-row">
+                  <input type="radio" name="two_column_print_mode" value="alphabetical">
+                  <span>Alphabetical names</span>
+                </label>
+                <label class="field-list-radio-row">
+                  <input type="radio" name="two_column_print_mode" value="duplicate">
+                  <span>One Meeting Duplicate</span>
+                </label>
+              </div>
+              <label class="form-label field-list-column-adjustment field-list-column-gap-option" data-column-gap-option>
+                <span>Column Gap</span>
+                <input type="number" name="two_column_gap_ch" min="0" max="30" step="0.5" value="{{ address_book_settings.two_column_gap_ch }}" data-field-list-setting="twoColumnGapCh">
+              </label>
+            </section>
+          </div>
+        </div>
+
+      </aside>
+
+      <section class="field-list-builder-panel">
+        <form method="post" action="/field-list/templates/delete" id="field-list-delete-form" hidden>
+          <input type="hidden" name="template_id" value="{{ selected_template.id }}">
+        </form>
+        <form method="post" action="/field-list/templates/save" id="field-list-save-form">
+          <input type="hidden" name="template_id" value="{{ selected_template.id }}">
+          <input type="hidden" name="items_json" id="field-list-items-json" value='{{ field_list_payload_json|safe }}'>
+          {% set field_page_width = address_book_settings.page_width_in|float %}
+          {% set field_page_height = address_book_settings.page_height_in|float %}
+          {% set field_printable_width = field_page_width - (address_book_settings.margin_left_in|float) - (address_book_settings.margin_right_in|float) %}
+          {% set field_printable_height = field_page_height - (address_book_settings.margin_top_in|float) - (address_book_settings.margin_bottom_in|float) %}
+          <div class="field-list-toolbar" data-field-list-template-toolbar>
+            <div class="field-list-header-title-block">
+              <h2>Field List</h2>
+              <div class="field-list-size-stack">
+                <div>{{ "%.1f"|format(field_page_width) }}" x {{ "%.1f"|format(field_page_height) }}"</div>
+                <div>{{ "%.2f"|format(field_printable_width) }}" x {{ "%.2f"|format(field_printable_height) }}" printable</div>
+              </div>
+            </div>
+            <div class="field-list-template-fields">
+              <label class="field-list-template-name" for="field-list-template-name">
+                <span>Template name</span>
+                <input type="text" id="field-list-template-name" name="template_name" value="{{ selected_template.name }}" placeholder="User defined custom name" autocomplete="off">
+              </label>
+              <label class="field-list-template-picker-label" for="field-list-template-picker">
+                <span>Template</span>
+                <select id="field-list-template-picker" class="field-list-template-picker">
+                  <option value="" disabled data-user-template-placeholder {% if not selected_template.id %}selected{% endif %}>Custom templates ... Scroll &gt;&gt;</option>
+                  {% for template in templates_list %}
+                    {% if not template.is_default %}
+                      <option value="{{ template.id }}" {% if template.id == selected_template.id %}selected{% endif %}>{{ template.name }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <div class="field-list-template-actions">
+              <button type="submit" class="primary-save-button">Save</button>
+              <button type="submit" form="field-list-delete-form" class="secondary-button field-list-delete-template-button">Delete</button>
+            </div>
+          </div>
+
+          <div
+            class="field-list-stage"
+            data-field-list-builder
+            data-field-list-can-edit="{{ 1 if field_list_can_edit else 0 }}"
+            data-field-list-items='{{ field_list_payload_json|forceescape }}'
+            data-field-list-item-types='{{ field_list_item_types_json|forceescape }}'
+            data-field-list-preview-contacts='{{ field_list_preview_contacts_json|forceescape }}'
+            data-field-list-picker='{{ field_list_picker_json|forceescape }}'
+            data-field-list-meeting-preview='{{ field_list_meeting_preview_json|forceescape }}'
+            data-field-list-settings='{{ field_list_settings_json|forceescape }}'
+          >
+            <div class="field-list-canvas-wrap">
+              <div class="field-list-canvas" id="field-list-canvas">
+                <div class="field-list-canvas-grid" aria-hidden="true"></div>
+                <div class="field-list-canvas-margin" id="field-list-canvas-margin" aria-hidden="true"></div>
+              </div>
+            </div>
+            {% if not field_list_can_edit %}
+              <p class="field-list-readonly-note muted">This session can view Field List templates but cannot edit them.</p>
+            {% endif %}
+          </div>
+        </form>
+      </section>
+
+      <aside class="field-list-settings-sidebar">
+        <form method="post" action="/presets/address-book/save" class="field-list-settings-form" id="field-list-settings-form">
+          <input type="hidden" name="return_to" value="/field-list?template_id={{ selected_template.id }}">
+          <input type="hidden" name="preview_scale" value="1.0" data-field-list-setting="previewScale">
+          <input type="hidden" name="field_list_template_id" value="{{ selected_template.id }}" data-field-list-settings-template-id>
+          <input type="hidden" name="field_list_template_name" value="{{ selected_template.name }}" data-field-list-settings-template-name>
+          <input type="hidden" name="field_list_items_json" value='{{ field_list_payload_json|safe }}' data-field-list-settings-items-json>
+          <div class="subcard-title">Field List Settings</div>
+          <div class="field-list-settings-group field-list-typography-palette">
+            <div class="subcard-title">Typography</div>
+            <div class="field-list-typography-grid">
+              <label class="form-label field-list-type-font">
+                <span>Names font</span>
+                <select name="font_family" data-field-list-setting="fontFamily">
+                  {% for font_family in field_list_font_families %}
+                    <option value="{{ font_family }}" {% if address_book_settings.font_family == font_family %}selected{% endif %}>{{ "TNR" if font_family == "Times New Roman" else font_family }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="form-label field-list-type-size">
+                <span>Size</span>
+                <input type="number" name="base_font_size_pt" min="8" max="36" step="0.5" value="{{ address_book_settings.base_font_size_pt }}" data-field-list-setting="baseFontSizePt">
+              </label>
+              <label class="form-label field-list-type-line">
+                <span>Line</span>
+                <input type="number" name="line_height" min="0.8" max="3" step="0.05" value="{{ address_book_settings.line_height }}" data-field-list-setting="lineHeight">
+              </label>
+
+              <label class="form-label field-list-type-font">
+                <span>Field name</span>
+                <select name="title_font_family" data-field-list-setting="titleFontFamily">
+                  {% for font_family in field_list_font_families %}
+                    <option value="{{ font_family }}" {% if address_book_settings.title_font_family == font_family %}selected{% endif %}>{{ "TNR" if font_family == "Times New Roman" else font_family }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="form-label field-list-type-size">
+                <span>Size</span>
+                <input type="number" name="title_font_size_pt" min="6" max="36" step="0.5" value="{{ address_book_settings.title_font_size_pt }}" data-field-list-setting="titleFontSizePt">
+              </label>
+              <div class="field-list-type-align">
+                <label class="field-list-radio-row">
+                  <input type="radio" name="title_align" value="left" data-field-list-setting="titleAlign" {% if address_book_settings.title_align == "left" %}checked{% endif %}>
+                  <span>Left Justify</span>
+                </label>
+                <label class="field-list-radio-row">
+                  <input type="radio" name="title_align" value="center" data-field-list-setting="titleAlign" {% if address_book_settings.title_align != "left" %}checked{% endif %}>
+                  <span>Center</span>
+                </label>
+              </div>
+
+              <label class="form-label field-list-type-font">
+                <span>Mtg name</span>
+                <select name="meeting_name_font_family" data-field-list-setting="meetingNameFontFamily">
+                  {% for font_family in field_list_font_families %}
+                    <option value="{{ font_family }}" {% if address_book_settings.meeting_name_font_family == font_family %}selected{% endif %}>{{ "TNR" if font_family == "Times New Roman" else font_family }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="form-label field-list-type-size">
+                <span>Size</span>
+                <input type="number" name="meeting_name_font_size_pt" min="6" max="36" step="0.5" value="{{ address_book_settings.meeting_name_font_size_pt }}" data-field-list-setting="meetingNameFontSizePt">
+              </label>
+              <div class="field-list-type-align">
+                <label class="field-list-radio-row">
+                  <input type="radio" name="meeting_name_align" value="left" data-field-list-setting="meetingNameAlign" {% if address_book_settings.meeting_name_align == "left" %}checked{% endif %}>
+                  <span>Left Justify</span>
+                </label>
+                <label class="field-list-radio-row">
+                  <input type="radio" name="meeting_name_align" value="center" data-field-list-setting="meetingNameAlign" {% if address_book_settings.meeting_name_align != "left" %}checked{% endif %}>
+                  <span>Ctr</span>
+                </label>
+                <label class="field-list-radio-row field-list-radio-row-compact">
+                  <input type="checkbox" name="meeting_name_font_underline" value="1" data-field-list-setting="meetingNameFontUnderline" {% if address_book_settings.meeting_name_font_underline %}checked{% endif %}>
+                  <span>UL</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="field-list-settings-group">
+            <div class="subcard-title">Margins</div>
+            <div class="field-list-settings-grid">
+              <label class="form-label">
+                <span>Left</span>
+                <input type="number" name="margin_left_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_left_in }}" data-field-list-setting="marginLeftIn">
+              </label>
+              <label class="form-label">
+                <span>Right</span>
+                <input type="number" name="margin_right_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_right_in }}" data-field-list-setting="marginRightIn">
+              </label>
+              <label class="form-label">
+                <span>Top</span>
+                <input type="number" name="margin_top_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_top_in }}" data-field-list-setting="marginTopIn">
+              </label>
+              <label class="form-label">
+                <span>Bottom</span>
+                <input type="number" name="margin_bottom_in" min="0.1" max="2" step="0.05" value="{{ address_book_settings.margin_bottom_in }}" data-field-list-setting="marginBottomIn">
+              </label>
+            </div>
+          </div>
+          <div class="field-list-settings-group field-list-print-palette">
+            <div class="subcard-title">Print List</div>
+            <button type="button" class="primary-save-button field-list-print-button" data-field-list-print-button>Next</button>
+          </div>
+        </form>
+      </aside>
+    </section>
+  </div>
+  <dialog class="app-modal" id="field-list-message-modal">
+    <form method="dialog" class="app-modal-panel" id="field-list-message-modal-form">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="field-list-message-modal-title">Field List</h3>
+        <p class="app-modal-copy" id="field-list-message-modal-copy"></p>
+      </div>
+      <label class="app-modal-field" style="display:none;">
+        <span id="field-list-message-modal-label">Confirmation</span>
+        <input type="text" id="field-list-message-modal-input" autocomplete="off">
+      </label>
+      <div class="app-modal-error" id="field-list-message-modal-error" aria-live="polite"></div>
+      <div class="app-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" id="field-list-message-modal-cancel">Cancel</button>
+        <button type="submit" class="contact-card-button contact-card-button-edit" id="field-list-message-modal-save" value="save">OK</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="field-list-print-modal" id="field-list-print-picker-modal">
+    <form method="dialog" class="field-list-print-modal-panel">
+      <div class="field-list-print-modal-grid">
+        <section class="field-list-print-modal-column">
+          <h3>Fields</h3>
+          <div class="field-list-print-modal-list" data-print-modal-fields></div>
+        </section>
+        <section class="field-list-print-modal-column">
+          <h3>Meetings</h3>
+          <div class="field-list-print-modal-list" data-print-modal-meetings></div>
+        </section>
+      </div>
+      <div class="field-list-print-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" data-print-modal-cancel>Cancel</button>
+        <button type="button" class="contact-card-button contact-card-button-edit" data-print-modal-submit>Print List</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="field-list-font-modal" id="field-list-bible-font-conflict-modal">
+    <form method="dialog" class="field-list-font-modal-panel">
+      <h3>Field List</h3>
+      <p>There are conflicting font sizes in the MeetingData Editor. For the Field and Meeting(s) chosen:</p>
+      <div class="field-list-font-choice-stack">
+        <label class="field-list-radio-row">
+          <input type="radio" name="bible_font_resolution_mode" value="all" checked>
+          <span>Overwrite all Bible study/Union meeting rows in the Meeting Data Editor with present font chosen (WARNING...use carefully...may affect Bible study formatting)</span>
+        </label>
+        <label class="field-list-radio-row">
+          <input type="radio" name="bible_font_resolution_mode" value="except_conflicts">
+          <span>Overwrite all Bible study/Union mtg rows ...EXCEPT... conflicting user defined rows</span>
+        </label>
+        <label class="field-list-radio-row">
+          <input type="radio" name="bible_font_resolution_mode" value="show_conflicts">
+          <span>Show user defined rows to resolve conflict</span>
+        </label>
+      </div>
+      <div class="field-list-print-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" data-bible-font-conflict-cancel>Cancel</button>
+        <button type="button" class="contact-card-button contact-card-button-edit" data-bible-font-conflict-ok>OK</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="field-list-font-modal" id="field-list-bible-font-resolve-modal">
+    <form method="dialog" class="field-list-font-modal-panel field-list-font-modal-panel-wide">
+      <h3 data-bible-font-resolve-title>Font conflict</h3>
+      <div class="field-list-font-resolve-list" data-bible-font-resolve-list></div>
+      <div class="field-list-print-modal-actions">
+        <button type="button" class="contact-card-button contact-card-button-cancel" data-bible-font-resolve-cancel>Cancel</button>
+        <button type="button" class="contact-card-button contact-card-button-edit" data-bible-font-resolve-ok>OK</button>
+      </div>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="/static/js/field_list_builder.js?v=153"></script>
+{% endblock %}

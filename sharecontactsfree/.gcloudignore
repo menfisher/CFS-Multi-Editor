@@ -1,0 +1,13 @@
+.git
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.venv/
+**/.env
+**/.env.*
+!python/.env.example
+**/node_modules/
+docs/
+legacy/
+*.md
+**/.DS_Store

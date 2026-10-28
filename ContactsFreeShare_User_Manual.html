@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ContactsFreeShare User Manual</title>
+  <style>
+    @page { size: letter; margin: 0.65in; }
+    body {
+      color: #1f2d31;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.45;
+    }
+    h1, h2, h3 {
+      color: #163b3d;
+      line-height: 1.15;
+      margin: 0 0 0.2in;
+    }
+    h1 { font-size: 28pt; }
+    h2 {
+      border-bottom: 1px solid #b7c9c9;
+      font-size: 18pt;
+      margin-top: 0.35in;
+      padding-bottom: 0.06in;
+    }
+    h3 {
+      font-size: 13pt;
+      margin-top: 0.22in;
+    }
+    p { margin: 0 0 0.11in; }
+    a { color: #1155aa; text-decoration: none; }
+    ul, ol { margin: 0 0 0.13in 0.24in; padding: 0; }
+    li { margin: 0 0 0.045in; }
+    table {
+      border-collapse: collapse;
+      margin: 0.08in 0 0.16in;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid #d4dddd;
+      padding: 5px 7px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #e7f3ec;
+      color: #163b3d;
+    }
+    code {
+      background: #f2f4f4;
+      border-radius: 3px;
+      font-family: Menlo, Consolas, monospace;
+      font-size: 9.5pt;
+      padding: 1px 3px;
+    }
+    .cover {
+      align-content: center;
+      display: grid;
+      min-height: 8.6in;
+      page-break-after: always;
+    }
+    .subtitle {
+      color: #5f6f73;
+      font-size: 14pt;
+      margin-top: 0.08in;
+    }
+    .meta {
+      border-left: 4px solid #75b987;
+      margin-top: 0.35in;
+      padding-left: 0.16in;
+    }
+    .toc {
+      page-break-after: always;
+    }
+    .toc ol {
+      margin-left: 0.2in;
+    }
+    .section {
+      page-break-before: always;
+    }
+    .note {
+      background: #fff8dc;
+      border: 1px solid #ead98d;
+      border-radius: 5px;
+      margin: 0.1in 0 0.18in;
+      padding: 0.1in 0.12in;
+    }
+    .small { color: #657579; font-size: 9.5pt; }
+  </style>
+</head>
+<body>
+  <section class="cover" id="cover">
+    <div>
+      <h1>ContactsFreeShare User Manual</h1>
+      <p class="subtitle">Contacts, MeetingData, Field List, Address Book, GoogleConnect, and app update workflows</p>
+      <div class="meta">
+        <p><strong>App version:</strong> 1.1</p>
+        <p><strong>Manual date:</strong> May 12, 2026</p>
+        <p><strong>Location:</strong> Local ContactsFreeShare desktop web app</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="toc" id="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#global-navigation">Global Navigation And Menus</a></li>
+      <li><a href="#contacts-page">Contacts Page</a></li>
+      <li><a href="#contact-detail-edit">Contact Detail And Contact Editor</a></li>
+      <li><a href="#meetingdata">MeetingData</a></li>
+      <li><a href="#field-list">Field List</a></li>
+      <li><a href="#address-book">Address Book</a></li>
+      <li><a href="#changes-list">Changes List</a></li>
+      <li><a href="#edit-lists">EditLists</a></li>
+      <li><a href="#google-connect">GoogleConnect</a></li>
+      <li><a href="#settings">Settings Pages</a></li>
+      <li><a href="#app-revisions">App Revisions And Updates</a></li>
+      <li><a href="#import-export-backup">Import, Export, Backup, And Restore</a></li>
+      <li><a href="#roles-sync">Editing Roles, Sync, And Safety Notes</a></li>
+      <li><a href="#publishing-updates">Publishing App Updates</a></li>
+    </ol>
+  </section>
+
+  <section class="section" id="overview">
+    <h2>Overview</h2>
+    <p>ContactsFreeShare is a local desktop web app for maintaining a shared contact directory, creating MeetingData layouts, designing Field Lists, and producing printable Address Book PDFs. It runs in a browser at <code>http://127.0.0.1:8000</code>, but its data and files live on the computer running the app.</p>
+    <p>The app can work locally, or it can connect to Google for contacts, Google Drive backups, App Revisions, shared settings, and multi-editor workflows. When GoogleConnect is enabled, local changes can queue until the user chooses Upload.</p>
+    <h3>Main Work Areas</h3>
+    <ul>
+      <li><strong>Contacts:</strong> Add, edit, filter, move, message, email, delete, import, export, and back up contact records.</li>
+      <li><strong>MeetingData:</strong> Create meeting sections and edit their printable visual layout.</li>
+      <li><strong>Field List:</strong> Build and print field list templates using contact fields, meetings, phones, addresses, relationships, emails, and page numbers.</li>
+      <li><strong>Address Book:</strong> Configure and generate an address book PDF, including cover, index, print order, field choices, and paper book output.</li>
+      <li><strong>GoogleConnect:</strong> Sign in, control editor roles, import, upload, sync, and monitor Google/Drive state.</li>
+      <li><strong>App Revisions:</strong> View revision notes, check for public app updates, and download update packages.</li>
+    </ul>
+  </section>
+
+  <section class="section" id="global-navigation">
+    <h2>Global Navigation And Menus</h2>
+    <p>The top navigation appears across the app. Some pages may also show page-specific actions below the top menu.</p>
+    <h3>ContactsFreeShare Menu</h3>
+    <table>
+      <tr><th>Menu Item</th><th>What It Does</th></tr>
+      <tr><td>About</td><td>Opens the About modal with the app name, current version, year, and short description.</td></tr>
+      <tr><td>Address Book</td><td>Opens the Address Book PDF builder where book layout, cover, index, field choices, print order, and PDF output are controlled.</td></tr>
+      <tr><td>Field List</td><td>Opens the Field List builder for creating and printing field list templates.</td></tr>
+      <tr><td>Changes List</td><td>Opens the shared Changes List for recording contact and MeetingData change notes.</td></tr>
+      <tr><td>Settings</td><td>Opens ContactsFreeShare Settings for editor mode, single/multi-editor behavior, shared PDF folder, editor secret, lockout time, and colors.</td></tr>
+      <tr><td>Check for updates</td><td>Checks the public update manifest to see if a newer ContactsFreeShare package is available.</td></tr>
+      <tr><td>App Revisions</td><td>Shows recent app revision notes and the update status panel.</td></tr>
+      <tr><td>Quit AddbookFreeShare</td><td>Closes the browser view or shows a closed message. The local server process may still need to be stopped from its terminal window.</td></tr>
+    </table>
+    <h3>File Menu</h3>
+    <table>
+      <tr><th>Menu Item</th><th>What It Does</th></tr>
+      <tr><td>Import</td><td>Starts the Google import workflow. It can import contacts from Google Contacts or import from a Drive backup after confirmation.</td></tr>
+      <tr><td>Export &gt; App CSV</td><td>Exports contacts in the app's CSV format to the computer.</td></tr>
+      <tr><td>Export &gt; Google CSV</td><td>Exports contacts in a Google-compatible CSV format.</td></tr>
+      <tr><td>Export &gt; vCard</td><td>Exports contacts as a vCard file.</td></tr>
+      <tr><td>Backup &gt; Contacts to Computer</td><td>Downloads a local JSON backup of contacts.</td></tr>
+      <tr><td>Backup &gt; Contacts to Google Drive</td><td>Saves a contacts JSON backup to the Google Drive Backups folder.</td></tr>
+      <tr><td>Backup &gt; MeetingData to Computer</td><td>Downloads a local JSON backup of MeetingData.</td></tr>
+      <tr><td>Backup &gt; MeetingData to Google Drive</td><td>Saves a MeetingData JSON backup to Google Drive.</td></tr>
+    </table>
+    <h3>Top-Level Links</h3>
+    <table>
+      <tr><th>Link</th><th>What It Does</th></tr>
+      <tr><td>Contacts</td><td>Opens the main contacts list.</td></tr>
+      <tr><td>MeetingData</td><td>Opens the MeetingData section list.</td></tr>
+      <tr><td>EditLists</td><td>Opens a submenu for Contacts Edit List and MeetingData Edit List.</td></tr>
+      <tr><td>GoogleConnect</td><td>Opens Google connection, editor sign-in, upload, and sync status controls.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="contacts-page">
+    <h2>Contacts Page</h2>
+    <p>The Contacts page is the main directory. It shows contact names, fields, meetings, phones, and addresses. Click a row to open the contact detail page. Use checkboxes to select contacts for bulk actions.</p>
+    <h3>Page Actions</h3>
+    <table>
+      <tr><th>Action</th><th>What It Does</th></tr>
+      <tr><td>New Contact</td><td>Opens the new contact editor.</td></tr>
+      <tr><td>Message</td><td>Opens a modal for sending separate text messages to selected contacts with usable Mobile or Cell numbers. On macOS, the app now prefers the paired phone/SMS service when available and falls back to iMessage only if SMS is unavailable.</td></tr>
+      <tr><td>Email</td><td>Opens a modal that builds a mailto email with selected contacts in BCC.</td></tr>
+      <tr><td>Delete</td><td>Moves selected contacts to the Deleted meeting/category after confirmation.</td></tr>
+      <tr><td>Move</td><td>Opens the Move Contacts page for changing selected contacts' Fields and Meetings.</td></tr>
+      <tr><td>Upload</td><td>Uploads pending local changes to Google Contacts and Drive when GoogleConnect is configured.</td></tr>
+    </table>
+    <h3>Filters And Selection Menu</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Search box</td><td>Filters by family or given name.</td></tr>
+      <tr><td>All fields dropdown</td><td>Filters contacts by field. It also includes Add Field, Delete Field, and Rename Field commands.</td></tr>
+      <tr><td>All meetings dropdown</td><td>Filters contacts by meeting. It also includes Add Meeting, Delete Meeting, and Rename Meeting commands.</td></tr>
+      <tr><td>Clear Search</td><td>Clears search text and dropdown filters.</td></tr>
+      <tr><td>Names selection menu</td><td>After selecting at least one checkbox, use All or None to manage visible row selection.</td></tr>
+    </table>
+    <h3>Message Modal</h3>
+    <ul>
+      <li><strong>Message text:</strong> The text sent separately to each selected phone number.</li>
+      <li><strong>Phone list:</strong> Shows eligible selected phone numbers. Home, NH, and Work labels are skipped.</li>
+      <li><strong>Send Separate Messages:</strong> Sends or opens one message per selected phone number.</li>
+      <li><strong>Close / Done:</strong> Closes the modal after sending or cancels before sending.</li>
+    </ul>
+    <h3>Email Modal</h3>
+    <ul>
+      <li><strong>Subject:</strong> Subject line for the email.</li>
+      <li><strong>Message:</strong> Email body text.</li>
+      <li><strong>Email address list:</strong> Shows eligible email addresses for selected contacts.</li>
+      <li><strong>Open Email:</strong> Opens the default email app with selected addresses in BCC.</li>
+    </ul>
+  </section>
+
+  <section class="section" id="contact-detail-edit">
+    <h2>Contact Detail And Contact Editor</h2>
+    <h3>Contact Detail Page</h3>
+    <p>The detail page shows a single contact's identity, assignments, phone numbers, email addresses, relationships, addresses, miscellaneous notes, and administration details.</p>
+    <table>
+      <tr><th>Button / Link</th><th>What It Does</th></tr>
+      <tr><td>Back</td><td>Returns to the previous contacts list or filter state.</td></tr>
+      <tr><td>Edit</td><td>Opens the contact editor.</td></tr>
+      <tr><td>Restore</td><td>Appears for deleted/moved contacts and opens the editor in restore mode.</td></tr>
+      <tr><td>Phone links</td><td>Open phone or SMS links where supported by the computer/device.</td></tr>
+      <tr><td>Email links</td><td>Open the default mail app for that address.</td></tr>
+      <tr><td>Google Maps / Apple Maps</td><td>Open the selected address in the map service.</td></tr>
+      <tr><td>Move Contact to Deleted</td><td>Moves the contact to Deleted after confirmation.</td></tr>
+    </table>
+    <h3>Contact Editor Page</h3>
+    <table>
+      <tr><th>Section / Button</th><th>What It Does</th></tr>
+      <tr><td>Save</td><td>Saves the contact locally and queues Google/Drive sync if enabled.</td></tr>
+      <tr><td>Cancel / Back</td><td>Leaves the editor without saving the current form changes.</td></tr>
+      <tr><td>Identity</td><td>Edits family name, given name, photo, and identity details.</td></tr>
+      <tr><td>Assignments</td><td>Sets Fields and Meetings. Option modals can add new values.</td></tr>
+      <tr><td>Emails</td><td>Adds, edits, and removes email rows.</td></tr>
+      <tr><td>Phones</td><td>Adds, edits, and removes phone rows and labels.</td></tr>
+      <tr><td>Addresses</td><td>Adds, edits, and removes address rows.</td></tr>
+      <tr><td>Relationships</td><td>Records family or relationship details.</td></tr>
+      <tr><td>Custom Fields</td><td>Stores additional named values.</td></tr>
+      <tr><td>Notes</td><td>Stores miscellaneous notes about the contact.</td></tr>
+      <tr><td>Crop Contact Photo</td><td>Opens the crop modal after selecting a photo.</td></tr>
+    </table>
+    <h3>Move Contacts Page</h3>
+    <p>The Move Contacts page changes the Fields and Meetings for selected contacts. It shows assignments on the left and selected contacts on the right, with Cancel and Apply-style controls.</p>
+  </section>
+
+  <section class="section" id="meetingdata">
+    <h2>MeetingData</h2>
+    <p>MeetingData stores meeting-oriented sections and rows for printable meeting pages. The current visual editor is under <code>/meetings/v2/sections</code>.</p>
+    <h3>MeetingData Sections Page</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Section list rows</td><td>Open the visual editor for a Field + Meeting section.</td></tr>
+      <tr><td>Create section controls</td><td>Create a new MeetingData section from field and meeting choices.</td></tr>
+      <tr><td>Field/Meeting option modal</td><td>Add, remove, or rename available section option values.</td></tr>
+      <tr><td>NO-EDIT banner</td><td>Indicates editing is blocked until an Editor signs in when multi-editor mode is active.</td></tr>
+    </table>
+    <h3>MeetingData Editor Page</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Back to sections</td><td>Returns to the MeetingData section list.</td></tr>
+      <tr><td>Save</td><td>Saves the visual MeetingData layout.</td></tr>
+      <tr><td>Meeting Print Preview</td><td>Opens a printable preview of the selected MeetingData section.</td></tr>
+      <tr><td>Edit Layout</td><td>Opens Address Book layout settings for the section's book layout.</td></tr>
+      <tr><td>Visual Canvas</td><td>Edits rows, columns, text cells, flow columns, full-width rows, and formatting on a book-page-width canvas.</td></tr>
+      <tr><td>Add/Delete row and column controls</td><td>Insert, remove, and reorganize MeetingData layout elements.</td></tr>
+      <tr><td>Delete All Rows modal</td><td>Confirms destructive removal of rows in the section.</td></tr>
+    </table>
+    <h3>Meeting Print Preview</h3>
+    <p>Shows the meeting page as it will print. Use Back to Editor to return to layout editing.</p>
+  </section>
+
+  <section class="section" id="field-list">
+    <h2>Field List</h2>
+    <p>The Field List page creates contact lists by field and meeting. It can print a field list using selected template and typography rules.</p>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Create Field List</td><td>Starts a new field list template.</td></tr>
+      <tr><td>View Templates</td><td>Opens or prepares access to saved templates.</td></tr>
+      <tr><td>Template name</td><td>Names the current field list template.</td></tr>
+      <tr><td>Save Template</td><td>Saves the current field list template locally and queues Drive export if enabled.</td></tr>
+      <tr><td>Print</td><td>Generates a printable field list page.</td></tr>
+      <tr><td>Fields panel</td><td>Chooses which fields are included.</td></tr>
+      <tr><td>Meetings panel</td><td>Chooses which meetings are included.</td></tr>
+      <tr><td>Palette / blocks</td><td>Uses block types such as field name, meeting name, phone number, address, relationships, emails, and page number.</td></tr>
+      <tr><td>Font conflict modal</td><td>Resolves Bible font conflicts or typography mismatches before printing.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="address-book">
+    <h2>Address Book</h2>
+    <p>The Address Book page builds PDF output for a printed or shared address book. It uses book layout settings, contact data, cover choices, index navigation, print order, and field selections.</p>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Book layout selector/name</td><td>Chooses or names the active address book layout preset.</td></tr>
+      <tr><td>Save / Set Default</td><td>Saves layout changes or makes the selected layout the default.</td></tr>
+      <tr><td>Cover controls</td><td>Selects whether to include a cover, cover picture, cover title text, and cover date text.</td></tr>
+      <tr><td>Choose picture modal</td><td>Selects or changes the cover image used in the PDF.</td></tr>
+      <tr><td>Index controls</td><td>Controls whether index navigation is included.</td></tr>
+      <tr><td>Print Order</td><td>Opens a drag-and-drop modal to control placement/order of contacts or sections.</td></tr>
+      <tr><td>Print PDF</td><td>Opens field choices and generates the address book PDF.</td></tr>
+      <tr><td>Paper Book / Print Paper</td><td>Creates paper-book output using the current layout and field selections.</td></tr>
+      <tr><td>PDF Preview</td><td>Displays generated PDF output and provides a Back to Editor link.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="changes-list">
+    <h2>Changes List</h2>
+    <p>The Changes List records shared notes for Contacts and MeetingData changes. It is intended as a quick visible change log for editors.</p>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Add row</td><td>Adds a new change entry.</td></tr>
+      <tr><td>Name/Event</td><td>Records the person, event, or subject of the change.</td></tr>
+      <tr><td>Changes text</td><td>Records the change note.</td></tr>
+      <tr><td>Automatic date/initials</td><td>Tracks when and by whom a change row was edited, when the current editor is known.</td></tr>
+      <tr><td>Done</td><td>Returns to GoogleConnect.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="edit-lists">
+    <h2>EditLists</h2>
+    <p>EditLists show recent editing batches for Contacts and MeetingData.</p>
+    <table>
+      <tr><th>Menu Item</th><th>What It Does</th></tr>
+      <tr><td>Contacts Edit List</td><td>Shows recent contact edit batches. Click a contact link to open the contact editor.</td></tr>
+      <tr><td>MeetingData Edit List</td><td>Shows recent MeetingData edit batches. Click a section link to open the MeetingData editor.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="google-connect">
+    <h2>GoogleConnect</h2>
+    <p>GoogleConnect controls account connection, editor sign-in, role access, imports, uploads, and sync state. It is the operational center for shared editing.</p>
+    <h3>Connection Controls</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Sign In With Google</td><td>Starts Google OAuth sign-in.</td></tr>
+      <tr><td>Reconnect / Switch Account</td><td>Reconnects Drive/Contacts scopes or switches the connected Google account.</td></tr>
+      <tr><td>Disconnect</td><td>Removes the local Google account connection.</td></tr>
+      <tr><td>Remember preferred account</td><td>Stores the preferred Google email for future sign-in workflows.</td></tr>
+    </table>
+    <h3>Editor And Access Roles</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Editor name</td><td>Identifies the current editor for locks and changes.</td></tr>
+      <tr><td>Editor secret</td><td>Password-style field required for Editor access when enabled.</td></tr>
+      <tr><td>Sign in as Editor</td><td>Attempts to acquire the Editor lock.</td></tr>
+      <tr><td>Sign out</td><td>Releases the editor/access role and may trigger required sync checks.</td></tr>
+      <tr><td>Take over stale lock</td><td>Allows takeover when a previous editor lock is stale.</td></tr>
+      <tr><td>Access role sign-in</td><td>Signs in with special roles such as Field List or Address Book where configured.</td></tr>
+      <tr><td>Add 15 minutes</td><td>Extends the active Editor session when the timeout warning appears.</td></tr>
+    </table>
+    <h3>Sync And Upload Controls</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Upload</td><td>Processes pending contact changes and shared app data to Google/Drive.</td></tr>
+      <tr><td>Upload status</td><td>Shows pending count, active upload state, current contact, errors, and Drive bootstrap progress.</td></tr>
+      <tr><td>Retry Drive sync</td><td>Retries shared sign-in sync if it stopped or failed.</td></tr>
+      <tr><td>Import</td><td>Opens the import confirmation screen for Google Contacts or Drive backup import.</td></tr>
+      <tr><td>App Revisions setup/export</td><td>Creates Drive storage for App Revisions and exports the local revision list.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="settings">
+    <h2>Settings Pages</h2>
+    <h3>ContactsFreeShare Settings</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Will this app be used by multiple Editors?</td><td>Turns multi-editor mode on or off. Multi-editor mode requires editor sign-in and one active editor at a time.</td></tr>
+      <tr><td>Single-Editor save location</td><td>Chooses local-only saving or Google/Drive syncing when multi-editor mode is off.</td></tr>
+      <tr><td>Editor secret</td><td>Changes the Editor secret. Leaving it blank keeps the current secret.</td></tr>
+      <tr><td>Editor lock-out time</td><td>Sets the Editor session timeout.</td></tr>
+      <tr><td>Shared Address Book PDF copy</td><td>Controls whether generated Address Book PDFs are also copied to a shared Drive folder.</td></tr>
+      <tr><td>Shared folder ID / fallback folder name</td><td>Identifies the shared Drive folder used for Address Book PDF copies.</td></tr>
+      <tr><td>Contacts Colors</td><td>Sets contact title, primary row, secondary row, and hover colors.</td></tr>
+      <tr><td>MeetingData Colors</td><td>Sets MeetingData title, primary row, secondary row, and hover colors.</td></tr>
+      <tr><td>Save Settings</td><td>Saves settings locally and queues Drive export when sync is enabled.</td></tr>
+    </table>
+    <h3>Address Book / Field List Settings</h3>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Margins</td><td>Sets page margins for printed layouts.</td></tr>
+      <tr><td>Typography</td><td>Controls font family, base font size, and line height.</td></tr>
+      <tr><td>Preview scale</td><td>Sets how large the layout preview appears on screen.</td></tr>
+      <tr><td>Column and address settings</td><td>Controls field list/address book column behavior and address alignment.</td></tr>
+      <tr><td>Save Settings</td><td>Saves the address book/field list settings.</td></tr>
+    </table>
+    <h3>Contacts Settings And MeetingData Settings</h3>
+    <p>These settings pages control color and layout presets for the Contacts and MeetingData sections. Save Settings applies the current choices.</p>
+  </section>
+
+  <section class="section" id="app-revisions">
+    <h2>App Revisions And Updates</h2>
+    <p>The App Revisions page shows recent release notes and the public update status.</p>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>App Update panel</td><td>Shows installed version, latest version, release notes, and whether an update is available.</td></tr>
+      <tr><td>Download Mac / Download Windows</td><td>Appears when an update is available and downloads the selected update package.</td></tr>
+      <tr><td>Revision table</td><td>Shows recent app revision dates, versions, and descriptions.</td></tr>
+      <tr><td>Hidden developer editor</td><td>When activated by the developer shortcut, allows editing App Revisions and syncing them to Drive.</td></tr>
+      <tr><td>Check for updates</td><td>Available from the ContactsFreeShare menu; reads the public update manifest.</td></tr>
+    </table>
+  </section>
+
+  <section class="section" id="import-export-backup">
+    <h2>Import, Export, Backup, And Restore</h2>
+    <h3>Import Confirmation Page</h3>
+    <p>The import page displays warnings before replacing or importing contact data. Importing from Google Contacts or Drive backup should be treated carefully because it can change local data.</p>
+    <table>
+      <tr><th>Control</th><th>What It Does</th></tr>
+      <tr><td>Cancel</td><td>Returns to the previous page without importing.</td></tr>
+      <tr><td>Import from Google Contacts</td><td>Imports contacts from the connected Google account after confirmation.</td></tr>
+      <tr><td>Import from backup in Google Drive</td><td>Imports contacts from a selected Drive backup after confirmation.</td></tr>
+    </table>
+    <h3>Export And Backup Outputs</h3>
+    <ul>
+      <li><strong>App CSV:</strong> A ContactsFreeShare-specific contacts CSV.</li>
+      <li><strong>Google CSV:</strong> A contacts CSV intended for Google import compatibility.</li>
+      <li><strong>vCard:</strong> A standard contact file format.</li>
+      <li><strong>JSON backups:</strong> Full app backup files for Contacts or MeetingData.</li>
+    </ul>
+  </section>
+
+  <section class="section" id="roles-sync">
+    <h2>Editing Roles, Sync, And Safety Notes</h2>
+    <ul>
+      <li><strong>Local saving:</strong> The app always keeps local data on the current computer.</li>
+      <li><strong>Google Contacts:</strong> Contact changes can be queued and uploaded to Google Contacts when Google saving is enabled.</li>
+      <li><strong>Google Drive:</strong> Shared settings, MeetingData, Field List data, App Revisions, backups, and PDFs can use Drive storage.</li>
+      <li><strong>NO-EDIT mode:</strong> In multi-editor mode, users cannot edit until an Editor signs in or a permitted access role is active.</li>
+      <li><strong>Editor lock:</strong> Prevents multiple active editors from editing at the same time.</li>
+      <li><strong>Pending uploads:</strong> Banners and Upload reminders show when local changes need to be sent to Google/Drive.</li>
+      <li><strong>Messaging:</strong> macOS Messages automation can submit messages to Messages, but carrier/iMessage delivery is ultimately controlled by the paired phone and Apple services.</li>
+    </ul>
+  </section>
+
+  <section class="section" id="publishing-updates">
+    <h2>Publishing App Updates</h2>
+    <p>Developer update publishing is handled by scripts in the project folder.</p>
+    <table>
+      <tr><th>Command</th><th>What It Does</th></tr>
+      <tr><td><code>bash scripts/build_portable_app.sh</code></td><td>Builds the portable app folder and Mac/Windows zip files in <code>dist/</code>. It also creates <code>app_update_manifest.example.json</code>.</td></tr>
+      <tr><td><code>scripts/publish_app_update.sh 1.2 "Release notes"</code></td><td>Updates <code>APP_VERSION</code>, adds an App Revisions row, builds packages, creates <code>app_update_manifest.json</code>, removes older update zips by default, and pushes the current packages to the GitHub Pages update repo.</td></tr>
+      <tr><td><code>CONTACTSFREESHARE_KEEP_OLD_UPDATE_PACKAGES=1 ...</code></td><td>Optional prefix that keeps older package zips instead of cleaning them.</td></tr>
+    </table>
+    <p>Use straight quotes in Terminal around release notes. This matters when release notes contain characters such as <code>&amp;</code>.</p>
+  </section>
+</body>
+</html>

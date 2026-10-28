@@ -1,0 +1,16 @@
+{
+  "name": "sharecontactsfree",
+  "version": "1.0.0",
+  "description": "Host **one** public site for contact-group sharing. Works for many owners (different Google accounts) and their recipients.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

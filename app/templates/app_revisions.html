@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}App Revisions | Contacts Website{% endblock %}
+
+{% block content %}
+  {% set row_colors = row_colors|default({"title_bar": "#e3eff3", "primary": "#f8f3e3", "secondary": "#edf5f7", "highlight": "#ffe3a1"}) %}
+  <div class="edit-log-page app-revisions-page">
+    <section class="panel page-top-panel meetingdata-filter-panel edit-log-title-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
+      <div class="edit-log-title-copy">
+        <h2>App Revisions</h2>
+      </div>
+    </section>
+
+    {% if notice_message %}
+      <section class="panel google-sync-banner google-sync-banner-info{% if notice_key == 'app_update_install_failed' %} google-sync-banner-warn{% endif %}" id="app-revisions-temporary-notice" data-auto-hide-ms="{% if notice_key == 'app_update_install_failed' %}0{% else %}3600{% endif %}">
+        <p class="preserve-breaks">{{ notice_message }}</p>
+        {% if update_error %}
+          <p class="preserve-breaks">{{ update_error }}</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if support_paths %}
+      <div class="app-revisions-support-note muted">
+        <p>If an install or update fails, open these files or folders on this computer.</p>
+        <ul class="app-revisions-support-paths">
+          <li><span>Update install log</span> <code>{{ support_paths.update_install_log }}</code></li>
+          <li><span>App error log</span> <code>{{ support_paths.error_log }}</code></li>
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if update_status %}
+      <section class="panel app-update-panel">
+        <div>
+          <h3>App Update</h3>
+          <p>
+            Installed version: {{ update_status.current_version or "unknown" }}
+            {% if update_status.latest_version %}
+              · Latest published package: {{ update_status.latest_version }}
+            {% endif %}
+          </p>
+          {% if not update_status.ok %}
+            <p class="muted">{{ update_status.message }}</p>
+          {% elif update_status.update_available %}
+            {% if update_status.release_date %}
+              <p class="muted">Released {{ update_status.release_date }}</p>
+            {% endif %}
+            {% if update_status.notes %}
+              <p class="preserve-breaks">{{ update_status.notes }}</p>
+            {% endif %}
+            <p class="muted">Download the package for this computer, then open the downloaded package to run the newer version.</p>
+          {% else %}
+            {% if update_status.installed_newer_than_latest %}
+              <p class="muted">This installed copy is newer than the latest published update package.</p>
+            {% else %}
+              <p class="muted">No newer package was found.</p>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% if update_status.ok and update_status.update_available %}
+          <div class="app-update-actions">
+            {% if update_status.current_platform_package %}
+              <form method="post" action="/app-updates/install/{{ update_status.platform }}" data-busy-modal-title="Installing update" data-busy-modal-copy="Downloading the update package and preparing to restart ContactsFreeShare.">
+                <button type="submit" class="contact-card-button contact-card-button-edit">
+                  Install {{ update_status.current_platform_package.label or update_status.platform }} update
+                </button>
+              </form>
+            {% endif %}
+            {% for platform_key, package in update_status.packages.items() %}
+              <a class="contact-card-button contact-card-button-edit" href="/app-updates/download/{{ platform_key }}">
+                Download {{ package.label or platform_key }} update
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <section class="panel edit-log-panel app-revisions-panel">
+      <div class="edit-log-table-header app-revisions-table-header" aria-hidden="true">
+        <div class="edit-log-sticky-cell app-revisions-col-date">Date</div>
+        <div class="edit-log-sticky-cell app-revisions-col-version">Version #</div>
+        <div class="edit-log-sticky-cell app-revisions-col-description">Revision Description</div>
+      </div>
+      <div class="edit-log-list">
+        {% for revision in revisions %}
+          {% set batch_band_color = row_colors.primary if loop.index0 % 2 == 0 else row_colors.secondary %}
+          <section class="edit-log-batch" style="--row-band-color: {{ batch_band_color }}; --row-hover-color: {{ row_colors.highlight }};">
+            <div class="edit-log-row">
+              <div class="edit-log-cell app-revisions-cell-date">{{ revision.date_display }}</div>
+              <div class="edit-log-cell app-revisions-cell-version">{{ revision.version }}</div>
+              <div class="edit-log-cell app-revisions-cell-description preserve-breaks">{{ revision.description }}</div>
+            </div>
+          </section>
+        {% else %}
+          <div class="edit-log-empty">No app revisions have been recorded yet.</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <dialog class="app-modal" id="app-revisions-editor-modal">
+    <form method="post" action="/app-revisions/save" class="app-modal-panel app-revisions-editor-panel" id="app-revisions-editor-form" data-busy-modal-title="Saving to Drive" data-busy-modal-copy="Saving App Revisions locally and syncing them to Google Drive.">
+      <div class="app-modal-header app-revisions-editor-header">
+        <div>
+          <h3 class="app-modal-title">Edit App Revisions</h3>
+          <p class="app-modal-copy">Developer mode. Update the local App Revisions table.</p>
+        </div>
+        <div class="app-modal-actions app-revisions-editor-actions app-revisions-editor-header-actions">
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="app-revisions-add-row">Add Row</button>
+          <button type="button" class="contact-card-button contact-card-button-cancel" id="app-revisions-editor-cancel">Cancel</button>
+          <button type="submit" class="contact-card-button contact-card-button-edit">Save</button>
+        </div>
+      </div>
+      <div class="app-revisions-editor-table-wrap">
+        <div class="app-revisions-editor-head">
+          <div>Date</div>
+          <div>Version #</div>
+          <div>Revision Description</div>
+        </div>
+        <div class="app-revisions-editor-rows" id="app-revisions-editor-rows">
+          <div class="app-revisions-editor-row app-revisions-editor-row-new">
+            <input type="text" name="new_date_display" value="" placeholder="4/20/2026">
+            <input type="text" name="new_version" value="" placeholder="1.0">
+            <textarea name="new_description" rows="3" placeholder="Revision description"></textarea>
+          </div>
+          {% for revision in editor_revisions|default(revisions) %}
+            <div class="app-revisions-editor-row">
+              <input type="text" value="{{ revision.date_display }}" readonly>
+              <input type="text" value="{{ revision.version }}" readonly>
+              <textarea rows="3" readonly>{{ revision.description }}</textarea>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="app-revisions-editor-row-template">
+    <div class="app-revisions-editor-row app-revisions-editor-row-new">
+      <input type="text" name="new_date_display" value="" placeholder="4/20/2026">
+      <input type="text" name="new_version" value="" placeholder="1.0">
+      <textarea name="new_description" rows="3" placeholder="Revision description"></textarea>
+    </div>
+  </template>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const revisionsPage = document.querySelector(".app-revisions-page");
+      const titlePanel = document.querySelector(".app-revisions-page .edit-log-title-panel");
+      const appRevisionsMenuLink = document.getElementById("site-menu-app-revisions-link");
+      const editorModal = document.getElementById("app-revisions-editor-modal");
+      const editorRows = document.getElementById("app-revisions-editor-rows");
+      const editorRowTemplate = document.getElementById("app-revisions-editor-row-template");
+      const addRowButton = document.getElementById("app-revisions-add-row");
+      const cancelButton = document.getElementById("app-revisions-editor-cancel");
+      const temporaryNotice = document.getElementById("app-revisions-temporary-notice");
+      if (!revisionsPage || !titlePanel) return;
+      let appRevisionsMenuHovered = false;
+
+      const syncPanelOffset = () => {
+        revisionsPage.style.setProperty("--edit-log-filter-panel-space", `${titlePanel.offsetHeight}px`);
+      };
+
+      syncPanelOffset();
+      window.addEventListener("resize", syncPanelOffset);
+
+      if (temporaryNotice) {
+        const hideDelay = Number.parseInt(temporaryNotice.dataset.autoHideMs || "0", 10);
+        if (hideDelay > 0) {
+          window.setTimeout(() => {
+            if (temporaryNotice.isConnected) {
+              temporaryNotice.remove();
+            }
+          }, hideDelay);
+        }
+      }
+
+      const addEditorRow = () => {
+        if (!editorRows || !editorRowTemplate) return;
+        const fragment = editorRowTemplate.content.cloneNode(true);
+        editorRows.prepend(fragment);
+      };
+
+      if (addRowButton) {
+        addRowButton.addEventListener("click", () => {
+          addEditorRow();
+        });
+      }
+
+      if (cancelButton && editorModal) {
+        cancelButton.addEventListener("click", () => {
+          editorModal.close();
+        });
+      }
+
+      if (appRevisionsMenuLink) {
+        appRevisionsMenuLink.addEventListener("mouseenter", () => {
+          appRevisionsMenuHovered = true;
+        });
+        appRevisionsMenuLink.addEventListener("mouseleave", () => {
+          appRevisionsMenuHovered = false;
+        });
+      }
+
+      window.addEventListener("keydown", (event) => {
+        if (!appRevisionsMenuHovered) return;
+        if (!event.altKey || !event.metaKey) return;
+        if (event.code !== "KeyE") return;
+        if (!editorModal) return;
+        event.preventDefault();
+        editorModal.showModal();
+      });
+    });
+  </script>
+{% endblock %}
