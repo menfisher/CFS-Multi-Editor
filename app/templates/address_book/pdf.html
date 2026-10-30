@@ -102,24 +102,30 @@
 
       <section class="address-book-pdf-palette address-book-pdf-green-palette">
         <div class="address-book-pdf-palette-title">Typography</div>
-        <label class="form-label" for="address-book-pdf-font-family">Font</label>
-        <select id="address-book-pdf-font-family" name="font_family">
-          {% for font_family in font_families %}
-            <option value="{{ font_family }}" {% if selected_preset.font_family == font_family %}selected{% endif %}>{{ font_family }}</option>
-          {% endfor %}
-        </select>
         <div class="address-book-pdf-two-up">
+          <label class="form-label" for="address-book-pdf-font-family">
+            Font
+            <select id="address-book-pdf-font-family" name="font_family">
+              {% for font_family in font_families %}
+                <option value="{{ font_family }}" {% if selected_preset.font_family == font_family %}selected{% endif %}>{{ font_family }}</option>
+              {% endfor %}
+            </select>
+          </label>
           <label class="form-label" for="address-book-pdf-font-size">
             Size
             <input id="address-book-pdf-font-size" name="base_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.base_font_size_pt }}">
+          </label>
+          <label class="form-label" for="address-book-pdf-title-font-size">
+            Title
+            <input id="address-book-pdf-title-font-size" name="title_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.title_font_size_pt }}">
           </label>
           <label class="form-label" for="address-book-pdf-line-height">
             Line spacing
             <input id="address-book-pdf-line-height" name="line_height" type="number" min="0.5" step="0.01" value="{{ selected_preset.line_height }}">
           </label>
-          <label class="form-label" for="address-book-pdf-title-font-size">
-            Title
-            <input id="address-book-pdf-title-font-size" name="title_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.title_font_size_pt }}">
+          <label class="form-label" for="address-book-pdf-index-font-size">
+            Index
+            <input id="address-book-pdf-index-font-size" name="index_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.index_font_size_pt }}">
           </label>
           <label class="form-label" for="address-book-pdf-toc-font-size">
             TOC
@@ -148,6 +154,26 @@
             <input id="address-book-pdf-margin-bottom" name="margin_bottom_in" type="number" min="0" step="0.01" value="{{ selected_preset.margin_bottom_in }}">
           </label>
         </div>
+      </section>
+
+      <section class="address-book-pdf-palette address-book-pdf-green-palette address-book-pdf-address-options">
+        <div class="address-book-pdf-palette-title">Map Links for Addresses</div>
+        <div class="address-book-pdf-choice-row">
+          <label>
+            <input type="radio" name="address_map_provider" value="google" {% if address_book_settings.address_map_provider != "apple" %}checked{% endif %}>
+            <span>Google Maps</span>
+          </label>
+          <label>
+            <input type="radio" name="address_map_provider" value="apple" {% if address_book_settings.address_map_provider == "apple" %}checked{% endif %}>
+            <span>Apple Maps</span>
+          </label>
+        </div>
+
+        <div class="address-book-pdf-palette-title">GPS Coordinates NOT provided</div>
+        <label class="address-book-pdf-check-row">
+          <input type="checkbox" name="address_italic" value="1" {% if address_book_settings.address_italic %}checked{% endif %}>
+          <span>Italicize address</span>
+        </label>
       </section>
     </aside>
 
@@ -233,25 +259,40 @@
     </section>
 
     <aside class="panel address-book-pdf-sidebar address-book-pdf-sidebar-right">
-      <section class="address-book-pdf-palette address-book-pdf-address-options">
-        <div class="address-book-pdf-palette-title">Map Links for Addresses</div>
-        <div class="address-book-pdf-choice-row">
+      <section class="address-book-pdf-palette address-book-pdf-print-palette address-book-pdf-palette-undivided">
+        <div class="address-book-pdf-palette-title">Print</div>
+        <div class="address-book-pdf-choice-column">
           <label>
-            <input type="radio" name="address_map_provider" value="google" {% if address_book_settings.address_map_provider != "apple" %}checked{% endif %}>
-            <span>Google Maps</span>
+            <input type="radio" name="print_order_mode" value="alphabetical" {% if address_book_settings.print_order_mode != "custom" %}checked{% endif %}>
+            <span>Print Fields/Meetings alphabetically</span>
           </label>
-          <label>
-            <input type="radio" name="address_map_provider" value="apple" {% if address_book_settings.address_map_provider == "apple" %}checked{% endif %}>
-            <span>Apple Maps</span>
-          </label>
+          <div class="address-book-pdf-order-row">
+            <label>
+              <input type="radio" name="print_order_mode" value="custom" {% if address_book_settings.print_order_mode == "custom" %}checked{% endif %}>
+              <span>User defined</span>
+            </label>
+            <button
+              type="button"
+              class="secondary-button address-book-pdf-order-button"
+              data-address-book-pdf-order-open
+            >
+              Print Order
+            </button>
+          </div>
+          <div class="address-book-pdf-order-row">
+            <label>
+              <input type="radio" name="meeting_page_mode" value="one_meeting" {% if address_book_settings.meeting_page_mode != "complete_meetings" %}checked{% endif %}>
+              <span>1 mtg/page</span>
+            </label>
+            <label>
+              <input type="radio" name="meeting_page_mode" value="complete_meetings" {% if address_book_settings.meeting_page_mode == "complete_meetings" %}checked{% endif %}>
+              <span>Complete mtgs/page</span>
+            </label>
+          </div>
         </div>
+      </section>
 
-        <div class="address-book-pdf-palette-title">GPS Coordinates NOT provided</div>
-        <label class="address-book-pdf-check-row">
-          <input type="checkbox" name="address_italic" value="1" {% if address_book_settings.address_italic %}checked{% endif %}>
-          <span>Italicize address</span>
-        </label>
-
+      <section class="address-book-pdf-palette address-book-pdf-green-palette address-book-pdf-address-options">
         <div class="address-book-pdf-palette-title">Address Alignment</div>
         <div class="address-book-pdf-choice-row">
           <label>
@@ -265,35 +306,15 @@
         </div>
       </section>
 
+      <section class="address-book-pdf-palette address-book-pdf-green-palette">
+        <div class="address-book-pdf-palette-title">Field separator</div>
+        <label class="address-book-pdf-check-row">
+          <input type="checkbox" name="field_separator_pages" value="1" {% if address_book_settings.field_separator_pages %}checked{% endif %}>
+          <span>Print page between Fields</span>
+        </label>
+      </section>
+
       <section class="address-book-pdf-palette address-book-pdf-print-palette">
-        <div class="address-book-pdf-palette-title">Print</div>
-        <div class="address-book-pdf-choice-column">
-          <label>
-            <input type="radio" name="print_order_mode" value="alphabetical" {% if address_book_settings.print_order_mode != "custom" %}checked{% endif %}>
-            <span>Print Fields/Meetings alphabetically</span>
-          </label>
-          <label>
-            <input type="radio" name="print_order_mode" value="custom" {% if address_book_settings.print_order_mode == "custom" %}checked{% endif %}>
-            <span>User defined print order</span>
-          </label>
-          <button
-            type="button"
-            class="secondary-button address-book-pdf-order-button"
-            data-address-book-pdf-order-open
-          >
-            Print Order
-          </button>
-        </div>
-        <div class="address-book-pdf-choice-column">
-          <label>
-            <input type="radio" name="meeting_page_mode" value="one_meeting" {% if address_book_settings.meeting_page_mode != "complete_meetings" %}checked{% endif %}>
-            <span>1 mtg/page</span>
-          </label>
-          <label>
-            <input type="radio" name="meeting_page_mode" value="complete_meetings" {% if address_book_settings.meeting_page_mode == "complete_meetings" %}checked{% endif %}>
-            <span>Complete mtgs/page</span>
-          </label>
-        </div>
         <div class="address-book-pdf-cover-choice-block">
           <label class="address-book-pdf-check-row address-book-pdf-cover-include-row">
             <input type="checkbox" data-address-book-pdf-cover-include>
@@ -320,20 +341,35 @@
           <div class="address-book-pdf-cover-summary" data-address-book-pdf-cover-summary hidden></div>
         </div>
         <div class="address-book-pdf-insert-file-block">
-          <label class="address-book-pdf-check-row address-book-pdf-insert-include-row">
-            <input type="checkbox" data-address-book-pdf-insert-include>
-            <span>Add file</span>
-          </label>
-          <button
-            type="button"
-            class="secondary-button address-book-pdf-insert-button"
-            data-address-book-pdf-insert-open
-            hidden
-          >
-            Choose file
-          </button>
+          <div class="address-book-pdf-insert-choice-row">
+            <label class="address-book-pdf-check-row address-book-pdf-insert-include-row">
+              <input type="checkbox" data-address-book-pdf-insert-include>
+              <span>Add list</span>
+            </label>
+            <button
+              type="button"
+              class="secondary-button address-book-pdf-insert-button"
+              data-address-book-pdf-insert-open
+              hidden
+            >
+              Choose file
+            </button>
+            <button
+              type="button"
+              class="contact-notes-info-button address-book-pdf-insert-info-button"
+              data-address-book-pdf-insert-info-open
+              aria-label="About Add list"
+              title="About Add list"
+            >
+              <span aria-hidden="true">i</span>
+            </button>
+          </div>
           <div class="address-book-pdf-insert-summary" data-address-book-pdf-insert-summary hidden></div>
         </div>
+        <label class="address-book-pdf-check-row">
+          <input type="checkbox" name="double_column_index" value="1" {% if address_book_settings.double_column_index %}checked{% endif %}>
+          <span>Double column index</span>
+        </label>
         <button
           type="submit"
           class="primary-save-button"
@@ -526,6 +562,17 @@
       </div>
     </dialog>
   </form>
+  <dialog class="app-modal" id="address-book-insert-info-modal" data-address-book-pdf-insert-info-modal aria-labelledby="address-book-insert-info-title">
+    <form method="dialog" class="app-modal-panel">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="address-book-insert-info-title">Add list</h3>
+        <p class="app-modal-copy">List will print before the Table of Contents</p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="submit" class="contact-card-button contact-card-button-edit" value="close">OK</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="app-modal" id="address-book-delete-layout-modal">
     <form method="dialog" class="app-modal-panel" id="address-book-delete-layout-modal-form">
       <div class="app-modal-header">
@@ -549,5 +596,5 @@
 
 {% block extra_scripts %}
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="/static/js/address_book_pdf.js?v=80"></script>
+  <script src="/static/js/address_book_pdf.js?v=91"></script>
 {% endblock %}

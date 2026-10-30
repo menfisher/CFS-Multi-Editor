@@ -885,6 +885,99 @@ function addressBookPdfPreviewShowsWholeField() {
   return Boolean(fieldSelect?.value) && !meetingSelect?.value;
 }
 
+function addressBookPdfPreviewIsAllFieldsAndMeetings() {
+  const fieldSelect = document.querySelector("[data-address-book-pdf-field-picker]");
+  const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
+  return !String(fieldSelect?.value || "").trim() && !String(meetingSelect?.value || "").trim();
+}
+
+function addressBookPdfPreviewHasMeetingSelected() {
+  const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
+  return Boolean(String(meetingSelect?.value || "").trim());
+}
+
+const ADDRESS_BOOK_PDF_LAST_COVER_KEY = "addressBookPdfLastCoverPicture";
+let addressBookPdfCoverPreviewWasAll = null;
+
+function readAddressBookPdfLastCover() {
+  try {
+    return JSON.parse(window.localStorage.getItem(ADDRESS_BOOK_PDF_LAST_COVER_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function fillAddressBookPdfCoverImageFromLastCover() {
+  const dataInput = document.querySelector("[data-address-book-pdf-cover-image-data]");
+  if (dataInput?.value) return Boolean(dataInput.value);
+  const lastCover = readAddressBookPdfLastCover();
+  if (!lastCover?.data || !dataInput) return false;
+  dataInput.value = lastCover.data;
+  const widthInput = document.querySelector("[data-address-book-pdf-cover-image-width]");
+  const heightInput = document.querySelector("[data-address-book-pdf-cover-image-height]");
+  const labelInput = document.querySelector("[data-address-book-pdf-cover-image-label]");
+  if (widthInput) widthInput.value = lastCover.width ? String(lastCover.width) : "";
+  if (heightInput) heightInput.value = lastCover.height ? String(lastCover.height) : "";
+  if (labelInput) labelInput.value = lastCover.label || "";
+  return true;
+}
+
+function syncAddressBookPdfCoverChoiceVisibility() {
+  const includeCheckbox = document.querySelector("[data-address-book-pdf-cover-include]");
+  const openButton = document.querySelector("[data-address-book-pdf-cover-open]");
+  const dateRow = document.querySelector(".address-book-pdf-cover-date-row");
+  const summaryEl = document.querySelector("[data-address-book-pdf-cover-summary]");
+  if (!includeCheckbox) return;
+  const showControls = Boolean(includeCheckbox.checked);
+  if (openButton) openButton.hidden = !showControls;
+  if (dateRow) dateRow.hidden = !showControls;
+  if (summaryEl && !showControls) summaryEl.hidden = true;
+}
+
+function applyAddressBookPdfCoverIncludeFromCheckbox() {
+  const includeCheckbox = document.querySelector("[data-address-book-pdf-cover-include]");
+  const includeValue = document.querySelector("[data-address-book-pdf-include-cover-value]");
+  if (!includeCheckbox) return;
+  if (includeCheckbox.checked) {
+    fillAddressBookPdfCoverImageFromLastCover();
+  }
+  const imageData = document.querySelector("[data-address-book-pdf-cover-image-data]")?.value || "";
+  if (includeValue) includeValue.value = includeCheckbox.checked && imageData ? "1" : "0";
+  syncAddressBookPdfCoverChoiceVisibility();
+  updateAddressBookPdfCoverCanvas();
+}
+
+function turnOnAddressBookPdfCoverIfImageAvailable() {
+  const includeCheckbox = document.querySelector("[data-address-book-pdf-cover-include]");
+  const includeValue = document.querySelector("[data-address-book-pdf-include-cover-value]");
+  if (!includeCheckbox) return;
+  const hasImage = fillAddressBookPdfCoverImageFromLastCover()
+    || Boolean(document.querySelector("[data-address-book-pdf-cover-image-data]")?.value);
+  if (hasImage) {
+    includeCheckbox.checked = true;
+    if (includeValue) includeValue.value = "1";
+  }
+  syncAddressBookPdfCoverChoiceVisibility();
+}
+
+function turnOffAddressBookPdfCoverForMeetingPreview() {
+  const includeCheckbox = document.querySelector("[data-address-book-pdf-cover-include]");
+  if (!includeCheckbox) return;
+  includeCheckbox.checked = false;
+  syncAddressBookPdfCoverChoiceVisibility();
+}
+
+function syncAddressBookPdfCoverForPreviewPickers() {
+  const isAll = addressBookPdfPreviewIsAllFieldsAndMeetings();
+  const enteringAllPreview = addressBookPdfCoverPreviewWasAll !== true && isAll;
+  addressBookPdfCoverPreviewWasAll = isAll;
+  if (enteringAllPreview) {
+    turnOnAddressBookPdfCoverIfImageAvailable();
+    return;
+  }
+  syncAddressBookPdfCoverChoiceVisibility();
+}
+
 function addressBookPdfMeetingHeading(meetingName, homeLastName = "") {
   const name = String(meetingName || "").trim();
   if (!name) return name;
@@ -1149,9 +1242,10 @@ function updateAddressBookPdfCoverCanvas() {
   const imageEl = document.querySelector("[data-address-book-pdf-cover-canvas-image]");
   const titleEl = document.querySelector("[data-address-book-pdf-cover-canvas-title]");
   const dateEl = document.querySelector("[data-address-book-pdf-cover-canvas-date]");
-  const includeValue = document.querySelector("[data-address-book-pdf-include-cover-value]");
   const imageData = document.querySelector("[data-address-book-pdf-cover-image-data]")?.value || "";
-  const showCover = includeValue?.value === "1" && Boolean(imageData);
+  const includeCheckbox = document.querySelector("[data-address-book-pdf-cover-include]");
+  syncAddressBookPdfCoverChoiceVisibility();
+  const showCover = Boolean(includeCheckbox?.checked) && Boolean(imageData);
 
   if (!page || !canvasPreview || !imageEl || !titleEl || !dateEl) return;
   page.classList.toggle("has-cover-preview", showCover);
@@ -1524,7 +1618,7 @@ function stepAddressBookPdfNumber(input, direction) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function bindRepeatingAddressBookPdfStep(button, input, direction) {
+function bindRepeatingAddressBookPdfStep(button, stepFn) {
   let delayTimer = null;
   let repeatTimer = null;
 
@@ -1554,9 +1648,9 @@ function bindRepeatingAddressBookPdfStep(button, input, direction) {
       button.dataset.activePointerId = String(event.pointerId);
       button.setPointerCapture(event.pointerId);
     }
-    stepAddressBookPdfNumber(input, direction);
+    stepFn();
     delayTimer = window.setTimeout(() => {
-      repeatTimer = window.setInterval(() => stepAddressBookPdfNumber(input, direction), 90);
+      repeatTimer = window.setInterval(stepFn, 90);
     }, 320);
   };
 
@@ -1567,33 +1661,62 @@ function bindRepeatingAddressBookPdfStep(button, input, direction) {
   button.addEventListener("blur", stopRepeating);
 }
 
+function wrapAddressBookPdfStepperControl(control, increaseLabel, decreaseLabel, stepFn) {
+  if (control.closest(".address-book-pdf-number-control")) return;
+  const wrapper = document.createElement("span");
+  wrapper.className = "address-book-pdf-number-control";
+  control.parentNode.insertBefore(wrapper, control);
+  wrapper.appendChild(control);
+
+  const buttons = document.createElement("span");
+  buttons.className = "address-book-pdf-number-buttons";
+
+  const upButton = document.createElement("button");
+  upButton.type = "button";
+  upButton.className = "address-book-pdf-number-step";
+  upButton.setAttribute("aria-label", increaseLabel);
+  upButton.textContent = "▲";
+
+  const downButton = document.createElement("button");
+  downButton.type = "button";
+  downButton.className = "address-book-pdf-number-step";
+  downButton.setAttribute("aria-label", decreaseLabel);
+  downButton.textContent = "▼";
+
+  bindRepeatingAddressBookPdfStep(upButton, () => stepFn(1));
+  bindRepeatingAddressBookPdfStep(downButton, () => stepFn(-1));
+  buttons.append(upButton, downButton);
+  wrapper.appendChild(buttons);
+}
+
+function stepAddressBookPdfSelect(select, direction) {
+  const options = Array.from(select.options).filter((option) => !option.disabled);
+  if (!options.length) return;
+  const currentIndex = options.findIndex((option) => option === select.options[select.selectedIndex]);
+  const nextIndex = currentIndex < 0
+    ? 0
+    : (currentIndex - direction + options.length) % options.length;
+  select.selectedIndex = options[nextIndex].index;
+  select.dispatchEvent(new Event("input", { bubbles: true }));
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function enhanceAddressBookPdfNumberInputs(form) {
   form.querySelectorAll('input[type="number"]').forEach((input) => {
-    if (input.closest(".address-book-pdf-number-control")) return;
-    const wrapper = document.createElement("span");
-    wrapper.className = "address-book-pdf-number-control";
-    input.parentNode.insertBefore(wrapper, input);
-    wrapper.appendChild(input);
-
-    const buttons = document.createElement("span");
-    buttons.className = "address-book-pdf-number-buttons";
-
-    const upButton = document.createElement("button");
-    upButton.type = "button";
-    upButton.className = "address-book-pdf-number-step";
-    upButton.setAttribute("aria-label", `Increase ${input.id || input.name || "value"}`);
-    upButton.textContent = "▲";
-
-    const downButton = document.createElement("button");
-    downButton.type = "button";
-    downButton.className = "address-book-pdf-number-step";
-    downButton.setAttribute("aria-label", `Decrease ${input.id || input.name || "value"}`);
-    downButton.textContent = "▼";
-
-    bindRepeatingAddressBookPdfStep(upButton, input, 1);
-    bindRepeatingAddressBookPdfStep(downButton, input, -1);
-    buttons.append(upButton, downButton);
-    wrapper.appendChild(buttons);
+    wrapAddressBookPdfStepperControl(
+      input,
+      `Increase ${input.id || input.name || "value"}`,
+      `Decrease ${input.id || input.name || "value"}`,
+      (direction) => stepAddressBookPdfNumber(input, direction),
+    );
+  });
+  form.querySelectorAll("#address-book-pdf-font-family").forEach((select) => {
+    wrapAddressBookPdfStepperControl(
+      select,
+      `Previous ${select.id || select.name || "option"}`,
+      `Next ${select.id || select.name || "option"}`,
+      (direction) => stepAddressBookPdfSelect(select, direction),
+    );
   });
 }
 
@@ -1884,7 +2007,7 @@ function installAddressBookPdfCoverModal(form) {
   if (!modal || !openButton || !fileInput || !zoomInput || !preview || !applyButton || !clearButton || !cancelButton || !includeCheckbox || !includeValue || !includeTitleCheckbox || !includeTitleValue || !includeDateCheckbox || !includeDateValue || !titleInput || !titleSizeInput || !titleColorInput || !titleTextInput || !titleFontSizeInput || !titleColorHiddenInput || !titleEffectHiddenInput || !titleXInput || !titleYInput || !titlePreviewWidthInput || !dateInput || !dateSizeInput || !dateColorInput || !dateTextInput || !dateFontSizeInput || !dateColorHiddenInput || !dateXInput || !dateYInput || !titleControls || !dateFields || !savedSelect || !saveCoverButton || !deleteCoverButton || !dataInput || !widthInput || !heightInput || !labelInput || !summaryEl) return;
 
   const savedCoverStorageKey = "addressBookPdfSavedCovers";
-  const lastCoverStorageKey = "addressBookPdfLastCoverPicture";
+  const lastCoverStorageKey = ADDRESS_BOOK_PDF_LAST_COVER_KEY;
   let pendingCover = null;
   let sourceCover = null;
   let cropState = { x: 0.5, y: 0.5, zoom: 1 };
@@ -1911,7 +2034,7 @@ function installAddressBookPdfCoverModal(form) {
       return;
     }
     const label = labelInput.value || "Selected picture";
-    summaryEl.textContent = `${label} — Cover picture for the Address Book.`;
+    summaryEl.textContent = `File name: ${label}`;
     summaryEl.hidden = false;
   };
 
@@ -2410,10 +2533,14 @@ function installAddressBookPdfCoverModal(form) {
     updateCoverSummary();
     modal.close();
   });
-  includeCheckbox.addEventListener("change", () => {
-    includeValue.value = includeCheckbox.checked && (pendingCover?.data || dataInput.value) ? "1" : "0";
-    syncCoverChoiceVisibility();
-    updateAddressBookPdfCoverCanvas();
+  includeCheckbox.addEventListener("input", (event) => {
+    event.stopPropagation();
+    applyAddressBookPdfCoverIncludeFromCheckbox();
+    updateCoverSummary();
+  });
+  includeCheckbox.addEventListener("change", (event) => {
+    event.stopPropagation();
+    applyAddressBookPdfCoverIncludeFromCheckbox();
     updateCoverSummary();
   });
   includeTitleCheckbox.addEventListener("change", () => {
@@ -2619,6 +2746,12 @@ function installAddressBookPdfInsertFileModal(form) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
   }
 
+  const infoButton = document.querySelector("[data-address-book-pdf-insert-info-open]");
+  const infoModal = document.querySelector("[data-address-book-pdf-insert-info-modal]");
+  infoButton?.addEventListener("click", () => {
+    if (typeof infoModal?.showModal === "function") infoModal.showModal();
+  });
+
   const syncInsertChoiceVisibility = () => {
     const wantsInsert = includeCheckbox.checked;
     openButton.hidden = !wantsInsert;
@@ -2673,11 +2806,7 @@ function installAddressBookPdfInsertFileModal(form) {
       return;
     }
     const label = labelInput.value || "Selected file";
-    const fromPdf = /\.pdf$/i.test(label) || mimeInput.value === "application/pdf";
-    const detail = fromPdf
-      ? "PDF page 1 will be inserted before the Table of Contents."
-      : "Picture will be inserted before the Table of Contents.";
-    summaryEl.textContent = `${label} — ${detail}`;
+    summaryEl.textContent = `File name: ${label}`;
     summaryEl.hidden = false;
   };
 
@@ -3151,10 +3280,16 @@ function installAddressBookPdfPickers() {
     fieldSelect.dataset.selectedFieldName = fieldSelect.value;
     meetingSelect.dataset.selectedMeetingName = "";
     refreshMeetings();
+    syncAddressBookPdfCoverForPreviewPickers();
     updateAddressBookPdfPreview();
   });
   meetingSelect.addEventListener("change", () => {
     meetingSelect.dataset.selectedMeetingName = meetingSelect.value;
+    if (addressBookPdfPreviewHasMeetingSelected()) {
+      turnOffAddressBookPdfCoverForMeetingPreview();
+    } else {
+      syncAddressBookPdfCoverForPreviewPickers();
+    }
     renderAddressBookPdfContactPreview();
     updateAddressBookPdfPreview();
   });
@@ -3211,6 +3346,21 @@ window.addEventListener("DOMContentLoaded", () => {
   installAddressBookPdfCoverModal(form);
   installAddressBookPdfInsertFileModal(form);
   installAddressBookPdfDeleteLayoutModal(form);
+  const coverIncludeCheckbox = document.querySelector("[data-address-book-pdf-cover-include]");
+  coverIncludeCheckbox?.addEventListener("click", (event) => event.stopPropagation());
+  coverIncludeCheckbox?.addEventListener("input", (event) => {
+    event.stopPropagation();
+    applyAddressBookPdfCoverIncludeFromCheckbox();
+  });
+  coverIncludeCheckbox?.addEventListener("change", (event) => {
+    event.stopPropagation();
+    applyAddressBookPdfCoverIncludeFromCheckbox();
+  });
+  if (addressBookPdfPreviewHasMeetingSelected()) {
+    turnOffAddressBookPdfCoverForMeetingPreview();
+  } else {
+    syncAddressBookPdfCoverForPreviewPickers();
+  }
   updateAddressBookPdfPreview();
 
   form.addEventListener("input", updateAddressBookPdfPreview);

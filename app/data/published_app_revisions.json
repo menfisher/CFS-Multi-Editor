@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.242",
+      "version": "1.243",
+      "date_display": "10/29/2026",
+      "description": "Address Book print adds field separator pages with a double margin frame, a double-column index option, Index font size, and leader dots that run to the page number. Meeting-page 1/2/3 marks are gone. Cover preview unchecks when a meeting is chosen and shows the cover if you click Cover picture. Deleted contacts move to Field Deleted and the current-year Meeting. Google keeps Meeting home/Elder, Meets in different state, and Do not Print."
+    },
+    {
       "date_display": "10/28/2026",
+      "version": "1.242",
       "description": "Add Field lists at the end of a Field, with organize and a Field-list-only print-new-page option. MeetingData italics, line spacing, and title/TOC font sizes. Save Layout no longer freezes."
     },
     {

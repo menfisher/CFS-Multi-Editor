@@ -44,6 +44,44 @@
   overflow-y: auto;
 }
 
+.address-book-pdf-sidebar-left {
+  gap: 6px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-palette {
+  gap: 4px;
+  padding-bottom: 8px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-green-palette,
+.address-book-pdf-sidebar-left .address-book-pdf-picker-palette {
+  padding: 8px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-two-up {
+  gap: 4px 8px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-palette-title {
+  font-size: 0.74rem;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-choice-row,
+.address-book-pdf-sidebar-left .address-book-pdf-check-row {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-number-buttons {
+  right: 6px;
+  width: 18px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-number-step {
+  width: 18px;
+  height: 13px;
+}
+
 .address-book-pdf-palette {
   display: grid;
   gap: 6px;
@@ -118,6 +156,35 @@
 .address-book-pdf-page input[type="number"] {
   appearance: textfield;
   padding-right: 44px;
+}
+
+.address-book-pdf-sidebar-left input:not([type="radio"]):not([type="checkbox"]),
+.address-book-pdf-sidebar-left select {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 0.82rem;
+}
+
+.address-book-pdf-sidebar-left input[type="number"] {
+  padding-right: 36px;
+}
+
+.address-book-pdf-sidebar-left .address-book-pdf-number-control input[type="number"],
+.address-book-pdf-sidebar-left .address-book-pdf-number-control select {
+  box-sizing: border-box;
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 36px 2px 8px;
+}
+
+.address-book-pdf-number-control select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #fff;
+}
+
+.address-book-pdf-sidebar-left .form-label {
+  font-size: 0.72rem;
 }
 
 .address-book-pdf-page input[type="number"]::-webkit-outer-spin-button,
@@ -593,9 +660,44 @@
   font-size: 0.82rem;
 }
 
+.address-book-pdf-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.address-book-pdf-order-row label {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .address-book-pdf-choice-column .address-book-pdf-order-button {
-  justify-self: start;
-  margin-left: 28px;
+  flex: 0 0 auto;
+  min-height: 22px;
+  height: 22px;
+  margin-left: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.address-book-pdf-palette-undivided {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.address-book-pdf-green-palette .address-book-pdf-choice-row,
+.address-book-pdf-green-palette .address-book-pdf-check-row,
+.address-book-pdf-sidebar-left .address-book-pdf-green-palette .address-book-pdf-choice-row,
+.address-book-pdf-sidebar-left .address-book-pdf-green-palette .address-book-pdf-check-row {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .address-book-pdf-order-button[hidden] {
@@ -658,6 +760,38 @@
   border: 1px solid rgba(31, 52, 55, 0.14);
   border-radius: 8px;
   background: #c8f0cb;
+}
+
+.address-book-pdf-insert-choice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.address-book-pdf-insert-choice-row .address-book-pdf-insert-include-row {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.address-book-pdf-insert-choice-row .address-book-pdf-insert-button {
+  flex: 0 0 auto;
+  min-height: 22px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.address-book-pdf-insert-choice-row .address-book-pdf-insert-info-button {
+  margin-left: auto;
+  min-height: 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
 }
 
 .address-book-pdf-insert-button[hidden],

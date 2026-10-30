@@ -69,6 +69,8 @@ ADDRESS_BOOK_SETTING_KEYS = (
     "print_order_mode",
     "print_order_json",
     "meeting_page_mode",
+    "field_separator_pages",
+    "double_column_index",
     "selected_field_name",
     "selected_meeting_name",
     "selected_contact_id",
@@ -161,6 +163,8 @@ def _default_address_book_settings() -> dict[str, Any]:
         "print_order_mode": "alphabetical",
         "print_order_json": "",
         "meeting_page_mode": "one_meeting",
+        "field_separator_pages": 0,
+        "double_column_index": 0,
         "selected_field_name": "",
         "selected_meeting_name": "",
         "selected_contact_id": 0,
@@ -220,6 +224,8 @@ def _normalize_address_book_settings_values(values: dict[str, Any] | None, fallb
         "print_order_mode": _clean(_setting_value(source, fallback_values, "print_order_mode")).lower(),
         "print_order_json": _clean(_setting_value(source, fallback_values, "print_order_json")),
         "meeting_page_mode": _clean(_setting_value(source, fallback_values, "meeting_page_mode")).lower(),
+        "field_separator_pages": _setting_flag(source, fallback_values, "field_separator_pages"),
+        "double_column_index": _setting_flag(source, fallback_values, "double_column_index"),
         "selected_field_name": _clean(_setting_value(source, fallback_values, "selected_field_name")),
         "selected_meeting_name": _clean(_setting_value(source, fallback_values, "selected_meeting_name")),
         "selected_contact_id": _coerce_int(_setting_value(source, fallback_values, "selected_contact_id"), fallback_values["selected_contact_id"], 0, 10_000_000),
@@ -342,6 +348,20 @@ def ensure_address_book_settings() -> None:
                 """
                 ALTER TABLE address_book_settings
                 ADD COLUMN meeting_page_mode TEXT NOT NULL DEFAULT 'one_meeting'
+                """
+            )
+        if "field_separator_pages" not in settings_columns:
+            conn.execute(
+                """
+                ALTER TABLE address_book_settings
+                ADD COLUMN field_separator_pages INTEGER NOT NULL DEFAULT 0
+                """
+            )
+        if "double_column_index" not in settings_columns:
+            conn.execute(
+                """
+                ALTER TABLE address_book_settings
+                ADD COLUMN double_column_index INTEGER NOT NULL DEFAULT 0
                 """
             )
         conn.execute(
@@ -2602,6 +2622,8 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
               print_order_mode = ?,
               print_order_json = ?,
               meeting_page_mode = ?,
+              field_separator_pages = ?,
+              double_column_index = ?,
               updated_at = ?
             WHERE id = 1
             """,
@@ -2644,6 +2666,8 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
                 normalized["print_order_mode"],
                 normalized["print_order_json"],
                 normalized["meeting_page_mode"],
+                normalized["field_separator_pages"],
+                normalized["double_column_index"],
                 _now_text(),
             ),
         )
@@ -4695,6 +4719,8 @@ FIELD_LIST_SHARED_SETTING_KEYS = (
     "print_order_mode",
     "print_order_json",
     "meeting_page_mode",
+    "field_separator_pages",
+    "double_column_index",
 )
 
 

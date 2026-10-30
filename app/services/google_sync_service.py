@@ -129,6 +129,7 @@ BOOK_LAYOUT_SETTING_COLUMNS = [
     "base_font_size_pt",
     "title_font_size_pt",
     "toc_font_size_pt",
+    "index_font_size_pt",
     "line_height",
     "meeting_table_column_count",
     "meeting_table_column_gap_px",
@@ -262,6 +263,7 @@ SYNC_NOTICE_MESSAGES = {
     "field_list_saved": "Field List template was saved locally and queued for the next Drive upload.",
     "address_book_settings_saved": "Field List settings were saved locally and queued for the next Drive upload.",
     "address_book_pdf_uploaded": "Address Book PDF was saved to Google Drive.",
+    "address_book_pdf_saving_to_drive": "Address Book PDF is ready to preview. Saving a copy to Google Drive now.",
     "address_book_pdf_created": "Address Book PDF was created for preview. Save it to this computer or print it from the preview.",
     "address_book_pdf_failed": "Address Book PDF export failed.",
     "address_book_pdf_preview_drive_failed": "Address Book PDF was created for preview, but Drive upload failed.",
@@ -760,7 +762,12 @@ def _contact_qualifies_for_shared_group_label(contact: dict) -> bool:
         for part in str(contact.get("meetings_text") or "").replace(":::", "\n").replace(";", "\n").splitlines()
         if part.strip()
     }
-    return "deleted" not in meetings
+    fields = {
+        part.strip().lower()
+        for part in str(contact.get("fields_text") or "").replace(":::", "\n").replace(";", "\n").splitlines()
+        if part.strip()
+    }
+    return "deleted" not in meetings and "deleted" not in fields
 
 
 def queue_uploaded_contacts_for_organization_rewrite() -> dict:
@@ -7549,6 +7556,7 @@ def _coerce_book_layout_preset_payload(raw_preset: object) -> dict | None:
         "base_font_size_pt",
         "title_font_size_pt",
         "toc_font_size_pt",
+        "index_font_size_pt",
         "line_height",
         "screen_preview_scale",
     ):
@@ -10066,6 +10074,29 @@ GOOGLE_RELATION_TYPE_ALIASES = {
 
 
 CFS_RELATION_TYPES_FIELD = "CFS Relation Types"
+CFS_MTG_HOME_ELDER_FIELD = "1 - Meeting home, 2 - Elder"
+CFS_MEETS_IN_STATE_FIELD = "Meets in different state"
+CFS_DO_NOT_PRINT_FIELD = "Do not Print"
+_CFS_MTG_HOME_ELDER_FIELD_KEYS = frozenset(
+    {
+        CFS_MTG_HOME_ELDER_FIELD.casefold(),
+        "meeting/home/elder",
+        "mtg home-1/elder-2",
+    }
+)
+_CFS_MEETS_IN_STATE_FIELD_KEYS = frozenset(
+    {
+        CFS_MEETS_IN_STATE_FIELD.casefold(),
+        "meets_in_state",
+    }
+)
+_CFS_DO_NOT_PRINT_FIELD_KEYS = frozenset(
+    {
+        CFS_DO_NOT_PRINT_FIELD.casefold(),
+        "do not print",
+        "do_not_print",
+    }
+)
 _LOSSY_GOOGLE_RELATION_TYPES = {"", "other", "spouse"}
 _CFS_SPOUSE_LABELS = {"husband", "wife"}
 
@@ -10085,6 +10116,53 @@ def _google_relation_type(value: str | None) -> str:
 
 def _is_cfs_relation_types_field(value: object) -> bool:
     return _clean(value).casefold() == CFS_RELATION_TYPES_FIELD.casefold()
+
+
+def _is_mtg_home_elder_field(value: object) -> bool:
+    return _clean(value).casefold() in _CFS_MTG_HOME_ELDER_FIELD_KEYS
+
+
+def _is_meets_in_state_field(value: object) -> bool:
+    return _clean(value).casefold() in _CFS_MEETS_IN_STATE_FIELD_KEYS
+
+
+def _is_do_not_print_field(value: object) -> bool:
+    return _clean(value).casefold() in _CFS_DO_NOT_PRINT_FIELD_KEYS
+
+
+def _is_cfs_hidden_user_defined_field(value: object) -> bool:
+    return (
+        _is_cfs_relation_types_field(value)
+        or _is_mtg_home_elder_field(value)
+        or _is_meets_in_state_field(value)
+        or _is_do_not_print_field(value)
+    )
+
+
+def _user_defined_field_value(user_defined, matcher) -> str:
+    for item in user_defined or []:
+        if not isinstance(item, dict):
+            continue
+        if matcher(item.get("key") or item.get("field_type")):
+            return _clean(item.get("value") or item.get("field_value"))
+    return ""
+
+
+def _mtg_home_elder_flag_from_user_defined(user_defined) -> str:
+    """Read the 1/2 code from the Google custom-field VALUE, never from the label."""
+    return _user_defined_field_value(user_defined, _is_mtg_home_elder_field)
+
+
+def _meets_in_state_from_user_defined(user_defined) -> str:
+    return _user_defined_field_value(user_defined, _is_meets_in_state_field)
+
+
+def _do_not_print_flag_from_value(value: object) -> int:
+    return 1 if _clean(value).lower() in {"1", "true", "yes", "on"} else 0
+
+
+def _do_not_print_from_user_defined(user_defined) -> int:
+    return _do_not_print_flag_from_value(_user_defined_field_value(user_defined, _is_do_not_print_field))
 
 
 def _encode_cfs_relation_types(relationships: list) -> str:
@@ -10391,7 +10469,7 @@ def _contact_person_payload(contact: dict) -> dict:
     for item in contact.get("custom_fields", []):
         field_key = _clean(item.get("field_type"))
         field_value = _clean(item.get("field_value"))
-        if _is_cfs_relation_types_field(field_key):
+        if _is_cfs_hidden_user_defined_field(field_key):
             continue
         if _is_coordinate_custom_field_key(field_key) and _normalize_coordinates(field_value):
             continue
@@ -10399,6 +10477,18 @@ def _contact_person_payload(contact: dict) -> dict:
     encoded_relation_types = _encode_cfs_relation_types(contact.get("relationships"))
     if encoded_relation_types:
         _append_custom_field(CFS_RELATION_TYPES_FIELD, encoded_relation_types)
+    mtg_home_elder_flag = _clean(contact.get("mtg_home_elder_flag")) or _mtg_home_elder_flag_from_user_defined(
+        contact.get("custom_fields")
+    )
+    if mtg_home_elder_flag:
+        _append_custom_field(CFS_MTG_HOME_ELDER_FIELD, mtg_home_elder_flag)
+    meets_in_state = _clean(contact.get("meets_in_state")) or _meets_in_state_from_user_defined(
+        contact.get("custom_fields")
+    )
+    if meets_in_state:
+        _append_custom_field(CFS_MEETS_IN_STATE_FIELD, meets_in_state)
+    if _do_not_print_flag_from_value(contact.get("do_not_print")):
+        _append_custom_field(CFS_DO_NOT_PRINT_FIELD, "1")
     if custom_fields:
         payload["userDefined"] = custom_fields
 
@@ -11204,6 +11294,9 @@ def _google_person_import_fields(person: dict, groups_map: dict[str, str]) -> di
         "user_defined": user_defined,
         "user_defined_coordinates": user_defined_coordinates,
         "url_coordinate_candidates": url_coordinate_candidates,
+        "mtg_home_elder_flag": _mtg_home_elder_flag_from_user_defined(user_defined),
+        "meets_in_state": _meets_in_state_from_user_defined(user_defined),
+        "do_not_print": _do_not_print_from_user_defined(user_defined),
     }
 
 
@@ -11333,7 +11426,7 @@ def _insert_contact_child_rows_from_google(
     for index, item in enumerate(fields.get("user_defined") or [], start=1):
         field_type = _clean(item.get("key"))
         field_value = _clean(item.get("value"))
-        if _is_cfs_relation_types_field(field_type):
+        if _is_cfs_hidden_user_defined_field(field_type):
             continue
         if _is_coordinate_custom_field_key(field_type) and _normalize_coordinates(field_value):
             continue
@@ -11364,8 +11457,10 @@ def _insert_contact_from_google_person(conn, fields: dict, *, status: str = "imp
           photo,
           birthday,
           notes,
-          mtg_home_elder_flag
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          mtg_home_elder_flag,
+          meets_in_state,
+          do_not_print
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "",
@@ -11384,7 +11479,12 @@ def _insert_contact_from_google_person(conn, fields: dict, *, status: str = "imp
             fields["photo"],
             fields["birthday"],
             fields["notes"],
-            "",
+            _clean(fields.get("mtg_home_elder_flag"))
+            or _mtg_home_elder_flag_from_user_defined(fields.get("user_defined")),
+            _clean(fields.get("meets_in_state"))
+            or _meets_in_state_from_user_defined(fields.get("user_defined")),
+            _do_not_print_flag_from_value(fields.get("do_not_print"))
+            or _do_not_print_from_user_defined(fields.get("user_defined")),
         ),
     )
     contact_id = int(cursor.lastrowid)
@@ -11394,13 +11494,30 @@ def _insert_contact_from_google_person(conn, fields: dict, *, status: str = "imp
 
 def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> None:
     existing = conn.execute(
-        "SELECT photo, photo_drive_file_id FROM contacts WHERE id = ?",
+        """
+        SELECT photo, photo_drive_file_id, mtg_home_elder_flag, meets_in_state, do_not_print
+        FROM contacts
+        WHERE id = ?
+        """,
         (int(contact_id),),
     ).fetchone()
     local_relationships = _load_contact_children(conn, "relationships", contact_id)
     photo = fields["photo"]
-    if existing and _remote_has_custom_drive_photo(dict(existing)):
-        photo = _clean_contact_photo_path(existing["photo"])
+    existing_row = dict(existing) if existing else {}
+    if existing_row and _remote_has_custom_drive_photo(existing_row):
+        photo = _clean_contact_photo_path(existing_row["photo"])
+    incoming_mtg = _clean(fields.get("mtg_home_elder_flag")) or _mtg_home_elder_flag_from_user_defined(
+        fields.get("user_defined")
+    )
+    mtg_home_elder_flag = _clean(existing_row.get("mtg_home_elder_flag")) or incoming_mtg
+    incoming_meets = _clean(fields.get("meets_in_state")) or _meets_in_state_from_user_defined(
+        fields.get("user_defined")
+    )
+    meets_in_state = _clean(existing_row.get("meets_in_state")) or incoming_meets
+    incoming_do_not_print = _do_not_print_flag_from_value(fields.get("do_not_print")) or _do_not_print_from_user_defined(
+        fields.get("user_defined")
+    )
+    do_not_print = _do_not_print_flag_from_value(existing_row.get("do_not_print")) or incoming_do_not_print
     conn.execute(
         """
         UPDATE contacts
@@ -11416,7 +11533,10 @@ def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> N
           given_name = ?,
           photo = ?,
           birthday = ?,
-          notes = ?
+          notes = ?,
+          mtg_home_elder_flag = ?,
+          meets_in_state = ?,
+          do_not_print = ?
         WHERE id = ?
         """,
         (
@@ -11435,6 +11555,9 @@ def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> N
             photo,
             fields["birthday"],
             fields["notes"],
+            mtg_home_elder_flag,
+            meets_in_state,
+            do_not_print,
             contact_id,
         ),
     )
@@ -11889,8 +12012,10 @@ def _insert_imported_google_person(conn, person: dict, groups_map: dict[str, str
           photo,
           birthday,
           notes,
-          mtg_home_elder_flag
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          mtg_home_elder_flag,
+          meets_in_state,
+          do_not_print
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "",
@@ -11906,7 +12031,9 @@ def _insert_imported_google_person(conn, person: dict, groups_map: dict[str, str
             _extract_photo_url(person),
             birthday_text,
             notes,
-            "",
+            _mtg_home_elder_flag_from_user_defined(user_defined),
+            _meets_in_state_from_user_defined(user_defined),
+            _do_not_print_from_user_defined(user_defined),
         ),
     )
     contact_id = int(cursor.lastrowid)
@@ -12003,7 +12130,7 @@ def _insert_imported_google_person(conn, person: dict, groups_map: dict[str, str
     for index, item in enumerate(user_defined, start=1):
         field_type = _clean(item.get("key"))
         field_value = _clean(item.get("value"))
-        if _is_cfs_relation_types_field(field_type):
+        if _is_cfs_hidden_user_defined_field(field_type):
             continue
         if _is_coordinate_custom_field_key(field_type) and _normalize_coordinates(field_value):
             continue

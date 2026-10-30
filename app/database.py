@@ -296,6 +296,13 @@ def _ensure_book_layout_preset_columns(conn: sqlite3.Connection) -> None:
             ADD COLUMN toc_font_size_pt REAL NOT NULL DEFAULT 10.0
             """
         )
+    if "index_font_size_pt" not in columns:
+        conn.execute(
+            """
+            ALTER TABLE book_layout_presets
+            ADD COLUMN index_font_size_pt REAL NOT NULL DEFAULT 0
+            """
+        )
 
 
 def _ensure_google_sync_columns(conn: sqlite3.Connection) -> None:
@@ -734,6 +741,9 @@ def _ensure_field_list_tables(conn: sqlite3.Connection) -> None:
           manual_palette_items INTEGER NOT NULL DEFAULT 0,
           print_order_mode TEXT NOT NULL DEFAULT 'alphabetical',
           print_order_json TEXT NOT NULL DEFAULT '',
+          meeting_page_mode TEXT NOT NULL DEFAULT 'one_meeting',
+          field_separator_pages INTEGER NOT NULL DEFAULT 0,
+          double_column_index INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -773,6 +783,9 @@ def _ensure_field_list_tables(conn: sqlite3.Connection) -> None:
         ("manual_palette_items", "INTEGER", "0"),
         ("print_order_mode", "TEXT", "'alphabetical'"),
         ("print_order_json", "TEXT", "''"),
+        ("meeting_page_mode", "TEXT", "'one_meeting'"),
+        ("field_separator_pages", "INTEGER", "0"),
+        ("double_column_index", "INTEGER", "0"),
     ]:
         if settings_columns and column_name not in settings_columns:
             conn.execute(

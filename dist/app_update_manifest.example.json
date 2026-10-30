@@ -1,22 +1,22 @@
 {
   "format": "contactsfreeshare.app_update.v1",
-  "latest_version": "1.242",
+  "latest_version": "1.243",
   "edition": "multi-editor",
-  "release_date": "2026-10-28",
+  "release_date": "2026-10-29",
   "notes": "Describe what changed in this release.",
   "packages": {
     "mac": {
       "label": "Mac",
-      "filename": "ContactsFreeShare-MultiEditor-1.242-mac.zip",
-      "download_url": "ContactsFreeShare-MultiEditor-1.242-mac.zip",
+      "filename": "ContactsFreeShare-MultiEditor-1.243-mac.zip",
+      "download_url": "ContactsFreeShare-MultiEditor-1.243-mac.zip",
       "file_id": "",
       "mime_type": "application/zip"
     }
 ,
     "windows": {
       "label": "Windows",
-      "filename": "ContactsFreeShare-MultiEditor-1.242-windows.zip",
-      "download_url": "ContactsFreeShare-MultiEditor-1.242-windows.zip",
+      "filename": "ContactsFreeShare-MultiEditor-1.243-windows.zip",
+      "download_url": "ContactsFreeShare-MultiEditor-1.243-windows.zip",
       "file_id": "",
       "mime_type": "application/zip"
     }

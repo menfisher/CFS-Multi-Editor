@@ -29,6 +29,9 @@ class GoogleSyncDriveExportReconcileTests(unittest.TestCase):
               photo_drive_file_id TEXT NOT NULL DEFAULT '',
               birthday TEXT NOT NULL DEFAULT '',
               notes TEXT NOT NULL DEFAULT '',
+              mtg_home_elder_flag TEXT NOT NULL DEFAULT '',
+              meets_in_state TEXT NOT NULL DEFAULT '',
+              do_not_print INTEGER NOT NULL DEFAULT 0,
               shared_drive_bootstrapped INTEGER NOT NULL DEFAULT 1,
               shared_drive_needs_export INTEGER NOT NULL DEFAULT 1
             );

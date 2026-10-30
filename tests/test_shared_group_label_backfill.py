@@ -84,6 +84,11 @@ class SharedGroupLabelBackfillTests(unittest.TestCase):
             meetings_text="Deleted",
             google_contact_id="people/deleted",
         )
+        self._insert_contact(
+            fields_text="Deleted",
+            meetings_text="2026",
+            google_contact_id="people/deleted-field",
+        )
 
         result = queue_assigned_contacts_for_shared_group_label()
         self.assertTrue(result["sync_enabled"])

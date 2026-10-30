@@ -1292,18 +1292,25 @@ def get_contact_detail(contact_id: int) -> dict | None:
     return contact
 
 
+def _assignment_tokens(value: object) -> set[str]:
+    return {item.strip().lower() for item in _split_text_list(value) if str(item).strip()}
+
+
+def is_deleted_assignment(fields_text: object = "", meetings_text: object = "") -> bool:
+    return "deleted" in _assignment_tokens(fields_text) or "deleted" in _assignment_tokens(meetings_text)
+
+
 def is_deleted_contact(contact: dict | None) -> bool:
     if not contact:
         return False
-    meetings = {item.strip().lower() for item in _split_text_list(contact.get("meetings_text"))}
-    return "deleted" in meetings
+    return is_deleted_assignment(contact.get("fields_text"), contact.get("meetings_text"))
 
 
 def is_moved_contact(contact: dict | None) -> bool:
     if not contact:
         return False
-    meetings = {item.strip().lower() for item in _split_text_list(contact.get("meetings_text"))}
-    return "moved" in meetings and "deleted" not in meetings
+    meetings = _assignment_tokens(contact.get("meetings_text"))
+    return "moved" in meetings and not is_deleted_contact(contact)
 
 
 def _build_contact_update_payload(contact: dict) -> dict:
@@ -1359,8 +1366,8 @@ def delete_contact(contact_id: int) -> bool:
     if not contact:
         return False
 
-    deleted_field_value = str(datetime.now().year)
-    deleted_meeting_value = "Deleted"
+    deleted_field_value = "Deleted"
+    deleted_meeting_value = str(datetime.now().year)
     updated = update_contact(
         contact_id,
         {
@@ -1456,7 +1463,9 @@ def move_contacts(contact_ids: list[int], field_value: str, meeting_value: str) 
             continue
 
         next_status = str(detail.get("status") or "")
-        if meeting_value.strip().lower() == "deleted":
+        next_field = str(field_value or "").strip()
+        next_meeting = str(meeting_value or "").strip()
+        if is_deleted_assignment(next_field, next_meeting):
             next_status = "deleted"
         elif next_status.strip().lower() == "deleted":
             next_status = "updated"
@@ -1466,15 +1475,15 @@ def move_contacts(contact_ids: list[int], field_value: str, meeting_value: str) 
             {
                 **_build_contact_update_payload(detail),
                 "status": next_status,
-                "fields_text": str(field_value or "").strip(),
-                "meetings_text": str(meeting_value or "").strip(),
+                "fields_text": next_field,
+                "meetings_text": next_meeting,
                 "group_membership": (
-                    build_contact_group_membership(str(field_value or ""), str(meeting_value or ""))
+                    build_contact_group_membership(next_field, next_meeting)
                 ),
                 "sync_action": (
                     "Restore"
-                    if str(detail.get("meetings_text") or "").strip().lower() == "deleted"
-                    and str(meeting_value or "").strip().lower() != "deleted"
+                    if is_deleted_assignment(detail.get("fields_text"), detail.get("meetings_text"))
+                    and not is_deleted_assignment(next_field, next_meeting)
                     else "Move"
                 ),
             },
@@ -2077,15 +2086,17 @@ def update_contact(contact_id: int, payload: dict, *, queue_google_sync: bool = 
     shared_drive_sync_fields = _next_shared_drive_sync_fields(existing_contact)
     editor_initials = get_current_editor_initials()
     google_contact_id = core_fields["google_contact_id"]
-    existing_meetings = {item.strip().lower() for item in _split_text_list(existing_contact.get("meetings_text"))}
-    next_meetings = {item.strip().lower() for item in _split_text_list(core_fields["meetings_text"])}
+    existing_deleted = is_deleted_assignment(
+        existing_contact.get("fields_text"), existing_contact.get("meetings_text")
+    )
+    next_deleted = is_deleted_assignment(core_fields["fields_text"], core_fields["meetings_text"])
     action_hint = _clean_text(payload.get("sync_action"))
     if not action_hint:
         if not existing_contact.get("google_contact_id"):
             action_hint = "Create"
-        elif "deleted" in existing_meetings and "deleted" not in next_meetings:
+        elif existing_deleted and not next_deleted:
             action_hint = "Restore"
-        elif "deleted" in next_meetings:
+        elif next_deleted:
             action_hint = "Delete"
         elif (
             _clean_text(existing_contact.get("fields_text")) != core_fields["fields_text"] or

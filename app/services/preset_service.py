@@ -74,6 +74,7 @@ def _default_preset_payload() -> dict:
         "base_font_size_pt": DEFAULT_BOOK_PRESET["base_font_size_pt"],
         "title_font_size_pt": DEFAULT_BOOK_PRESET["title_font_size_pt"],
         "toc_font_size_pt": DEFAULT_BOOK_PRESET["toc_font_size_pt"],
+        "index_font_size_pt": DEFAULT_BOOK_PRESET["index_font_size_pt"],
         "line_height": DEFAULT_BOOK_PRESET["line_height"],
         "meeting_table_column_count": DEFAULT_BOOK_PRESET["meeting_table_column_count"],
         "meeting_table_column_gap_px": DEFAULT_BOOK_PRESET["meeting_table_column_gap_px"],
@@ -106,6 +107,13 @@ def _normalize_preset_row(row) -> dict:
     preset.setdefault("shared_contacts_group_name", DEFAULT_SHARED_CONTACTS_GROUP_NAME)
     preset.setdefault("title_font_size_pt", DEFAULT_BOOK_PRESET["title_font_size_pt"])
     preset.setdefault("toc_font_size_pt", DEFAULT_BOOK_PRESET["toc_font_size_pt"])
+    preset.setdefault("index_font_size_pt", DEFAULT_BOOK_PRESET["index_font_size_pt"])
+    try:
+        index_font_size = float(preset.get("index_font_size_pt") or 0)
+    except (TypeError, ValueError):
+        index_font_size = 0.0
+    if index_font_size <= 0:
+        preset["index_font_size_pt"] = preset.get("toc_font_size_pt") or DEFAULT_BOOK_PRESET["index_font_size_pt"]
     preset["metrics"] = _metrics_for_preset(preset)
     return preset
 
@@ -229,6 +237,20 @@ def save_book_layout_preset(preset_id: int | None, values: dict) -> int:
         )
     else:
         toc_font_size_pt = max(1.0, _coerce_float(toc_font_raw, DEFAULT_BOOK_PRESET["toc_font_size_pt"]))
+    index_font_raw = values.get("index_font_size_pt")
+    if index_font_raw is None or str(index_font_raw).strip() == "":
+        index_font_size_pt = max(
+            1.0,
+            _coerce_float(
+                (existing_preset or {}).get("index_font_size_pt"),
+                _coerce_float(
+                    (existing_preset or {}).get("toc_font_size_pt"),
+                    DEFAULT_BOOK_PRESET["index_font_size_pt"],
+                ),
+            ),
+        )
+    else:
+        index_font_size_pt = max(1.0, _coerce_float(index_font_raw, DEFAULT_BOOK_PRESET["index_font_size_pt"]))
     line_height = max(0.5, _coerce_float(values.get("line_height"), 1.2))
     column_count = max(8, _coerce_int(values.get("meeting_table_column_count"), 28))
     column_gap_px = max(0, _coerce_int(values.get("meeting_table_column_gap_px"), 6))
@@ -262,6 +284,7 @@ def save_book_layout_preset(preset_id: int | None, values: dict) -> int:
             base_font_size_pt,
             title_font_size_pt,
             toc_font_size_pt,
+            index_font_size_pt,
             line_height,
             column_count,
             column_gap_px,
@@ -293,6 +316,7 @@ def save_book_layout_preset(preset_id: int | None, values: dict) -> int:
               base_font_size_pt = ?,
               title_font_size_pt = ?,
               toc_font_size_pt = ?,
+              index_font_size_pt = ?,
               line_height = ?,
               meeting_table_column_count = ?,
               meeting_table_column_gap_px = ?,
@@ -354,6 +378,7 @@ def save_book_layout_preset(preset_id: int | None, values: dict) -> int:
                   base_font_size_pt,
                   title_font_size_pt,
                   toc_font_size_pt,
+                  index_font_size_pt,
                   line_height,
                   meeting_table_column_count,
                   meeting_table_column_gap_px,
@@ -368,7 +393,7 @@ def save_book_layout_preset(preset_id: int | None, values: dict) -> int:
                   contacts_highlight_row_color,
                   shared_contacts_group_name,
                   is_default
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 params,
             )

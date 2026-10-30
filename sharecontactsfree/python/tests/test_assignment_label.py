@@ -9,6 +9,7 @@ from app.people_recipient import (
     prepare_contact_person,
     sanitize_contact_for_create,
 )
+from app.services.contact_hash import build_update_payload, compute_contact_hash
 
 
 class AssignmentLabelTests(unittest.TestCase):
@@ -95,6 +96,42 @@ class AssignmentLabelTests(unittest.TestCase):
             }
         )
         self.assertEqual(clean["organizations"][0]["department"], "Youth")
+
+    def test_update_payload_clears_copied_department_without_changing_hash(self) -> None:
+        copied = {
+            "organizations": [
+                {
+                    "title": "MS S & AL Coast, New Orleans",
+                    "department": "MS S & AL Coast, New Orleans",
+                    "name": "Diamondhead (GOODWIN)",
+                }
+            ]
+        }
+        already_clean = {
+            "organizations": [
+                {
+                    "title": "MS S & AL Coast, New Orleans",
+                    "name": "Diamondhead (GOODWIN)",
+                }
+            ]
+        }
+        payload = build_update_payload(copied)
+        organization = payload["organizations"][0]
+        self.assertEqual(organization["title"], "MS S & AL Coast, New Orleans")
+        self.assertEqual(organization["name"], "Diamondhead (GOODWIN)")
+        self.assertEqual(organization["department"], "")
+        self.assertEqual(build_update_payload(already_clean)["organizations"][0]["department"], "")
+        self.assertEqual(compute_contact_hash(copied), compute_contact_hash(already_clean))
+
+    def test_update_payload_keeps_a_real_department(self) -> None:
+        payload = build_update_payload(
+            {
+                "organizations": [
+                    {"title": "Pastor", "department": "Youth", "name": "Church"}
+                ]
+            }
+        )
+        self.assertEqual(payload["organizations"][0]["department"], "Youth")
 
 
 if __name__ == "__main__":

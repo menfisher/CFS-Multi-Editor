@@ -63,6 +63,22 @@ def compute_photo_hash(member_data: dict[str, Any] | None) -> str:
     return compute_hash(url)
 
 
+def _clear_copied_organization_department(organizations: list[Any] | None) -> None:
+    """Google keeps Department unless the update sends an empty value.
+
+    Hashing still omits a copied Department so existing mappings stay unchanged.
+    Updates must send "" or leftover Field-in-Department text stays on the card.
+    """
+    for item in organizations or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        department = str(item.get("department") or "").strip()
+        if not department or (title and title.casefold() == department.casefold()):
+            item["department"] = ""
+
+
 def build_update_payload(member_data: dict[str, Any] | None) -> dict[str, Any]:
     clean = sanitize_contact_for_create(member_data)
+    _clear_copied_organization_department(clean.get("organizations"))
     return {field: clean.get(field) or [] for field in SYNC_WRITABLE_FIELDS}

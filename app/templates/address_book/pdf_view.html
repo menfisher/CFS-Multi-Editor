@@ -16,7 +16,7 @@
       </div>
     </div>
     {% if notice_message %}
-      <div class="notice is-info">{{ notice_message }}</div>
+      <div class="notice is-info" id="address-book-pdf-notice" data-notice-key="{{ notice_key or '' }}">{{ notice_message }}</div>
     {% endif %}
     <iframe
       class="address-book-pdf-viewer-frame"
@@ -65,6 +65,36 @@
       const params = new URLSearchParams(window.location.search);
       if (params.get("autoprint") === "1") {
         window.setTimeout(openPrintDialog, 300);
+      }
+      const noticeEl = document.getElementById("address-book-pdf-notice");
+      const noticeKey = noticeEl?.dataset.noticeKey || params.get("notice") || "";
+      if (noticeKey === "address_book_pdf_saving_to_drive") {
+        const filename = {{ filename|tojson }};
+        let idleTries = 0;
+        const pollDriveStatus = async () => {
+          try {
+            const response = await fetch(`/address-book/pdf/drive-status/${encodeURIComponent(filename)}`);
+            const data = await response.json();
+            const status = String(data.status || "idle");
+            if (status === "pending") {
+              window.setTimeout(pollDriveStatus, 1000);
+              return;
+            }
+            if (status === "idle") {
+              idleTries += 1;
+              if (idleTries < 8) {
+                window.setTimeout(pollDriveStatus, 500);
+              }
+              return;
+            }
+            if (noticeEl && data.notice_message) {
+              noticeEl.textContent = data.notice_message;
+            }
+          } catch (_error) {
+            window.setTimeout(pollDriveStatus, 1500);
+          }
+        };
+        window.setTimeout(pollDriveStatus, 400);
       }
     })();
   </script>

@@ -32,7 +32,7 @@
     {% set bootstrap_status = google_sync.state.bootstrap_status if google_sync is defined else "idle" %}
     {% set bootstrap_active = bootstrap_status == "running" %}
     {% set bootstrap_failed = bootstrap_status == "failed" %}
-    {% set deleted_filter_active = meeting_filter|lower == "deleted" %}
+    {% set deleted_filter_active = meeting_filter|lower == "deleted" or field_filter|lower == "deleted" %}
     {% set selection_notice = "" %}
     <section class="panel page-top-panel meetingdata-filter-panel contacts-filter-panel" style="--meetingdata-title-bar-color: {{ row_colors.title_bar }};">
       <div class="contacts-filter-shell">
@@ -232,7 +232,7 @@
           {% for contact in contacts %}
           {% set band_color = row_colors.primary if loop.index0 % 2 == 0 else row_colors.secondary %}
           {% set contact_display_name = contact.family_name %}
-          {% set contact_is_deleted = "deleted" in ((contact.meetings_text or "")|lower).splitlines() %}
+          {% set contact_is_deleted = "deleted" in ((contact.meetings_text or "")|lower).splitlines() or "deleted" in ((contact.fields_text or "")|lower).splitlines() %}
           {% if contact.given_name %}
             {% set contact_display_name = contact_display_name ~ ", " ~ contact.given_name %}
           {% endif %}
@@ -446,7 +446,9 @@
       const meetingsByField = {{ script_filters.meetings_by_field|default({})|tojson }};
       const allMeetings = {{ script_filters.meetings|default([])|tojson }};
       const selectedMeeting = {{ script_meeting_filter|tojson }};
-      const deletedFilterActive = String(selectedMeeting || "").trim().toLowerCase() === "deleted";
+      const selectedField = {{ field_filter|tojson }};
+      const deletedFilterActive = String(selectedMeeting || "").trim().toLowerCase() === "deleted"
+        || String(selectedField || "").trim().toLowerCase() === "deleted";
       const initialUploadState = {{ google_sync.state|tojson if google_sync is defined else {} }};
       const editingAllowed = !initialUploadState.multi_editor_enabled || initialUploadState.editor_mode === "edit";
       const meetingRosterCount = {{ meeting_roster_count|default(0)|tojson }};
@@ -1401,7 +1403,7 @@
           const meetingName = String(selectedMeeting || "").trim();
           const fieldName = String(fieldSelect?.value || "").trim();
           const searchText = String(searchInput?.value || "").trim();
-          if (!meetingName || meetingName.toLowerCase() === "deleted" || assignmentMenuSentinel(meetingName) || assignmentMenuSentinel(fieldName)) {
+          if (!meetingName || meetingName.toLowerCase() === "deleted" || fieldName.toLowerCase() === "deleted" || assignmentMenuSentinel(meetingName) || assignmentMenuSentinel(fieldName)) {
             return [];
           }
           if (searchText || meetingRosterCount < 1 || rowCheckboxes.length !== meetingRosterCount) {

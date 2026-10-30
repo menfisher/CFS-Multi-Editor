@@ -387,6 +387,7 @@ def contacts_list(
         if (
             meeting_name
             and meeting_name.casefold() != "deleted"
+            and str(field or "").strip().casefold() != "deleted"
             and not is_assignment_menu_sentinel(meeting_name)
             and not is_assignment_menu_sentinel(field)
         ):

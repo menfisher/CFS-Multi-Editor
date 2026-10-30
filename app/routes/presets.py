@@ -553,6 +553,7 @@ async def save_book_layout_preset_page(request: Request):
             "base_font_size_pt": form.get("base_font_size_pt"),
             "title_font_size_pt": form.get("title_font_size_pt"),
             "toc_font_size_pt": form.get("toc_font_size_pt"),
+            "index_font_size_pt": form.get("index_font_size_pt"),
             "line_height": form.get("line_height"),
             "meeting_table_column_count": form.get("meeting_table_column_count"),
             "meeting_table_column_gap_px": form.get("meeting_table_column_gap_px"),

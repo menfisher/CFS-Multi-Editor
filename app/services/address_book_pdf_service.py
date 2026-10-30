@@ -181,6 +181,14 @@ def _match_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", " ", _clean(value).lower()).strip()
 
 
+_FIELD_SEPARATOR_TITLE_INSET_PT = 0.375 * 72.0
+_PAGE_FRAME_OUTER_WIDTH_PT = 1.15
+_PAGE_FRAME_INNER_WIDTH_PT = 0.42
+_PAGE_FRAME_DOUBLE_GAP_PT = 2.35
+_PAGE_FRAME_SIDE_INSET_PT = 5.6
+_PAGE_FRAME_BOTTOM_INSET_PT = 16.0
+
+
 def _meeting_heading(meeting_name: str, home_last_name: object = "") -> str:
     name = _clean(meeting_name)
     if not name:
@@ -192,6 +200,158 @@ def _meeting_heading(meeting_name: str, home_last_name: object = "") -> str:
         return f"{base} ({surname})"
     home_name = _clean(home_last_name).upper()
     return f"{name} ({home_name})" if home_name else name
+
+
+def _meeting_base_name(meeting_name: str, home_last_name: object = "") -> str:
+    heading = _meeting_heading(meeting_name, home_last_name)
+    paren_match = re.match(r"^(.+?)\s+\(([^)]+)\)\s*$", heading)
+    if paren_match:
+        return paren_match.group(1).strip()
+    return heading
+
+
+def _contact_flag_value(contact: dict) -> str:
+    return _clean(contact.get("mtg_home_elder_flag"))
+
+
+def _person_name_case(value: object) -> str:
+    text = _clean(value)
+    if not text:
+        return ""
+    letters = re.sub(r"[^A-Za-z]", "", text)
+    if letters and letters == letters.upper():
+        return text.title()
+    return text
+
+
+def _contact_last_name(contact: dict) -> str:
+    family = _clean(contact.get("family_name"))
+    if family:
+        return family.upper()
+    name = _index_contact_name(contact.get("name"))
+    if "," in name:
+        return name.split(",", 1)[0].strip().upper()
+    return name.upper()
+
+
+def _separator_elder_contact(meeting: dict) -> dict | None:
+    contacts = [item for item in (meeting.get("contacts") or []) if isinstance(item, dict)]
+    for contact in contacts:
+        if _contact_flag_value(contact).startswith("2"):
+            return contact
+    for contact in contacts:
+        if _contact_flag_value(contact).startswith("1"):
+            return contact
+    heading = _meeting_heading(_clean(meeting.get("name")), meeting.get("home_last_name"))
+    paren_match = re.match(r"^(.+?)\s+\(([^)]+)\)\s*$", heading)
+    surname = paren_match.group(2).strip().upper() if paren_match else _clean(meeting.get("home_last_name")).upper()
+    if not surname:
+        return None
+    for contact in contacts:
+        if _contact_last_name(contact) == surname:
+            return contact
+    return None
+
+
+def _separator_elder_name(contact: dict | None) -> str:
+    if not contact:
+        return ""
+    given = _person_name_case(contact.get("given_name"))
+    family = _person_name_case(contact.get("family_name"))
+    if given and family:
+        return f"{given} {family}"
+    if given:
+        return given
+    if family:
+        return family
+    raw = _index_contact_name(contact.get("name"))
+    if "," in raw:
+        last, rest = raw.split(",", 1)
+        first = rest.split("&", 1)[0].strip()
+        first = re.split(r"[;,]", first, 1)[0].strip()
+        return " ".join(part for part in (_person_name_case(first), _person_name_case(last)) if part)
+    return _person_name_case(raw.split("&", 1)[0].strip())
+
+
+def _phone_entry_type(phone: object) -> str:
+    if not isinstance(phone, dict):
+        return ""
+    return _clean(phone.get("type") or phone.get("phone_type"))
+
+
+def _phone_entry_value(phone: object) -> str:
+    if isinstance(phone, dict):
+        return _clean(phone.get("value") or phone.get("phone_value"))
+    return _clean(phone)
+
+
+def _normalize_phone_kind(phone_type: object) -> str:
+    return re.sub(r"[^a-z]+", " ", _clean(phone_type).lower()).strip()
+
+
+def _phone_is_mobile(phone: object) -> bool:
+    kind = _normalize_phone_kind(_phone_entry_type(phone))
+    if kind in {"mobile", "cell", "cellular", "cell phone"}:
+        return True
+    if not isinstance(phone, dict):
+        return False
+    return _clean(phone.get("code")).lower() == "c"
+
+
+def _phone_is_home(phone: object) -> bool:
+    kind = _normalize_phone_kind(_phone_entry_type(phone))
+    return kind in {"home", "house"}
+
+
+def _phone_belongs_to_elder(phone: object, contact: dict) -> bool:
+    if not isinstance(phone, dict):
+        return True
+    owner = _clean(phone.get("owner_given_name")).lower()
+    given = _clean(contact.get("given_name")).lower()
+    if not owner or not given:
+        return True
+    return owner == given or given.startswith(owner) or owner.startswith(given)
+
+
+def _format_separator_phone_value(value: object) -> str:
+    text = _clean(value)
+    digits = _phone_digits(text)
+    if len(digits) == 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return text
+
+
+def _separator_phone_text(contact: dict | None) -> str:
+    if not contact:
+        return ""
+    phones = [item for item in (contact.get("phones") or []) if _phone_entry_value(item)]
+    if not phones:
+        return ""
+    elder_mobiles = [item for item in phones if _phone_is_mobile(item) and _phone_belongs_to_elder(item, contact)]
+    mobiles = [item for item in phones if _phone_is_mobile(item)]
+    homes = [item for item in phones if _phone_is_home(item)]
+    chosen = (elder_mobiles or mobiles or homes or phones)[0]
+    return _format_separator_phone_value(_phone_entry_value(chosen))
+
+
+def _append_dot_leaders(
+    page: "_PdfPage",
+    x_start: float,
+    x_end: float,
+    y: float,
+    size: float,
+    font_family: str,
+) -> None:
+    space = _text_width(" ", size, font_family)
+    left = x_start + space
+    right = x_end - space
+    if right <= left:
+        return
+    dot_width = max(1.0, _text_width(".", size, font_family))
+    count = int((right - left) / dot_width)
+    if count <= 0:
+        return
+    page.lines.append(_PdfLine("." * count, left, y, size))
 
 
 def _order_payload(raw_json: object) -> dict[str, Any]:
@@ -295,6 +455,7 @@ class _PdfLine:
     color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     effect: str = ""
     rotate_180: bool = False
+    outer_header: bool = False
 
 
 def _contrast_pdf_color(color: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -1221,6 +1382,29 @@ def _fit_text(text: str, size: float, max_width: float, font_family: str = "Aria
     return (value + suffix) if value else suffix
 
 
+def _wrap_text_lines(text: str, size: float, max_width: float, font_family: str = "Arial") -> list[str]:
+    value = _clean(text)
+    if not value:
+        return []
+    if _text_width(value, size, font_family) <= max_width:
+        return [value]
+    words = value.split()
+    if not words:
+        return [_fit_text(value, size, max_width, font_family)]
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        trial = f"{current} {word}"
+        if _text_width(trial, size, font_family) <= max_width:
+            current = trial
+            continue
+        lines.append(_fit_text(current, size, max_width, font_family))
+        current = word
+    if current:
+        lines.append(_fit_text(current, size, max_width, font_family))
+    return lines or [_fit_text(value, size, max_width, font_family)]
+
+
 def _index_contact_name(name: object) -> str:
     return _clean(str(name or "").split(";", 1)[0])
 
@@ -1536,6 +1720,41 @@ def _page_footer_y(margin_bottom: float) -> float:
     return min(half + _PAGE_FOOTER_LIFT_PT, max(half, float(margin_bottom) - 1.0))
 
 
+def _separator_footer_y(margin_bottom: float) -> float:
+    return float(margin_bottom) + _PAGE_FRAME_DOUBLE_GAP_PT + 2.2
+
+
+def _append_rect_rules(page: _PdfPage, x1: float, y1: float, x2: float, y2: float, width: float) -> None:
+    page.rules.append(_PdfRule(x1, y1, x2, y1, width))
+    page.rules.append(_PdfRule(x1, y2, x2, y2, width))
+    page.rules.append(_PdfRule(x1, y1, x1, y2, width))
+    page.rules.append(_PdfRule(x2, y1, x2, y2, width))
+
+
+def _draw_page_margin_frame(
+    page: _PdfPage,
+    *,
+    margin_left: float,
+    margin_right: float,
+    margin_top: float,
+    margin_bottom: float,
+) -> None:
+    left = float(margin_left)
+    right = page.width - float(margin_right)
+    bottom = float(margin_bottom)
+    top = page.height - float(margin_top)
+    if right - left < 12 or top - bottom < 12:
+        return
+    _append_rect_rules(page, left, bottom, right, top, _PAGE_FRAME_OUTER_WIDTH_PT)
+    gap = _PAGE_FRAME_DOUBLE_GAP_PT
+    inner_left = left + gap
+    inner_right = right - gap
+    inner_bottom = bottom + gap
+    inner_top = top - gap
+    if inner_right - inner_left > 8 and inner_top - inner_bottom > 8:
+        _append_rect_rules(page, inner_left, inner_bottom, inner_right, inner_top, _PAGE_FRAME_INNER_WIDTH_PT)
+
+
 def _heading_font_sizes(
     base_font_size: float,
     compact: bool,
@@ -1637,13 +1856,14 @@ def _build_toc_pages(
             target_page_index = max(0, entry.page + link_offset - 1)
             item_text = fit(entry.meeting_heading, field_size, content_width - page_number_width - item_size)
             item_width = tw(item_text, field_size)
+            number_x = page_width - margin_right - page_text_width
             dots_x = margin_left + item_width + (item_size * 0.35)
-            dots_width = max(0.0, page_number_x - dots_x - (item_size * 0.5))
+            dots_width = max(0.0, number_x - dots_x)
             dot_count = max(0, int(dots_width / max(1.0, tw(".", item_size))))
             page.lines.append(_PdfLine(item_text, margin_left, y, field_size, bold=True, link_page_index=target_page_index))
             if dot_count:
                 page.lines.append(_PdfLine("." * dot_count, dots_x, y, item_size, bold=True, link_page_index=target_page_index))
-            page.lines.append(_PdfLine(display_page, page_width - margin_right - page_text_width, y, item_size, link_page_index=target_page_index))
+            page.lines.append(_PdfLine(display_page, number_x, y, item_size, link_page_index=target_page_index))
             y -= line_step
             current_field = ""
             continue
@@ -1663,13 +1883,14 @@ def _build_toc_pages(
         text_x = margin_left + indent
         item_text = fit(entry.meeting_heading, item_size, item_max_width)
         item_width = tw(item_text, item_size)
+        number_x = page_width - margin_right - page_text_width
         dots_x = text_x + item_width + (item_size * 0.35)
-        dots_width = max(0.0, page_number_x - dots_x - (item_size * 0.5))
+        dots_width = max(0.0, number_x - dots_x)
         dot_count = max(0, int(dots_width / max(1.0, tw(".", item_size))))
         if dot_count:
             page.lines.append(_PdfLine("." * dot_count, dots_x, y, item_size, bold=True, link_page_index=target_page_index))
         page.lines.append(_PdfLine(item_text, text_x, y, item_size, link_page_index=target_page_index))
-        page.lines.append(_PdfLine(display_page, page_width - margin_right - page_text_width, y, item_size, link_page_index=target_page_index))
+        page.lines.append(_PdfLine(display_page, number_x, y, item_size, link_page_index=target_page_index))
         y -= line_step
 
     add_footer(page)
@@ -1706,6 +1927,8 @@ def _build_index_pages(
     font_family: str = "Arial",
     title_font_size: float | None = None,
     toc_font_size: float | None = None,
+    index_font_size: float | None = None,
+    two_column: bool = False,
 ) -> list[_PdfPage]:
     if not entries:
         return []
@@ -1719,21 +1942,31 @@ def _build_index_pages(
     sorted_entries = sorted(entries, key=lambda item: (_sort_key(item.name), item.page))
     index_pages: list[_PdfPage] = []
     title_size, item_size = _heading_font_sizes(
-        base_font_size, compact, title_font_size, toc_font_size
+        base_font_size,
+        compact,
+        title_font_size,
+        index_font_size if index_font_size not in (None, "") else toc_font_size,
     )
     letter_size = item_size
     line_step = item_size * 1.15
     content_width = page_width - margin_left - margin_right
+    gutter = item_size * 1.15 if two_column else 0.0
+    column_count = 2 if two_column else 1
+    column_width = max(36.0, (content_width - gutter) / column_count)
     page_number_width = max(tw("888", item_size), item_size * 2.1)
-    page_number_x = page_width - margin_right - page_number_width
-    name_max_width = max(24.0, page_number_x - margin_left - (item_size * 0.5))
+    name_max_width = max(24.0, column_width - page_number_width - (item_size * 0.5))
     y = 0.0
+    body_top_y = 0.0
+    column = 0
+
+    def column_x(column_index: int) -> float:
+        return margin_left + (column_index * (column_width + gutter))
 
     def index_page_number() -> int:
         return start_page_number + len(index_pages) - 1
 
     def add_index_page() -> _PdfPage:
-        nonlocal y
+        nonlocal y, body_top_y, column
         page = _PdfPage(page_width, page_height)
         index_pages.append(page)
         y = page_height - margin_top
@@ -1742,6 +1975,19 @@ def _build_index_pages(
         title_x = max(margin_left, (page_width - tw(title, title_size)) / 2)
         page.lines.append(_PdfLine(title, title_x, y, title_size, bold=True, link_page_index=title_link_page_index))
         y -= line_step * 1.7
+        body_top_y = y
+        column = 0
+        if two_column:
+            divider_x = margin_left + column_width + (gutter / 2.0)
+            page.rules.append(
+                _PdfRule(
+                    divider_x,
+                    _page_footer_y(margin_bottom) + (item_size * 1.4),
+                    divider_x,
+                    y + (line_step * 0.2),
+                    0.55,
+                )
+            )
         return page
 
     def add_footer(page: _PdfPage) -> None:
@@ -1755,6 +2001,18 @@ def _build_index_pages(
             )
         )
 
+    def ensure_room(required_lines: int) -> None:
+        nonlocal page, y, column
+        if y - (required_lines * line_step) >= margin_bottom:
+            return
+        if two_column and column == 0:
+            column = 1
+            y = body_top_y
+            if y - (required_lines * line_step) >= margin_bottom:
+                return
+        add_footer(page)
+        page = add_index_page()
+
     page = add_index_page()
     current_letter = ""
     for entry in sorted_entries:
@@ -1762,12 +2020,11 @@ def _build_index_pages(
         letter = first_char if first_char.isalpha() else "#"
         needs_letter = letter != current_letter
         required_lines = 2 if needs_letter else 1
-        if y - (required_lines * line_step) < margin_bottom:
-            add_footer(page)
-            page = add_index_page()
+        ensure_room(required_lines)
+        left = column_x(column)
         if needs_letter:
             current_letter = letter
-            page.lines.append(_PdfLine(letter, margin_left, y, letter_size, bold=True))
+            page.lines.append(_PdfLine(letter, left, y, letter_size, bold=True))
             y -= line_step
 
         display_page = str(entry.page)
@@ -1775,13 +2032,14 @@ def _build_index_pages(
         target_page_index = max(0, entry.page + int(link_page_offset) - 1)
         name_text = fit(entry.name, item_size, name_max_width)
         name_width = tw(name_text, item_size)
-        dots_x = margin_left + name_width + (item_size * 0.35)
-        dots_width = max(0.0, page_number_x - dots_x - (item_size * 0.5))
+        number_x = left + column_width - page_text_width
+        dots_x = left + name_width + (item_size * 0.35)
+        dots_width = max(0.0, number_x - dots_x)
         dot_count = max(0, int(dots_width / max(1.0, tw(".", item_size))))
-        page.lines.append(_PdfLine(name_text, margin_left, y, item_size, link_page_index=target_page_index, link_page_y=entry.target_y))
+        page.lines.append(_PdfLine(name_text, left, y, item_size, link_page_index=target_page_index, link_page_y=entry.target_y))
         if dot_count:
             page.lines.append(_PdfLine("." * dot_count, dots_x, y, item_size, bold=True, link_page_index=target_page_index, link_page_y=entry.target_y))
-        page.lines.append(_PdfLine(display_page, page_width - margin_right - page_text_width, y, item_size, link_page_index=target_page_index, link_page_y=entry.target_y))
+        page.lines.append(_PdfLine(display_page, number_x, y, item_size, link_page_index=target_page_index, link_page_y=entry.target_y))
         y -= line_step
 
     add_footer(page)
@@ -2026,6 +2284,7 @@ def _clone_page_into_slot(
                 color=line.color,
                 effect=line.effect,
                 rotate_180=rotate_180 or line.rotate_180,
+                outer_header=line.outer_header,
             )
         )
 
@@ -2127,6 +2386,8 @@ def build_address_book_pdf(
     address_italic = bool(settings.get("address_italic", 1))
     meeting_page_mode = _clean(settings.get("meeting_page_mode") or "one_meeting").lower()
     pack_complete_meetings = meeting_page_mode == "complete_meetings"
+    field_separator_pages = bool(settings.get("field_separator_pages"))
+    double_column_index = bool(settings.get("double_column_index"))
     include_bible_study = bool(settings.get("include_bible_study_union_info", 1))
 
     writer = _PdfWriter(page_width, page_height, font_family=font_family)
@@ -2242,13 +2503,13 @@ def build_address_book_pdf(
         page.rules.append(_PdfRule(margin_left, y + (line_step * 0.3), page_width - margin_right, y + (line_step * 0.3)))
         y -= line_step
 
-    def add_footer(field_name: str) -> None:
+    def add_footer(field_name: str, *, framed: bool = False) -> None:
         text = f"{field_name or 'All Fields'} - Page {page_number}"
         page.lines.append(
             _PdfLine(
                 text=text,
                 x=max(margin_left, (page_width - tw(text, font_size)) / 2),
-                y=_page_footer_y(margin_bottom),
+                y=_separator_footer_y(margin_bottom) if framed else _page_footer_y(margin_bottom),
                 size=font_size,
                 bold=True,
             )
@@ -2497,12 +2758,118 @@ def build_address_book_pdf(
 
     meeting_separator_lines = 2
 
+    def start_field_separator_page(field_name: str, field_meetings: list[dict]) -> None:
+        nonlocal y
+        if _page_content_lines():
+            previous_field_name = (
+                _clean(ordered_fields[field_index - 1].get("name")) if field_index else field_name
+            )
+            add_footer(previous_field_name)
+            new_page()
+        _, meeting_size = _heading_font_sizes(
+            font_size,
+            bool(_clean(paper_book_binding)),
+            layout.get("title_font_size_pt"),
+            layout.get("toc_font_size_pt"),
+        )
+        field_title_size = meeting_size
+        title_step = field_title_size * max(0.8, float(layout.get("line_height") or 1.2))
+        meeting_step = meeting_size * max(0.8, float(layout.get("line_height") or 1.2))
+        frame_left = margin_left + _PAGE_FRAME_SIDE_INSET_PT
+        frame_right = margin_right + _PAGE_FRAME_SIDE_INSET_PT
+        frame_bottom = margin_bottom + _PAGE_FRAME_BOTTOM_INSET_PT
+        frame_width = max(24.0, page_width - frame_left - frame_right)
+        right_edge = page_width - frame_right
+        elder_x = frame_left + meeting_size * 1.6
+        name_max_width = frame_width
+
+        rows: list[tuple[str, str, str]] = []
+        for meeting in field_meetings:
+            if _is_field_end_list_meeting(meeting):
+                continue
+            meeting_name = _meeting_base_name(_clean(meeting.get("name")), meeting.get("home_last_name"))
+            if not meeting_name:
+                continue
+            elder = _separator_elder_contact(meeting)
+            rows.append((meeting_name, _separator_elder_name(elder), _separator_phone_text(elder)))
+
+        def title_baseline() -> float:
+            title_from_top = max(_FIELD_SEPARATOR_TITLE_INSET_PT, margin_top + _PAGE_FRAME_SIDE_INSET_PT)
+            return page_height - title_from_top - field_title_size
+
+        def draw_separator_title(continued: bool = False) -> None:
+            nonlocal y
+            y = title_baseline()
+            title_text = f"{field_name} (continued)" if continued else field_name
+            for line_text in _wrap_text_lines(title_text, field_title_size, frame_width, font_family):
+                x = max(frame_left, (page_width - tw(line_text, field_title_size)) / 2)
+                page.lines.append(_PdfLine(text=line_text, x=x, y=y, size=field_title_size, bold=True))
+                y -= title_step
+            y -= title_step * 0.55
+
+        def finish_separator_leaf() -> None:
+            add_footer(field_name, framed=True)
+            _draw_page_margin_frame(
+                page,
+                margin_left=margin_left,
+                margin_right=margin_right,
+                margin_top=margin_top,
+                margin_bottom=margin_bottom,
+            )
+
+        def start_overflow_page() -> None:
+            finish_separator_leaf()
+            new_page()
+            draw_separator_title(continued=True)
+
+        draw_separator_title()
+        for meeting_name, elder_name, phone_text in rows:
+            name_lines = _wrap_text_lines(meeting_name, meeting_size, name_max_width, font_family) or [meeting_name]
+            needed = meeting_step * (len(name_lines) + (1 if elder_name or phone_text else 0))
+            if y - needed < frame_bottom:
+                start_overflow_page()
+            for index, line_text in enumerate(name_lines):
+                if index and y - meeting_step < frame_bottom:
+                    start_overflow_page()
+                page.lines.append(_PdfLine(text=line_text, x=frame_left, y=y, size=meeting_size, bold=True))
+                y -= meeting_step
+            if elder_name or phone_text:
+                if y - meeting_step < frame_bottom:
+                    start_overflow_page()
+                fitted_phone = phone_text
+                phone_x = right_edge - tw(fitted_phone, meeting_size) if fitted_phone else right_edge
+                fitted_elder = elder_name
+                if fitted_elder:
+                    elder_max = max(24.0, phone_x - elder_x - tw(" ", meeting_size))
+                    if tw(fitted_elder, meeting_size) > elder_max:
+                        fitted_elder = _fit_text(fitted_elder, meeting_size, elder_max, font_family)
+                    page.lines.append(_PdfLine(text=fitted_elder, x=elder_x, y=y, size=meeting_size))
+                    if fitted_phone:
+                        _append_dot_leaders(
+                            page,
+                            elder_x + tw(fitted_elder, meeting_size),
+                            phone_x,
+                            y,
+                            meeting_size,
+                            font_family,
+                        )
+                elif fitted_phone:
+                    _append_dot_leaders(page, elder_x, phone_x, y, meeting_size, font_family)
+                if fitted_phone:
+                    page.lines.append(_PdfLine(text=fitted_phone, x=phone_x, y=y, size=meeting_size))
+                y -= meeting_step
+            y -= meeting_step * 0.25
+        finish_separator_leaf()
+        new_page()
+
     for field_index, field in enumerate(ordered_fields):
         field_name = _clean(field.get("name"))
         meetings = list(field.get("meetings") or [])
         # Complete mtgs/page may pack multiple meetings from the same field onto one
         # page, but a new field always starts on a fresh page.
-        if pack_complete_meetings and field_index > 0 and _page_content_lines():
+        if field_separator_pages:
+            start_field_separator_page(field_name, meetings)
+        elif pack_complete_meetings and field_index > 0 and _page_content_lines():
             previous_field_name = _clean(ordered_fields[field_index - 1].get("name"))
             add_footer(previous_field_name)
             new_page()
@@ -2801,7 +3168,7 @@ def build_address_book_pdf(
         toc_pages: list[_PdfPage] = []
         toc_page_count = 0
         for _ in range(4):
-            display_offset = toc_page_count + front_page_count
+            number_offset = toc_page_count
             toc_pages = _build_toc_pages(
                 entries=all_toc_entries,
                 book_title=str(layout.get("book_title") or "Address Book"),
@@ -2812,8 +3179,8 @@ def build_address_book_pdf(
                 margin_top=margin_top,
                 margin_bottom=margin_bottom,
                 base_font_size=font_size,
-                page_offset=display_offset,
-                link_page_offset=display_offset + insert_page_count,
+                page_offset=number_offset,
+                link_page_offset=number_offset + front_page_count + insert_page_count,
                 compact=compact_toc_index,
                 font_family=font_family,
                 title_font_size=layout.get("title_font_size_pt"),
@@ -2822,14 +3189,14 @@ def build_address_book_pdf(
             if len(toc_pages) == toc_page_count:
                 break
             toc_page_count = len(toc_pages)
-        display_offset = len(toc_pages) + front_page_count
-        _shift_content_footers(writer.pages, display_offset, font_family)
+        number_offset = len(toc_pages)
+        _shift_content_footers(writer.pages, number_offset, font_family)
         toc_start_index = front_page_count + insert_page_count
         for entry in toc_entries:
             for heading_line in entry.heading_lines:
                 heading_line.link_page_index = toc_start_index + entry.toc_page_index
         for entry in index_entries:
-            entry.page += display_offset
+            entry.page += number_offset
         index_pages = _build_index_pages(
             entries=index_entries,
             page_width=page_width,
@@ -2839,13 +3206,15 @@ def build_address_book_pdf(
             margin_top=margin_top,
             margin_bottom=margin_bottom,
             base_font_size=font_size,
-            start_page_number=display_offset + content_page_count + 1,
+            start_page_number=number_offset + content_page_count + 1,
             title_link_page_index=toc_start_index + index_toc_entry.toc_page_index if index_toc_entry else None,
-            link_page_offset=insert_page_count,
+            link_page_offset=insert_page_count + front_page_count,
             compact=compact_toc_index,
             font_family=font_family,
             title_font_size=layout.get("title_font_size_pt"),
             toc_font_size=layout.get("toc_font_size_pt"),
+            index_font_size=layout.get("index_font_size_pt"),
+            two_column=double_column_index,
         )
         cover_pages: list[_PdfPage] = []
         if cover_image:

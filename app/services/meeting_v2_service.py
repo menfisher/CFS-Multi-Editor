@@ -58,6 +58,7 @@ DEFAULT_BOOK_PRESET = {
     "base_font_size_pt": 7.0,
     "title_font_size_pt": 12.0,
     "toc_font_size_pt": 10.0,
+    "index_font_size_pt": 10.0,
     "line_height": 1.2,
     "meeting_table_column_count": 28,
     "meeting_table_column_gap_px": 6,
@@ -1593,7 +1594,12 @@ def delete_empty_orphan_meeting_v2_sections() -> int:
         for row in contact_rows:
             for field_name in _split_assignment_text(row["fields_text"]):
                 for meeting_name in _split_assignment_text(row["meetings_text"]):
-                    if field_name and meeting_name and meeting_name.strip().lower() != "deleted":
+                    if (
+                        field_name
+                        and meeting_name
+                        and field_name.strip().lower() != "deleted"
+                        and meeting_name.strip().lower() != "deleted"
+                    ):
                         valid_pairs.add((field_name, meeting_name))
 
         section_rows = conn.execute(
@@ -1711,7 +1717,12 @@ def _sync_contact_assignments_to_meeting_v2_sections() -> None:
         for row in contact_rows:
             for field_name in _split_assignment_text(row["fields_text"]):
                 for meeting_name in _split_assignment_text(row["meetings_text"]):
-                    if not field_name or not meeting_name or meeting_name.strip().lower() == "deleted":
+                    if (
+                        not field_name
+                        or not meeting_name
+                        or field_name.strip().lower() == "deleted"
+                        or meeting_name.strip().lower() == "deleted"
+                    ):
                         continue
                     pair_key = (field_name.casefold(), meeting_name.casefold())
                     if pair_key in existing_pairs:
