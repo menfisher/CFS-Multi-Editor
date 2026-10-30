@@ -111,10 +111,88 @@
   border-bottom: 1px solid rgba(71, 150, 82, 0.28);
 }
 
+.address-book-pdf-palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+}
+
 .address-book-pdf-palette-title {
   color: #1f3437;
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.address-book-pdf-typography-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.address-book-pdf-typography-meeting-status {
+  color: #155e63;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.address-book-pdf-typography-meeting-status[hidden] {
+  display: none;
+}
+
+.address-book-pdf-typography-info-button {
+  margin-left: 0;
+}
+
+.address-book-pdf-typography-value-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.address-book-pdf-typography-value-row .address-book-pdf-number-control {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.address-book-pdf-use-book-reset {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.95rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.address-book-pdf-use-book-reset:hover,
+.address-book-pdf-use-book-reset:focus-visible {
+  color: #000;
+  outline: none;
+}
+
+.address-book-pdf-use-book-reset[hidden] {
+  display: none;
+}
+
+#address-book-typography-info-modal .app-modal-copy + .app-modal-copy {
+  margin-top: 8px;
 }
 
 .address-book-pdf-two-up {
@@ -142,6 +220,13 @@
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.05;
+}
+
+.address-book-pdf-page .form-label > label {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .address-book-pdf-use-book-spacing {
@@ -180,6 +265,16 @@
   min-height: 26px;
   padding: 2px 8px;
   font-size: 0.82rem;
+}
+
+.address-book-pdf-sidebar-left #address-book-pdf-font-family {
+  appearance: menulist;
+  -webkit-appearance: menulist;
+  box-sizing: border-box;
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 8px;
+  background-color: #fff;
 }
 
 .address-book-pdf-sidebar-left input[type="number"] {
@@ -5986,6 +6081,21 @@ button.site-nav-dropdown-item:hover {
   min-width: 0;
 }
 
+.editor-book-layout-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.editor-book-layout-label-row .form-label {
+  margin: 0;
+}
+
+#meeting-layout-info-modal .app-modal-copy + .app-modal-copy {
+  margin-top: 8px;
+}
+
 .editor-preset-cluster select {
   width: 100%;
   min-width: 0;
@@ -6190,6 +6300,25 @@ button.site-nav-dropdown-item:hover {
 
 .editor-actions-canvas {
   position: relative;
+}
+
+.editor-canvas-heading-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.editor-canvas-heading-row h3 {
+  margin: 0;
+}
+
+#meeting-canvas-info-modal {
+  width: min(560px, calc(100vw - 32px));
+}
+
+#meeting-canvas-info-modal .app-modal-copy + .app-modal-copy {
+  margin-top: 8px;
 }
 
 .delete-all-rows-button,

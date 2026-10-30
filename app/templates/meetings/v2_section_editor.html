@@ -36,7 +36,18 @@
 
           <div class="editor-preset-cluster">
             <div class="editor-inline-heading">
-              <label class="form-label" for="book_layout_preset_id">Book Layout</label>
+              <div class="editor-book-layout-label-row">
+                <label class="form-label" for="book_layout_preset_id">Book Layout</label>
+                <button
+                  type="button"
+                  class="contact-notes-info-button"
+                  id="meeting-layout-info-button"
+                  aria-label="Book layout controls"
+                  title="Book layout controls"
+                >
+                  <span aria-hidden="true">i</span>
+                </button>
+              </div>
               {% if section.book_layout and section.book_layout.book_layout_preset_id %}
                 <a class="small-link" href="/address-book/pdf?preset_id={{ section.book_layout.book_layout_preset_id }}">Edit Layout</a>
               {% endif %}
@@ -106,7 +117,18 @@
 
       <section class="panel">
         <div class="editor-actions editor-actions-canvas">
-          <h3>Visual Canvas - Book page width</h3>
+          <div class="editor-canvas-heading-row">
+            <h3>Visual Canvas - Book page width</h3>
+            <button
+              type="button"
+              class="contact-notes-info-button"
+              id="meeting-canvas-info-button"
+              aria-label="Row toolbar"
+              title="Row toolbar"
+            >
+              <span aria-hidden="true">i</span>
+            </button>
+          </div>
           <p class="canvas-note">Text in row cells below approximate page position. Use Meeting Print Preview to see actual placement</p>
           <button type="button" class="danger-button delete-all-rows-button" id="delete-all-rows-button">
             Delete All Rows
@@ -631,6 +653,54 @@
 
     <form method="post" action="/meetings/v2/sections/{{ section.id }}/delete" id="delete-meetingdata-section-form" hidden></form>
 
+    <dialog class="app-modal" id="meeting-canvas-info-modal" aria-labelledby="meeting-canvas-info-title">
+      <form method="dialog" class="app-modal-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title" id="meeting-canvas-info-title">Row toolbar</h3>
+          <p class="app-modal-copy"><strong>Order</strong> sets this row's position in the meeting. Lower numbers print first.</p>
+          <p class="app-modal-copy"><strong>content</strong> is a regular row with cells you can type in.</p>
+          <p class="app-modal-copy"><strong>blank</strong> leaves an empty spacer row.</p>
+          <p class="app-modal-copy"><strong>divider</strong> draws a horizontal divider line.</p>
+          <p class="app-modal-copy"><strong>column flow</strong> lays out text in flowing columns. Use Add Column for a new column, and the chevron to stack a column under an existing one.</p>
+          <p class="app-modal-copy"><strong>underlined</strong> underlines this row.</p>
+          {% if section.is_field_end_list %}
+          <p class="app-modal-copy"><strong>table start</strong> begins a table. Two options appear: <strong>print new page</strong> starts this table on a new printed page. <strong>group with table below</strong> keeps this table with the next. If print new page is also on, the pair shares that new page when they fit. Field lists already print at the end of the Field without a meeting heading.</p>
+          {% else %}
+          <p class="app-modal-copy"><strong>table start</strong> begins a table. Two options appear: <strong>group with table below</strong> keeps this table with the next. <strong>no meeting association</strong> prints an extra table behind a meeting without the meeting name at the top. This option appears on regular meetings, not Field lists.</p>
+          {% endif %}
+          <p class="app-modal-copy"><strong>table end</strong> ends the table.</p>
+          <p class="app-modal-copy"><strong>Font size</strong> sets this row's type size. Rows after table start can keep that table's size until table end.</p>
+          <p class="app-modal-copy"><strong>Insert Blank Row Below</strong> adds a row under this one. The chevron chooses New Row, Divider Line, Blank Row, or Cloned Row.</p>
+          <p class="app-modal-copy"><strong>Add Cell</strong> adds one cell. The chevron adds 2 or 3 cells. On a column-flow row this is Add Column.</p>
+          <p class="app-modal-copy"><strong>Delete Row</strong> removes this entire row.</p>
+          <p class="app-modal-copy"><strong>Move</strong> drags a cell to a new column position.</p>
+          <p class="app-modal-copy"><strong>L</strong>, <strong>C</strong>, and <strong>R</strong> left-, center-, or right-align the cell.</p>
+          <p class="app-modal-copy"><strong>Delete</strong> on a cell removes that cell.</p>
+        </div>
+        <div class="app-modal-actions">
+          <button type="submit" class="contact-card-button contact-card-button-edit" value="close">OK</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="app-modal" id="meeting-layout-info-modal" aria-labelledby="meeting-layout-info-title">
+      <form method="dialog" class="app-modal-panel">
+        <div class="app-modal-header">
+          <h3 class="app-modal-title" id="meeting-layout-info-title">Book layout controls</h3>
+          <p class="app-modal-copy"><strong>Book Layout</strong> chooses the printed book size and page preset for this meeting, such as Pocket Address Book. Populated from Address Book Settings.</p>
+          <p class="app-modal-copy"><strong>Edit Layout</strong> opens that preset so you can change page size, margins, and other book settings.</p>
+          <p class="app-modal-copy"><strong>Columns</strong> sets how many layout-grid columns a meeting row uses when you place cells.</p>
+          <p class="app-modal-copy"><strong>Gap</strong> sets the space between those grid columns.</p>
+          <p class="app-modal-copy"><strong>Preview Scale</strong> zooms the on-screen editor preview. The printed book stays the same size.</p>
+          <p class="app-modal-copy"><strong>Font Size</strong> sets the meeting content font size for this meeting.</p>
+          <p class="app-modal-copy"><strong>Line Spacing</strong> sets the space between meeting lines. Changes are in 0.05 steps and save with Save Layout.</p>
+        </div>
+        <div class="app-modal-actions">
+          <button type="submit" class="contact-card-button contact-card-button-edit" value="close">OK</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog class="app-modal" id="editor-field-list-option-modal">
       <form method="dialog" class="app-modal-panel" id="editor-field-list-option-modal-form">
         <div class="app-modal-header">
@@ -686,6 +756,20 @@
 
 {% block extra_scripts %}
   <script src="/static/js/meeting_editor.js?v=30"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const layoutInfoButton = document.getElementById("meeting-layout-info-button");
+      const layoutInfoModal = document.getElementById("meeting-layout-info-modal");
+      layoutInfoButton?.addEventListener("click", () => {
+        if (typeof layoutInfoModal?.showModal === "function") layoutInfoModal.showModal();
+      });
+      const canvasInfoButton = document.getElementById("meeting-canvas-info-button");
+      const canvasInfoModal = document.getElementById("meeting-canvas-info-modal");
+      canvasInfoButton?.addEventListener("click", () => {
+        if (typeof canvasInfoModal?.showModal === "function") canvasInfoModal.showModal();
+      });
+    });
+  </script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const deleteButton = document.getElementById("delete-all-rows-button");

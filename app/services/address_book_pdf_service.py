@@ -2496,7 +2496,8 @@ def build_address_book_pdf(
     margin_right = max(6.0, float(layout.get("margin_right_in") or 0.14) * 72.0)
     margin_top = max(6.0, float(layout.get("margin_top_in") or 0.14) * 72.0)
     margin_bottom = max(6.0, float(layout.get("margin_bottom_in") or 0.14) * 72.0)
-    font_size = max(4.0, float(layout.get("base_font_size_pt") or 7.0))
+    book_font_size = max(4.0, float(layout.get("base_font_size_pt") or 7.0))
+    font_size = book_font_size
     font_family = _normalize_pdf_font_family(layout.get("font_family"))
     book_line_height = max(0.8, float(layout.get("line_height") or 1.2))
     current_meeting_line_height = book_line_height
@@ -2513,10 +2514,23 @@ def build_address_book_pdf(
             return book_line_height
         return max(0.8, min(3.0, value))
 
+    def meeting_font_size_value(meeting: dict | None = None) -> float:
+        if not meeting:
+            return book_font_size
+        try:
+            value = float(meeting.get("font_size_pt") or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value <= 0:
+            return book_font_size
+        return max(4.0, min(36.0, value))
+
     def apply_meeting_spacing(meeting: dict | None = None) -> None:
-        nonlocal line_step, current_meeting_line_height
+        nonlocal line_step, current_meeting_line_height, font_size
         current_meeting_line_height = meeting_spacing_value(meeting)
+        font_size = meeting_font_size_value(meeting)
         line_step = font_size * current_meeting_line_height
+        meeting_row_count_kwargs["base_font_size"] = font_size
     provider = "apple" if settings.get("address_map_provider") == "apple" else "google"
     address_align_right = settings.get("address_align") != "left"
     address_italic = bool(settings.get("address_italic", 1))
@@ -2536,6 +2550,11 @@ def build_address_book_pdf(
     y = page_height - margin_top
     page_number = 1
     content_width = page_width - margin_left - margin_right
+    meeting_row_count_kwargs = {
+        "content_width": content_width,
+        "base_font_size": font_size,
+        "font_family": font_family,
+    }
     from app.services.meeting_toc_service import meeting_is_unlisted_in_toc, unlisted_toc_meeting_keys
 
     toc_entries: list[_TocEntry] = []
@@ -2838,12 +2857,6 @@ def build_address_book_pdf(
             if meeting_key == selected_meeting or meeting_key.startswith(selected_meeting) or selected_meeting.startswith(meeting_key):
                 return list(section.get("rows") or [])
         return []
-
-    meeting_row_count_kwargs = {
-        "content_width": content_width,
-        "base_font_size": font_size,
-        "font_family": font_family,
-    }
 
     def estimate_contact_block_height(contact: dict[str, Any]) -> float:
         phones = list(contact.get("phones") or [])
@@ -3321,7 +3334,7 @@ def build_address_book_pdf(
                 margin_right=margin_right,
                 margin_top=margin_top,
                 margin_bottom=margin_bottom,
-                base_font_size=font_size,
+                base_font_size=book_font_size,
                 page_offset=number_offset,
                 link_page_offset=number_offset + front_page_count + insert_page_count,
                 compact=compact_toc_index,
@@ -3348,7 +3361,7 @@ def build_address_book_pdf(
             margin_right=margin_right,
             margin_top=margin_top,
             margin_bottom=margin_bottom,
-            base_font_size=font_size,
+            base_font_size=book_font_size,
             start_page_number=number_offset + content_page_count + 1,
             title_link_page_index=toc_start_index + index_toc_entry.toc_page_index if index_toc_entry else None,
             link_page_offset=insert_page_count + front_page_count,

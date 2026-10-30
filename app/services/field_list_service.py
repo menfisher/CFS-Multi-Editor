@@ -69,6 +69,7 @@ ADDRESS_BOOK_SETTING_KEYS = (
     "print_order_mode",
     "print_order_json",
     "meeting_line_height_json",
+    "meeting_font_size_json",
     "meeting_page_mode",
     "field_separator_pages",
     "double_column_index",
@@ -164,6 +165,7 @@ def _default_address_book_settings() -> dict[str, Any]:
         "print_order_mode": "alphabetical",
         "print_order_json": "",
         "meeting_line_height_json": "",
+        "meeting_font_size_json": "",
         "meeting_page_mode": "one_meeting",
         "field_separator_pages": 0,
         "double_column_index": 0,
@@ -255,6 +257,74 @@ def remap_meeting_line_height_assignments(kind: str, old_value: str, new_value: 
     return save_address_book_settings({"meeting_line_height_json": serialize_meeting_line_height_map(remapped)})
 
 
+def _coerce_meeting_font_size(value: object) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if numeric <= 0:
+        return 0.0
+    return max(4.0, min(36.0, numeric))
+
+
+def parse_meeting_font_size_map(raw_json: object) -> dict[str, float]:
+    try:
+        payload = json.loads(str(raw_json or "{}"))
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, float] = {}
+    for key, value in payload.items():
+        label = str(key or "").strip()
+        if "||" not in label:
+            continue
+        field_name, meeting_name = label.split("||", 1)
+        map_key = meeting_line_height_key(field_name, meeting_name)
+        if not map_key.strip("|"):
+            continue
+        font_size = _coerce_meeting_font_size(value)
+        if font_size <= 0:
+            continue
+        normalized[map_key] = font_size
+    return normalized
+
+
+def serialize_meeting_font_size_map(values: dict[str, float]) -> str:
+    if not values:
+        return ""
+    return json.dumps(values, separators=(",", ":"))
+
+
+def _normalize_meeting_font_size_json(raw_json: object) -> str:
+    return serialize_meeting_font_size_map(parse_meeting_font_size_map(raw_json))
+
+
+def meeting_font_size_override(raw_json: object, field_name: str, meeting_name: str) -> float:
+    return parse_meeting_font_size_map(raw_json).get(meeting_line_height_key(field_name, meeting_name), 0.0)
+
+
+def remap_meeting_font_size_assignments(kind: str, old_value: str, new_value: str) -> dict[str, Any]:
+    settings = get_address_book_settings()
+    current = parse_meeting_font_size_map(settings.get("meeting_font_size_json"))
+    if not current:
+        return settings
+    remapped: dict[str, float] = {}
+    changed = False
+    for key, value in current.items():
+        field_name, _, meeting_name = key.partition("||")
+        if kind == "field" and field_name == old_value:
+            field_name = new_value
+            changed = True
+        elif kind == "meeting" and meeting_name == old_value:
+            meeting_name = new_value
+            changed = True
+        remapped[meeting_line_height_key(field_name, meeting_name)] = value
+    if not changed:
+        return settings
+    return save_address_book_settings({"meeting_font_size_json": serialize_meeting_font_size_map(remapped)})
+
+
 def _normalize_address_book_settings_values(values: dict[str, Any] | None, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
     defaults = _default_address_book_settings()
     fallback_values = {**defaults, **(fallback or {})}
@@ -299,6 +369,9 @@ def _normalize_address_book_settings_values(values: dict[str, Any] | None, fallb
         "print_order_json": _clean(_setting_value(source, fallback_values, "print_order_json")),
         "meeting_line_height_json": _normalize_meeting_line_height_json(
             _setting_value(source, fallback_values, "meeting_line_height_json")
+        ),
+        "meeting_font_size_json": _normalize_meeting_font_size_json(
+            _setting_value(source, fallback_values, "meeting_font_size_json")
         ),
         "meeting_page_mode": _clean(_setting_value(source, fallback_values, "meeting_page_mode")).lower(),
         "field_separator_pages": _setting_flag(source, fallback_values, "field_separator_pages"),
@@ -427,6 +500,13 @@ def ensure_address_book_settings() -> None:
                 ADD COLUMN meeting_line_height_json TEXT NOT NULL DEFAULT ''
                 """
             )
+        if "meeting_font_size_json" not in settings_columns:
+            conn.execute(
+                """
+                ALTER TABLE address_book_settings
+                ADD COLUMN meeting_font_size_json TEXT NOT NULL DEFAULT ''
+                """
+            )
         if "meeting_page_mode" not in settings_columns:
             conn.execute(
                 """
@@ -489,6 +569,7 @@ def ensure_address_book_settings() -> None:
               print_order_mode = CASE WHEN TRIM(print_order_mode) = '' THEN ? ELSE print_order_mode END,
               print_order_json = COALESCE(print_order_json, ?),
               meeting_line_height_json = COALESCE(meeting_line_height_json, ?),
+              meeting_font_size_json = COALESCE(meeting_font_size_json, ?),
               meeting_page_mode = CASE WHEN TRIM(meeting_page_mode) = '' THEN ? ELSE meeting_page_mode END,
               updated_at = ?
             WHERE id = 1
@@ -531,6 +612,7 @@ def ensure_address_book_settings() -> None:
                 defaults["print_order_mode"],
                 defaults["print_order_json"],
                 defaults["meeting_line_height_json"],
+                defaults["meeting_font_size_json"],
                 defaults["meeting_page_mode"],
                 _now_text(),
             ),
@@ -2199,6 +2281,7 @@ def _field_list_picker_payload() -> dict[str, Any]:
 
     settings = _load_address_book_settings()
     meeting_line_heights = parse_meeting_line_height_map(settings.get("meeting_line_height_json"))
+    meeting_font_sizes = parse_meeting_font_size_map(settings.get("meeting_font_size_json"))
     field_end_lists_by_field = field_end_list_names_by_field()
     for field_name in field_end_lists_by_field:
         fields.setdefault(field_name, {"name": field_name, "meetings": {}})
@@ -2238,6 +2321,7 @@ def _field_list_picker_payload() -> dict[str, Any]:
                     "is_field_end_list": meeting_name in field_end_name_set,
                     "field_end_list_order": field_end_names.index(meeting_name) + 1 if meeting_name in field_end_name_set else 0,
                     "line_height": meeting_line_heights.get(meeting_line_height_key(field_name, meeting_name), 0),
+                    "font_size_pt": meeting_font_sizes.get(meeting_line_height_key(field_name, meeting_name), 0),
                 }
             )
         normalized_fields.append({"name": field_name, "meetings": meetings})
@@ -2715,6 +2799,7 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
               print_order_mode = ?,
               print_order_json = ?,
               meeting_line_height_json = ?,
+              meeting_font_size_json = ?,
               meeting_page_mode = ?,
               field_separator_pages = ?,
               double_column_index = ?,
@@ -2760,6 +2845,7 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
                 normalized["print_order_mode"],
                 normalized["print_order_json"],
                 normalized["meeting_line_height_json"],
+                normalized["meeting_font_size_json"],
                 normalized["meeting_page_mode"],
                 normalized["field_separator_pages"],
                 normalized["double_column_index"],
@@ -4814,6 +4900,7 @@ FIELD_LIST_SHARED_SETTING_KEYS = (
     "print_order_mode",
     "print_order_json",
     "meeting_line_height_json",
+    "meeting_font_size_json",
     "meeting_page_mode",
     "field_separator_pages",
     "double_column_index",

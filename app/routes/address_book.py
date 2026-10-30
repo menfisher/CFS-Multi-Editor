@@ -19,6 +19,7 @@ from app.services.field_list_service import (
     apply_address_book_settings,
     get_address_book_settings,
     get_field_list_builder_context,
+    meeting_font_size_override,
     meeting_line_height_override,
     save_address_book_settings,
 )
@@ -256,6 +257,7 @@ def _address_book_pdf_settings_from_form(form) -> dict:
         "print_order_mode": form.get("print_order_mode"),
         "print_order_json": form.get("print_order_json"),
         "meeting_line_height_json": form.get("meeting_line_height_json"),
+        "meeting_font_size_json": form.get("meeting_font_size_json"),
         "meeting_page_mode": form.get("meeting_page_mode"),
         "field_separator_pages": form.get("field_separator_pages"),
         "double_column_index": form.get("double_column_index"),
@@ -331,15 +333,24 @@ def _address_book_pdf_fields_for_print(form, field_list_context: dict, settings:
         selected_names = set(selected_field_names)
         fields = [field for field in fields if str(field.get("name") or "") in selected_names]
     raw_line_heights = (settings or {}).get("meeting_line_height_json")
-    if raw_line_heights:
+    raw_font_sizes = (settings or {}).get("meeting_font_size_json")
+    if raw_line_heights or raw_font_sizes:
         for field in fields:
             field_name = str(field.get("name") or "")
             for meeting in field.get("meetings") or []:
-                meeting["line_height"] = meeting_line_height_override(
-                    raw_line_heights,
-                    field_name,
-                    str(meeting.get("name") or ""),
-                )
+                meeting_name = str(meeting.get("name") or "")
+                if raw_line_heights:
+                    meeting["line_height"] = meeting_line_height_override(
+                        raw_line_heights,
+                        field_name,
+                        meeting_name,
+                    )
+                if raw_font_sizes:
+                    meeting["font_size_pt"] = meeting_font_size_override(
+                        raw_font_sizes,
+                        field_name,
+                        meeting_name,
+                    )
     return fields
 
 

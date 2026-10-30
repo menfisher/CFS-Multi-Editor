@@ -34,12 +34,106 @@ function addressBookPdfPreviewLineHeight(form) {
   return Math.max(0.5, addressBookPdfNumber(form, "line_height", 1.2));
 }
 
+function addressBookPdfPreviewFontSize(form) {
+  const visible = form.querySelector("[data-address-book-pdf-font-size-input]");
+  const value = parseFloat(visible?.value || "");
+  if (Number.isFinite(value)) return Math.max(1, value);
+  return Math.max(1, addressBookPdfNumber(form, "base_font_size_pt", 7));
+}
+
+function parseAddressBookPdfMeetingFontSizeMap(raw) {
+  try {
+    const payload = JSON.parse(String(raw || "{}"));
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+    const normalized = {};
+    Object.entries(payload).forEach(([key, value]) => {
+      const numeric = parseFloat(value);
+      if (!String(key).includes("||") || !Number.isFinite(numeric) || numeric <= 0) return;
+      normalized[key] = Math.max(4, Math.min(36, numeric));
+    });
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+function serializeAddressBookPdfMeetingFontSizeMap(map) {
+  return Object.keys(map).length ? JSON.stringify(map) : "";
+}
+
+function syncAddressBookPdfMeetingFontSizeFromSelection(form = document.querySelector("[data-address-book-pdf-form]")) {
+  if (!form) return;
+  const visible = form.querySelector("[data-address-book-pdf-font-size-input]");
+  const bookInput = form.querySelector("[data-address-book-pdf-book-font-size]");
+  const jsonInput = form.querySelector("[data-address-book-pdf-meeting-font-size-json]");
+  const resetButton = form.querySelector("[data-address-book-pdf-use-book-size]");
+  const fieldSelect = document.querySelector("[data-address-book-pdf-field-picker]");
+  const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
+  if (!visible || !bookInput) return;
+  const bookValue = parseFloat(bookInput.value || "");
+  const bookFontSize = Number.isFinite(bookValue) ? Math.max(1, Math.min(36, bookValue)) : 7;
+  const fieldName = fieldSelect?.value || "";
+  const meetingName = meetingSelect?.value || "";
+  const key = fieldName && meetingName ? addressBookPdfMeetingLineHeightKey(fieldName, meetingName) : "";
+  const map = parseAddressBookPdfMeetingFontSizeMap(jsonInput?.value);
+  if (!key) {
+    visible.value = String(bookFontSize);
+    if (resetButton) resetButton.hidden = true;
+    return;
+  }
+  const override = map[key];
+  visible.value = String(override || bookFontSize);
+  if (resetButton) resetButton.hidden = !override;
+}
+
+function persistAddressBookPdfMeetingFontSize(form) {
+  const visible = form.querySelector("[data-address-book-pdf-font-size-input]");
+  const bookInput = form.querySelector("[data-address-book-pdf-book-font-size]");
+  const jsonInput = form.querySelector("[data-address-book-pdf-meeting-font-size-json]");
+  const resetButton = form.querySelector("[data-address-book-pdf-use-book-size]");
+  const fieldSelect = document.querySelector("[data-address-book-pdf-field-picker]");
+  const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
+  if (!visible || !bookInput) return;
+  const value = parseFloat(visible.value || "");
+  const bookValue = parseFloat(bookInput.value || "");
+  const bookFontSize = Number.isFinite(bookValue) ? Math.max(1, Math.min(36, bookValue)) : 7;
+  const fieldName = fieldSelect?.value || "";
+  const meetingName = meetingSelect?.value || "";
+  const key = fieldName && meetingName ? addressBookPdfMeetingLineHeightKey(fieldName, meetingName) : "";
+  if (!key) {
+    if (Number.isFinite(value)) bookInput.value = String(Math.max(1, Math.min(36, value)));
+    return;
+  }
+  if (!jsonInput) return;
+  const map = parseAddressBookPdfMeetingFontSizeMap(jsonInput.value);
+  if (!Number.isFinite(value) || Math.abs(value - bookFontSize) < 0.0001) {
+    delete map[key];
+  } else {
+    map[key] = Math.max(4, Math.min(36, value));
+  }
+  jsonInput.value = serializeAddressBookPdfMeetingFontSizeMap(map);
+  if (resetButton) resetButton.hidden = !map[key];
+}
+
+function syncAddressBookPdfTypographyMeetingStatus() {
+  const status = document.querySelector("[data-address-book-pdf-typography-meeting-status]");
+  const fieldSelect = document.querySelector("[data-address-book-pdf-field-picker]");
+  const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
+  if (!status) return;
+  status.hidden = !(fieldSelect?.value && meetingSelect?.value);
+}
+
+function syncAddressBookPdfMeetingTypographyFromSelection(form = document.querySelector("[data-address-book-pdf-form]")) {
+  syncAddressBookPdfTypographyMeetingStatus();
+  syncAddressBookPdfMeetingLineSpacingFromSelection(form);
+  syncAddressBookPdfMeetingFontSizeFromSelection(form);
+}
+
 function syncAddressBookPdfMeetingLineSpacingFromSelection(form = document.querySelector("[data-address-book-pdf-form]")) {
   if (!form) return;
   const visible = form.querySelector("[data-address-book-pdf-line-height-input]");
   const bookInput = form.querySelector("[data-address-book-pdf-book-line-height]");
   const jsonInput = form.querySelector("[data-address-book-pdf-meeting-line-height-json]");
-  const label = form.querySelector("[data-address-book-pdf-line-height-label]");
   const resetButton = form.querySelector("[data-address-book-pdf-use-book-spacing]");
   const fieldSelect = document.querySelector("[data-address-book-pdf-field-picker]");
   const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
@@ -52,13 +146,11 @@ function syncAddressBookPdfMeetingLineSpacingFromSelection(form = document.query
   const map = parseAddressBookPdfMeetingLineHeightMap(jsonInput?.value);
   if (!key) {
     visible.value = String(bookLineHeight);
-    if (label) label.textContent = "Line spacing";
     if (resetButton) resetButton.hidden = true;
     return;
   }
   const override = map[key];
   visible.value = String(override || bookLineHeight);
-  if (label) label.textContent = "Line spacing (this meeting)";
   if (resetButton) resetButton.hidden = !override;
 }
 
@@ -91,6 +183,14 @@ function persistAddressBookPdfMeetingLineSpacing(form) {
   if (resetButton) resetButton.hidden = !map[key];
 }
 
+function installAddressBookPdfTypographyInfo() {
+  const infoButton = document.querySelector("[data-address-book-pdf-typography-info-open]");
+  const infoModal = document.querySelector("[data-address-book-pdf-typography-info-modal]");
+  infoButton?.addEventListener("click", () => {
+    if (typeof infoModal?.showModal === "function") infoModal.showModal();
+  });
+}
+
 function installAddressBookPdfMeetingLineSpacing(form) {
   const visible = form.querySelector("[data-address-book-pdf-line-height-input]");
   const resetButton = form.querySelector("[data-address-book-pdf-use-book-spacing]");
@@ -115,6 +215,32 @@ function installAddressBookPdfMeetingLineSpacing(form) {
     updateAddressBookPdfPreview();
   });
   syncAddressBookPdfMeetingLineSpacingFromSelection(form);
+}
+
+function installAddressBookPdfMeetingFontSize(form) {
+  const visible = form.querySelector("[data-address-book-pdf-font-size-input]");
+  const resetButton = form.querySelector("[data-address-book-pdf-use-book-size]");
+  if (!visible) return;
+  visible.addEventListener("input", () => persistAddressBookPdfMeetingFontSize(form));
+  visible.addEventListener("change", () => persistAddressBookPdfMeetingFontSize(form));
+  resetButton?.addEventListener("click", () => {
+    const jsonInput = form.querySelector("[data-address-book-pdf-meeting-font-size-json]");
+    const bookInput = form.querySelector("[data-address-book-pdf-book-font-size]");
+    const fieldSelect = document.querySelector("[data-address-book-pdf-field-picker]");
+    const meetingSelect = document.querySelector("[data-address-book-pdf-meeting-picker]");
+    const fieldName = fieldSelect?.value || "";
+    const meetingName = meetingSelect?.value || "";
+    const key = fieldName && meetingName ? addressBookPdfMeetingLineHeightKey(fieldName, meetingName) : "";
+    if (!key || !jsonInput) return;
+    const map = parseAddressBookPdfMeetingFontSizeMap(jsonInput.value);
+    delete map[key];
+    jsonInput.value = serializeAddressBookPdfMeetingFontSizeMap(map);
+    const bookValue = parseFloat(bookInput?.value || "");
+    visible.value = String(Number.isFinite(bookValue) ? Math.max(1, Math.min(36, bookValue)) : 7);
+    resetButton.hidden = true;
+    updateAddressBookPdfPreview();
+  });
+  syncAddressBookPdfMeetingFontSizeFromSelection(form);
 }
 
 function addressBookPdfText(form, name, fallback) {
@@ -499,7 +625,7 @@ function addressBookPdfPreviewLayoutMetrics() {
   const trimHeight = Math.max(0.1, addressBookPdfNumber(form, "trim_height_in", 5));
   const marginLeft = Math.max(0, addressBookPdfNumber(form, "margin_left_in", 0.14));
   const marginRight = Math.max(0, addressBookPdfNumber(form, "margin_right_in", 0.14));
-  const fontSizePt = Math.max(1, addressBookPdfNumber(form, "base_font_size_pt", 7));
+  const fontSizePt = addressBookPdfPreviewFontSize(form);
   const fontFamily = addressBookPdfText(form, "font_family", "Arial");
   const fitScale = Math.min(430 / trimWidth, 650 / trimHeight, 150);
   const fontSizePx = fontSizePt * (fitScale / 72);
@@ -1636,7 +1762,7 @@ function updateAddressBookPdfPreview() {
     fitScale,
   } = getAddressBookPdfPreviewScaleMetrics(form);
   const fontFamily = addressBookPdfText(form, "font_family", "Arial");
-  const fontSize = Math.max(1, addressBookPdfNumber(form, "base_font_size_pt", 7));
+  const fontSize = addressBookPdfPreviewFontSize(form);
   const lineHeight = addressBookPdfPreviewLineHeight(form);
   const columnCount = Math.max(1, parseInt(form.querySelector('[name="meeting_table_column_count"]')?.value || "28", 10) || 28);
   const columnGap = Math.max(0, parseInt(form.querySelector('[name="meeting_table_column_gap_px"]')?.value || "6", 10) || 6);
@@ -1803,18 +1929,6 @@ function wrapAddressBookPdfStepperControl(control, increaseLabel, decreaseLabel,
   wrapper.appendChild(buttons);
 }
 
-function stepAddressBookPdfSelect(select, direction) {
-  const options = Array.from(select.options).filter((option) => !option.disabled);
-  if (!options.length) return;
-  const currentIndex = options.findIndex((option) => option === select.options[select.selectedIndex]);
-  const nextIndex = currentIndex < 0
-    ? 0
-    : (currentIndex - direction + options.length) % options.length;
-  select.selectedIndex = options[nextIndex].index;
-  select.dispatchEvent(new Event("input", { bubbles: true }));
-  select.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
 function enhanceAddressBookPdfNumberInputs(form) {
   form.querySelectorAll('input[type="number"]').forEach((input) => {
     wrapAddressBookPdfStepperControl(
@@ -1822,14 +1936,6 @@ function enhanceAddressBookPdfNumberInputs(form) {
       `Increase ${input.id || input.name || "value"}`,
       `Decrease ${input.id || input.name || "value"}`,
       (direction) => stepAddressBookPdfNumber(input, direction),
-    );
-  });
-  form.querySelectorAll("#address-book-pdf-font-family").forEach((select) => {
-    wrapAddressBookPdfStepperControl(
-      select,
-      `Previous ${select.id || select.name || "option"}`,
-      `Next ${select.id || select.name || "option"}`,
-      (direction) => stepAddressBookPdfSelect(select, direction),
     );
   });
 }
@@ -3394,7 +3500,7 @@ function installAddressBookPdfPickers() {
     fieldSelect.dataset.selectedFieldName = fieldSelect.value;
     meetingSelect.dataset.selectedMeetingName = "";
     refreshMeetings();
-    syncAddressBookPdfMeetingLineSpacingFromSelection();
+    syncAddressBookPdfMeetingTypographyFromSelection();
     syncAddressBookPdfCoverForPreviewPickers();
     updateAddressBookPdfPreview();
   });
@@ -3405,14 +3511,14 @@ function installAddressBookPdfPickers() {
     } else {
       syncAddressBookPdfCoverForPreviewPickers();
     }
-    syncAddressBookPdfMeetingLineSpacingFromSelection();
+    syncAddressBookPdfMeetingTypographyFromSelection();
     renderAddressBookPdfContactPreview();
     updateAddressBookPdfPreview();
   });
   document.addEventListener("address-book-pdf-print-order-changed", () => {
     renderFields();
     refreshMeetings();
-    syncAddressBookPdfMeetingLineSpacingFromSelection();
+    syncAddressBookPdfMeetingTypographyFromSelection();
     updateAddressBookPdfPreview();
   });
   renderFields();
@@ -3456,7 +3562,10 @@ window.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
   installAddressBookPdfTemporaryNotice();
   installAddressBookPdfPickers();
+  installAddressBookPdfTypographyInfo();
   installAddressBookPdfMeetingLineSpacing(form);
+  installAddressBookPdfMeetingFontSize(form);
+  syncAddressBookPdfMeetingTypographyFromSelection(form);
   enhanceAddressBookPdfNumberInputs(form);
   installAddressBookPdfMapProviderControls(form);
   installAddressBookPdfPrintOrderModal(form);
