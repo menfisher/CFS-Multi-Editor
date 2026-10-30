@@ -47,7 +47,19 @@ class PdfEmbeddedFontTests(unittest.TestCase):
         self.assertIn(b"/BaseFont/Verdana", pdf)
         self.assertNotIn(b"/CFSRegular", pdf)
         self.assertIn(b"/WinAnsiEncoding", pdf)
+        self.assertIn(b"/ToUnicode", pdf)
         self.assertNotIn(b"/Verdana#20", pdf)
+        document = fitz.open(stream=pdf, filetype="pdf")
+        try:
+            self.assertFalse(document.is_encrypted)
+            self.assertFalse(document.needs_pass)
+            self.assertTrue(document.permissions & fitz.PDF_PERM_MODIFY)
+            self.assertTrue(document.permissions & fitz.PDF_PERM_ANNOTATE)
+            self.assertTrue(document.permissions & fitz.PDF_PERM_ASSEMBLE)
+            self.assertEqual(document.metadata.get("creator"), "ContactsFreeShare")
+            self.assertEqual(document.metadata.get("producer"), "ContactsFreeShare")
+        finally:
+            document.close()
 
     def test_verdana_contact_name_wraps_like_the_html_preview(self) -> None:
         if not resolve_pdf_font_path("Verdana", "regular"):

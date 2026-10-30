@@ -16,8 +16,10 @@ from app.services.address_book_pdf_service import (
     order_address_book_fields,
 )
 from app.services.field_list_service import (
+    apply_address_book_settings,
     get_address_book_settings,
     get_field_list_builder_context,
+    meeting_line_height_override,
     save_address_book_settings,
 )
 from app.services.google_sync_service import (
@@ -150,6 +152,7 @@ def _address_book_pdf_fields_from_context(field_list_context: dict, *, preview_l
         return {
             "name": meeting.get("name", ""),
             "home_last_name": _address_book_pdf_meeting_home_last_name(contacts),
+            "line_height": meeting.get("line_height") or 0,
             "contacts": [
                 _address_book_pdf_contact_preview(contact)
                 for contact in preview_contacts
@@ -252,6 +255,7 @@ def _address_book_pdf_settings_from_form(form) -> dict:
         "address_align": form.get("address_align"),
         "print_order_mode": form.get("print_order_mode"),
         "print_order_json": form.get("print_order_json"),
+        "meeting_line_height_json": form.get("meeting_line_height_json"),
         "meeting_page_mode": form.get("meeting_page_mode"),
         "field_separator_pages": form.get("field_separator_pages"),
         "double_column_index": form.get("double_column_index"),
@@ -260,7 +264,7 @@ def _address_book_pdf_settings_from_form(form) -> dict:
     }
 
 
-def _address_book_pdf_print_settings(form) -> dict:
+def _address_book_pdf_print_settings(form, *, persist: bool = True) -> dict:
     """Address Book PDF always includes Meeting Data after each meeting.
 
     The Field List page has its own checkbox for that block. The Address Book
@@ -268,7 +272,13 @@ def _address_book_pdf_print_settings(form) -> dict:
     """
     values = _address_book_pdf_settings_from_form(form)
     values["include_bible_study_union_info"] = 1
-    return save_address_book_settings(values)
+    if persist:
+        return save_address_book_settings(values)
+    return apply_address_book_settings(values)
+
+
+def _address_book_pdf_can_persist() -> bool:
+    return is_editing_allowed() or is_non_editor_access_role()
 
 
 def _address_book_pdf_cover_options_from_form(form) -> dict:
@@ -314,12 +324,22 @@ def _address_book_pdf_selected_field_names(form) -> list[str]:
     return [str(name) for name in selected_field_names] if isinstance(selected_field_names, list) else []
 
 
-def _address_book_pdf_fields_for_print(form, field_list_context: dict) -> list[dict]:
+def _address_book_pdf_fields_for_print(form, field_list_context: dict, settings: dict | None = None) -> list[dict]:
     fields = _address_book_pdf_fields_from_context(field_list_context)
     selected_field_names = _address_book_pdf_selected_field_names(form)
     if selected_field_names:
         selected_names = set(selected_field_names)
         fields = [field for field in fields if str(field.get("name") or "") in selected_names]
+    raw_line_heights = (settings or {}).get("meeting_line_height_json")
+    if raw_line_heights:
+        for field in fields:
+            field_name = str(field.get("name") or "")
+            for meeting in field.get("meetings") or []:
+                meeting["line_height"] = meeting_line_height_override(
+                    raw_line_heights,
+                    field_name,
+                    str(meeting.get("name") or ""),
+                )
     return fields
 
 
@@ -412,6 +432,7 @@ def address_book_pdf_page(
     )
     context["address_book_picker_json"] = json.dumps({"fields": context["address_book_picker_fields"]})
     context["address_book_meeting_preview_json"] = field_list_context["field_list_meeting_preview_json"]
+    context["notice_key"] = notice
     context["notice_message"] = get_notice_message(notice)
     return templates.TemplateResponse(
         request=request,
@@ -469,14 +490,12 @@ async def print_address_book_pdf_page(request: Request):
     form = await request.form()
     preset_id_raw = str(form.get("preset_id", "") or "").strip()
     preset_id = int(preset_id_raw) if preset_id_raw else None
-    if not is_editing_allowed() and not is_non_editor_access_role():
-        return RedirectResponse(url=f"/address-book/pdf?notice={get_edit_block_notice_key()}", status_code=303)
-
-    saved_id = _save_address_book_pdf_layout_preset(preset_id, _address_book_pdf_layout_from_form(form))
-    settings = _address_book_pdf_print_settings(form)
+    persist = _address_book_pdf_can_persist()
     layout = _address_book_pdf_layout_from_form(form)
+    saved_id = _save_address_book_pdf_layout_preset(preset_id, layout) if persist else int(preset_id or 0)
+    settings = _address_book_pdf_print_settings(form, persist=persist)
     field_list_context = get_field_list_builder_context()
-    fields = _address_book_pdf_fields_for_print(form, field_list_context)
+    fields = _address_book_pdf_fields_for_print(form, field_list_context, settings)
     meeting_preview_payload = json.loads(field_list_context["field_list_meeting_preview_json"])
     pdf_bytes = build_address_book_pdf(
         fields=fields,
@@ -497,14 +516,12 @@ async def print_address_book_paper_page(request: Request):
     form = await request.form()
     preset_id_raw = str(form.get("preset_id", "") or "").strip()
     preset_id = int(preset_id_raw) if preset_id_raw else None
-    if not is_editing_allowed() and not is_non_editor_access_role():
-        return RedirectResponse(url=f"/address-book/pdf?notice={get_edit_block_notice_key()}", status_code=303)
-
-    saved_id = _save_address_book_pdf_layout_preset(preset_id, _address_book_pdf_layout_from_form(form))
-    settings = _address_book_pdf_print_settings(form)
+    persist = _address_book_pdf_can_persist()
     layout = _address_book_pdf_layout_from_form(form)
+    saved_id = _save_address_book_pdf_layout_preset(preset_id, layout) if persist else int(preset_id or 0)
+    settings = _address_book_pdf_print_settings(form, persist=persist)
     field_list_context = get_field_list_builder_context()
-    fields = _address_book_pdf_fields_for_print(form, field_list_context)
+    fields = _address_book_pdf_fields_for_print(form, field_list_context, settings)
     meeting_preview_payload = json.loads(field_list_context["field_list_meeting_preview_json"])
     binding = str(form.get("paper_book_binding") or "side_spiral")
     if binding not in {"side_spiral", "top_spiral", "stapled_folded"}:

@@ -20,6 +20,8 @@
     <input type="hidden" name="meeting_table_column_gap_px" value="{{ selected_preset.meeting_table_column_gap_px }}">
     <input type="hidden" name="screen_preview_scale" value="{{ selected_preset.screen_preview_scale }}">
     <input type="hidden" name="print_order_json" value="{{ address_book_settings.print_order_json }}" data-address-book-pdf-print-order-json>
+    <input type="hidden" name="line_height" value="{{ selected_preset.line_height }}" data-address-book-pdf-book-line-height>
+    <input type="hidden" name="meeting_line_height_json" value="{{ address_book_settings.meeting_line_height_json }}" data-address-book-pdf-meeting-line-height-json>
     <input type="hidden" name="print_field_names" value="" data-address-book-pdf-print-field-names>
     <input type="hidden" name="include_cover_image" value="0" data-address-book-pdf-include-cover-value>
     <input type="hidden" name="include_cover_title" value="0" data-address-book-pdf-include-cover-title-value>
@@ -120,8 +122,9 @@
             <input id="address-book-pdf-title-font-size" name="title_font_size_pt" type="number" min="1" step="0.1" value="{{ selected_preset.title_font_size_pt }}">
           </label>
           <label class="form-label" for="address-book-pdf-line-height">
-            Line spacing
-            <input id="address-book-pdf-line-height" name="line_height" type="number" min="0.5" step="0.01" value="{{ selected_preset.line_height }}">
+            <span data-address-book-pdf-line-height-label>Line spacing</span>
+            <input id="address-book-pdf-line-height" type="number" min="0.5" step="0.01" value="{{ selected_preset.line_height }}" data-address-book-pdf-line-height-input>
+            <button type="button" class="address-book-pdf-use-book-spacing" hidden data-address-book-pdf-use-book-spacing>Use book spacing</button>
           </label>
           <label class="form-label" for="address-book-pdf-index-font-size">
             Index
@@ -212,7 +215,7 @@
         </div>
       </div>
       {% if notice_message %}
-        <div class="notice is-info" id="contacts-temporary-notice" data-auto-hide-ms="3600">{{ notice_message }}</div>
+        <div class="notice is-info"{% if notice_key not in ["editor_lock_blocked", "signin_sync_blocked", "signin_sync_failed_blocked"] %} id="contacts-temporary-notice" data-auto-hide-ms="3600"{% endif %}>{{ notice_message }}</div>
       {% endif %}
       <div class="address-book-pdf-canvas-wrap">
         <div class="address-book-pdf-canvas" data-address-book-pdf-canvas>
@@ -376,6 +379,8 @@
           formaction="/address-book/pdf/print"
           formmethod="post"
           data-address-book-pdf-print-button
+          data-busy-modal-title="Creating PDF"
+          data-busy-modal-copy="Building the Address Book PDF. This can take a minute."
         >
           Print PDF
         </button>
@@ -414,6 +419,8 @@
             formaction="/address-book/pdf/print-paper"
             formmethod="post"
             data-address-book-pdf-print-paper-button
+            data-busy-modal-title="Creating PDF"
+            data-busy-modal-copy="Building the paper-book PDF. This can take a minute."
           >
             Print paper book
           </button>
@@ -596,5 +603,5 @@
 
 {% block extra_scripts %}
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="/static/js/address_book_pdf.js?v=91"></script>
+  <script src="/static/js/address_book_pdf.js?v=92"></script>
 {% endblock %}

@@ -625,10 +625,11 @@ def _fitz_insert_page_image(page, image: _PdfImage, page_h: float, fitz) -> None
 
 
 class _PdfWriter:
-    def __init__(self, width: float, height: float, *, font_family: str = "Arial") -> None:
+    def __init__(self, width: float, height: float, *, font_family: str = "Arial", title: str = "") -> None:
         self.width = width
         self.height = height
         self.font_family = _normalize_pdf_font_family(font_family)
+        self.title = str(title or "").strip()
         self.pages: list[_PdfPage] = []
 
     def add_page(self) -> _PdfPage:
@@ -741,7 +742,14 @@ class _PdfWriter:
             for page_index, link in pending_links:
                 document[page_index].insert_link(link)
             _fitz_sync_embedded_font_names(document)
-            return document.tobytes(deflate=True, garbage=4, clean=True)
+            _fitz_add_winansi_tounicode(document)
+            _fitz_mark_pdf_editable(document, self.title)
+            return document.tobytes(
+                deflate=True,
+                garbage=3,
+                clean=False,
+                encryption=fitz.PDF_ENCRYPT_NONE,
+            )
         finally:
             document.close()
 
@@ -810,6 +818,10 @@ class _PdfWriter:
             pending_pages.append((page, content_ref, xobject_refs))
 
         pages_ref = add_object(b"")
+        info_title = _pdf_escape(self.title or "Address Book")
+        info_ref = add_object(
+            f"<< /Title ({info_title}) /Creator (ContactsFreeShare) /Producer (ContactsFreeShare) >>"
+        )
         catalog_ref = add_object(f"<< /Type /Catalog /Pages {pages_ref} 0 R >>")
 
         for page_ref, (page, content_ref, xobject_refs) in zip(page_refs, pending_pages):
@@ -878,7 +890,7 @@ class _PdfWriter:
         for offset in offsets[1:]:
             chunks.append(f"{offset:010d} 00000 n \n".encode("latin-1"))
         chunks.append(
-            f"trailer\n<< /Size {len(objects) + 1} /Root {catalog_ref} 0 R >>\nstartxref\n{xref_start}\n%%EOF\n".encode("latin-1")
+            f"trailer\n<< /Size {len(objects) + 1} /Root {catalog_ref} 0 R /Info {info_ref} 0 R >>\nstartxref\n{xref_start}\n%%EOF\n".encode("latin-1")
         )
         return b"".join(chunks)
 
@@ -910,6 +922,112 @@ def _fitz_sync_embedded_font_names(document) -> None:
             document.xref_set_key(descriptor_xref, "FontName", base[1])
         except Exception:
             continue
+
+
+_WINANSI_EXTRA_UNICODES = {
+    0x80: 0x20AC,
+    0x82: 0x201A,
+    0x83: 0x0192,
+    0x84: 0x201E,
+    0x85: 0x2026,
+    0x86: 0x2020,
+    0x87: 0x2021,
+    0x88: 0x02C6,
+    0x89: 0x2030,
+    0x8A: 0x0160,
+    0x8B: 0x2039,
+    0x8C: 0x0152,
+    0x8E: 0x017D,
+    0x91: 0x2018,
+    0x92: 0x2019,
+    0x93: 0x201C,
+    0x94: 0x201D,
+    0x95: 0x2022,
+    0x96: 0x2013,
+    0x97: 0x2014,
+    0x98: 0x02DC,
+    0x99: 0x2122,
+    0x9A: 0x0161,
+    0x9B: 0x203A,
+    0x9C: 0x0153,
+    0x9E: 0x017E,
+    0x9F: 0x0178,
+}
+
+
+def _winansi_tounicode_stream() -> bytes:
+    mappings: list[str] = []
+    for code in range(32, 256):
+        unicode_value = _WINANSI_EXTRA_UNICODES.get(code)
+        if unicode_value is None:
+            if code == 0x7F or 0x80 <= code <= 0x9F:
+                continue
+            unicode_value = code
+        mappings.append(f"<{code:02X}> <{unicode_value:04X}>")
+    lines = [
+        "/CIDInit /ProcSet findresource begin",
+        "12 dict begin",
+        "begincmap",
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+        "/CMapName /WinAnsi-UCS def",
+        "/CMapType 2 def",
+        "1 begincodespacerange",
+        "<00> <FF>",
+        "endcodespacerange",
+    ]
+    for start in range(0, len(mappings), 100):
+        chunk = mappings[start : start + 100]
+        lines.append(f"{len(chunk)} beginbfchar")
+        lines.extend(chunk)
+        lines.append("endbfchar")
+    lines.extend(
+        [
+            "endcmap",
+            "CMapName currentdict /CMap defineresource pop",
+            "end",
+            "end",
+        ]
+    )
+    return "\n".join(lines).encode("latin-1")
+
+
+def _fitz_add_winansi_tounicode(document) -> None:
+    """Give simple WinAnsi fonts a ToUnicode map so Acrobat can edit text and links."""
+    cmap_bytes = _winansi_tounicode_stream()
+    cmap_xref: int | None = None
+    for xref in range(1, document.xref_length()):
+        try:
+            font_type = document.xref_get_key(xref, "Type")
+            subtype = document.xref_get_key(xref, "Subtype")
+            encoding = document.xref_get_key(xref, "Encoding")
+            tounicode = document.xref_get_key(xref, "ToUnicode")
+        except Exception:
+            continue
+        if font_type != ("name", "/Font") or subtype[1] not in {"/TrueType", "/Type1"}:
+            continue
+        if encoding != ("name", "/WinAnsiEncoding"):
+            continue
+        if tounicode and tounicode[0] == "xref":
+            continue
+        if cmap_xref is None:
+            cmap_xref = document.get_new_xref()
+            document.update_object(cmap_xref, "<<>>")
+            document.update_stream(cmap_xref, cmap_bytes)
+        try:
+            document.xref_set_key(xref, "ToUnicode", f"{cmap_xref} 0 R")
+        except Exception:
+            continue
+
+
+def _fitz_mark_pdf_editable(document, title: str) -> None:
+    """Label the file as a normal, unlocked PDF for full editors such as Acrobat."""
+    document.set_metadata(
+        {
+            "title": str(title or "").strip() or "Address Book",
+            "creator": "ContactsFreeShare",
+            "producer": "ContactsFreeShare",
+        }
+    )
 
 
 PHONE_NUMBER_SLOT = "000-000-0000"
@@ -2380,7 +2498,25 @@ def build_address_book_pdf(
     margin_bottom = max(6.0, float(layout.get("margin_bottom_in") or 0.14) * 72.0)
     font_size = max(4.0, float(layout.get("base_font_size_pt") or 7.0))
     font_family = _normalize_pdf_font_family(layout.get("font_family"))
-    line_step = font_size * max(0.8, float(layout.get("line_height") or 1.2))
+    book_line_height = max(0.8, float(layout.get("line_height") or 1.2))
+    current_meeting_line_height = book_line_height
+    line_step = font_size * book_line_height
+
+    def meeting_spacing_value(meeting: dict | None = None) -> float:
+        if not meeting:
+            return book_line_height
+        try:
+            value = float(meeting.get("line_height") or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value <= 0:
+            return book_line_height
+        return max(0.8, min(3.0, value))
+
+    def apply_meeting_spacing(meeting: dict | None = None) -> None:
+        nonlocal line_step, current_meeting_line_height
+        current_meeting_line_height = meeting_spacing_value(meeting)
+        line_step = font_size * current_meeting_line_height
     provider = "apple" if settings.get("address_map_provider") == "apple" else "google"
     address_align_right = settings.get("address_align") != "left"
     address_italic = bool(settings.get("address_italic", 1))
@@ -2390,7 +2526,12 @@ def build_address_book_pdf(
     double_column_index = bool(settings.get("double_column_index"))
     include_bible_study = bool(settings.get("include_bible_study_union_info", 1))
 
-    writer = _PdfWriter(page_width, page_height, font_family=font_family)
+    writer = _PdfWriter(
+        page_width,
+        page_height,
+        font_family=font_family,
+        title=str(layout.get("book_title") or "Address Book"),
+    )
     page = writer.add_page()
     y = page_height - margin_top
     page_number = 1
@@ -2430,7 +2571,7 @@ def build_address_book_pdf(
         total = 0.0
         for row in chunk:
             row_font_size = _meeting_row_font_size_pt(row, font_size)
-            row_line_step = row_font_size * _meeting_row_line_height(row, layout.get("line_height"))
+            row_line_step = row_font_size * _meeting_row_line_height(row, current_meeting_line_height)
             row_line_count = _meeting_row_line_count(row, **meeting_row_count_kwargs)
             total += row_line_count * row_line_step
         return total
@@ -2560,7 +2701,7 @@ def build_address_book_pdf(
         nonlocal y
         kind = _clean(row.get("kind"))
         row_font_size = _meeting_row_font_size_pt(row, font_size)
-        row_line_step = row_font_size * _meeting_row_line_height(row, layout.get("line_height"))
+        row_line_step = row_font_size * _meeting_row_line_height(row, current_meeting_line_height)
         column_gap_pt = _meeting_column_gap_pt(
             row.get("column_gap_px"),
             grid_width_pt=content_width,
@@ -2745,7 +2886,7 @@ def build_address_book_pdf(
         total = line_step
         for row in rows:
             row_font_size = _meeting_row_font_size_pt(row, font_size)
-            row_line_step = row_font_size * _meeting_row_line_height(row, layout.get("line_height"))
+            row_line_step = row_font_size * _meeting_row_line_height(row, current_meeting_line_height)
             total += _meeting_row_line_count(row, **meeting_row_count_kwargs) * row_line_step
         return total + line_step
 
@@ -2760,6 +2901,7 @@ def build_address_book_pdf(
 
     def start_field_separator_page(field_name: str, field_meetings: list[dict]) -> None:
         nonlocal y
+        apply_meeting_spacing(None)
         if _page_content_lines():
             previous_field_name = (
                 _clean(ordered_fields[field_index - 1].get("name")) if field_index else field_name
@@ -2874,6 +3016,7 @@ def build_address_book_pdf(
             add_footer(previous_field_name)
             new_page()
         for meeting_index, meeting in enumerate(meetings):
+            apply_meeting_spacing(meeting)
             meeting_name = _clean(meeting.get("name"))
             heading = _meeting_heading(meeting_name, meeting.get("home_last_name"))
             is_field_end_list = _is_field_end_list_meeting(meeting)

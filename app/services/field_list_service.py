@@ -68,6 +68,7 @@ ADDRESS_BOOK_SETTING_KEYS = (
     "manual_palette_items",
     "print_order_mode",
     "print_order_json",
+    "meeting_line_height_json",
     "meeting_page_mode",
     "field_separator_pages",
     "double_column_index",
@@ -162,6 +163,7 @@ def _default_address_book_settings() -> dict[str, Any]:
         "manual_palette_items": 0,
         "print_order_mode": "alphabetical",
         "print_order_json": "",
+        "meeting_line_height_json": "",
         "meeting_page_mode": "one_meeting",
         "field_separator_pages": 0,
         "double_column_index": 0,
@@ -179,6 +181,78 @@ def _setting_flag(values: dict[str, Any], fallback: dict[str, Any], key: str) ->
     if key not in values:
         return 1 if bool(fallback.get(key)) else 0
     return 1 if str(values.get(key) or "").lower() in {"1", "true", "yes", "on"} else 0
+
+
+def meeting_line_height_key(field_name: str, meeting_name: str) -> str:
+    return f"{str(field_name or '').strip()}||{str(meeting_name or '').strip()}"
+
+
+def _coerce_meeting_line_height(value: object) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if numeric <= 0:
+        return 0.0
+    return max(0.8, min(3.0, numeric))
+
+
+def parse_meeting_line_height_map(raw_json: object) -> dict[str, float]:
+    try:
+        payload = json.loads(str(raw_json or "{}"))
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, float] = {}
+    for key, value in payload.items():
+        label = str(key or "").strip()
+        if "||" not in label:
+            continue
+        field_name, meeting_name = label.split("||", 1)
+        map_key = meeting_line_height_key(field_name, meeting_name)
+        if not map_key.strip("|"):
+            continue
+        line_height = _coerce_meeting_line_height(value)
+        if line_height <= 0:
+            continue
+        normalized[map_key] = line_height
+    return normalized
+
+
+def serialize_meeting_line_height_map(values: dict[str, float]) -> str:
+    if not values:
+        return ""
+    return json.dumps(values, separators=(",", ":"))
+
+
+def _normalize_meeting_line_height_json(raw_json: object) -> str:
+    return serialize_meeting_line_height_map(parse_meeting_line_height_map(raw_json))
+
+
+def meeting_line_height_override(raw_json: object, field_name: str, meeting_name: str) -> float:
+    return parse_meeting_line_height_map(raw_json).get(meeting_line_height_key(field_name, meeting_name), 0.0)
+
+
+def remap_meeting_line_height_assignments(kind: str, old_value: str, new_value: str) -> dict[str, Any]:
+    settings = get_address_book_settings()
+    current = parse_meeting_line_height_map(settings.get("meeting_line_height_json"))
+    if not current:
+        return settings
+    remapped: dict[str, float] = {}
+    changed = False
+    for key, value in current.items():
+        field_name, _, meeting_name = key.partition("||")
+        if kind == "field" and field_name == old_value:
+            field_name = new_value
+            changed = True
+        elif kind == "meeting" and meeting_name == old_value:
+            meeting_name = new_value
+            changed = True
+        remapped[meeting_line_height_key(field_name, meeting_name)] = value
+    if not changed:
+        return settings
+    return save_address_book_settings({"meeting_line_height_json": serialize_meeting_line_height_map(remapped)})
 
 
 def _normalize_address_book_settings_values(values: dict[str, Any] | None, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -223,6 +297,9 @@ def _normalize_address_book_settings_values(values: dict[str, Any] | None, fallb
         "manual_palette_items": _setting_flag(source, fallback_values, "manual_palette_items"),
         "print_order_mode": _clean(_setting_value(source, fallback_values, "print_order_mode")).lower(),
         "print_order_json": _clean(_setting_value(source, fallback_values, "print_order_json")),
+        "meeting_line_height_json": _normalize_meeting_line_height_json(
+            _setting_value(source, fallback_values, "meeting_line_height_json")
+        ),
         "meeting_page_mode": _clean(_setting_value(source, fallback_values, "meeting_page_mode")).lower(),
         "field_separator_pages": _setting_flag(source, fallback_values, "field_separator_pages"),
         "double_column_index": _setting_flag(source, fallback_values, "double_column_index"),
@@ -343,6 +420,13 @@ def ensure_address_book_settings() -> None:
                 ADD COLUMN print_order_json TEXT NOT NULL DEFAULT ''
                 """
             )
+        if "meeting_line_height_json" not in settings_columns:
+            conn.execute(
+                """
+                ALTER TABLE address_book_settings
+                ADD COLUMN meeting_line_height_json TEXT NOT NULL DEFAULT ''
+                """
+            )
         if "meeting_page_mode" not in settings_columns:
             conn.execute(
                 """
@@ -404,6 +488,7 @@ def ensure_address_book_settings() -> None:
               manual_palette_items = COALESCE(manual_palette_items, ?),
               print_order_mode = CASE WHEN TRIM(print_order_mode) = '' THEN ? ELSE print_order_mode END,
               print_order_json = COALESCE(print_order_json, ?),
+              meeting_line_height_json = COALESCE(meeting_line_height_json, ?),
               meeting_page_mode = CASE WHEN TRIM(meeting_page_mode) = '' THEN ? ELSE meeting_page_mode END,
               updated_at = ?
             WHERE id = 1
@@ -445,6 +530,7 @@ def ensure_address_book_settings() -> None:
                 defaults["manual_palette_items"],
                 defaults["print_order_mode"],
                 defaults["print_order_json"],
+                defaults["meeting_line_height_json"],
                 defaults["meeting_page_mode"],
                 _now_text(),
             ),
@@ -2112,6 +2198,7 @@ def _field_list_picker_payload() -> dict[str, Any]:
     from app.services.field_end_list_service import field_end_list_names_by_field
 
     settings = _load_address_book_settings()
+    meeting_line_heights = parse_meeting_line_height_map(settings.get("meeting_line_height_json"))
     field_end_lists_by_field = field_end_list_names_by_field()
     for field_name in field_end_lists_by_field:
         fields.setdefault(field_name, {"name": field_name, "meetings": {}})
@@ -2150,6 +2237,7 @@ def _field_list_picker_payload() -> dict[str, Any]:
                     "contacts": sorted_contacts,
                     "is_field_end_list": meeting_name in field_end_name_set,
                     "field_end_list_order": field_end_names.index(meeting_name) + 1 if meeting_name in field_end_name_set else 0,
+                    "line_height": meeting_line_heights.get(meeting_line_height_key(field_name, meeting_name), 0),
                 }
             )
         normalized_fields.append({"name": field_name, "meetings": meetings})
@@ -2576,6 +2664,11 @@ def create_field_list_template(template_name: str = "", items_json: str = "", se
         return template_id
 
 
+def apply_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
+    """Normalize posted settings against the stored row without writing."""
+    return _normalize_address_book_settings_values(values, _load_address_book_settings())
+
+
 def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
     ensure_address_book_settings()
     normalized = _normalize_address_book_settings_values(values, _load_address_book_settings())
@@ -2621,6 +2714,7 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
               manual_palette_items = ?,
               print_order_mode = ?,
               print_order_json = ?,
+              meeting_line_height_json = ?,
               meeting_page_mode = ?,
               field_separator_pages = ?,
               double_column_index = ?,
@@ -2665,6 +2759,7 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
                 normalized["manual_palette_items"],
                 normalized["print_order_mode"],
                 normalized["print_order_json"],
+                normalized["meeting_line_height_json"],
                 normalized["meeting_page_mode"],
                 normalized["field_separator_pages"],
                 normalized["double_column_index"],
@@ -4718,6 +4813,7 @@ FIELD_LIST_SHARED_SETTING_KEYS = (
     "manual_palette_items",
     "print_order_mode",
     "print_order_json",
+    "meeting_line_height_json",
     "meeting_page_mode",
     "field_separator_pages",
     "double_column_index",

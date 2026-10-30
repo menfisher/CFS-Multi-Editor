@@ -626,6 +626,10 @@ def rename_contact_assignment_option(kind: str, old_value: str, new_value: str) 
     if removed_meetingdata_sections or renamed_meetingdata_sections:
         mark_meetingdata_for_drive_export()
 
+    from app.services.field_list_service import remap_meeting_line_height_assignments
+
+    remap_meeting_line_height_assignments(normalized_kind, normalized_old_value, normalized_new_value)
+
     return {
         "old_value": normalized_old_value,
         "new_value": normalized_new_value,

@@ -144,6 +144,23 @@
   line-height: 1.05;
 }
 
+.address-book-pdf-use-book-spacing {
+  justify-self: start;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #155e63;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.address-book-pdf-use-book-spacing[hidden] {
+  display: none;
+}
+
 .address-book-pdf-page input[type="radio"],
 .address-book-pdf-page input[type="checkbox"] {
   width: auto;
