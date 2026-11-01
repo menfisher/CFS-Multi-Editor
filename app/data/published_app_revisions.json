@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.245",
+      "version": "1.246",
+      "date_display": "11/1/2026",
+      "description": "Install on Intel Macs with Python 3.14 by using the last cryptography release that still has an Intel Mac wheel."
+    },
+    {
       "date_display": "10/30/2026",
+      "version": "1.245",
       "description": "Address Book Size can be set for one Field + Meeting like Line spacing. Typography shows This meeting and a black reset at the front of Size or Line spacing. Font is a native dropdown. MeetingData has Book Layout and Row toolbar help."
     },
     {

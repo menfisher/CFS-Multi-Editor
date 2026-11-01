@@ -73,7 +73,9 @@ if [ "$BUNDLE_WHEELS" != "0" ] && [ -f "$ROOT_DIR/requirements.txt" ]; then
           break
         fi
       done
-      if ! ls "$WHEEL_DIR"/cryptography-*-macosx*.whl >/dev/null 2>&1 \
+      if { ! ls "$WHEEL_DIR"/cryptography-*-macosx*universal2.whl >/dev/null 2>&1 \
+        && ! ls "$WHEEL_DIR"/cryptography-*-macosx_*_x86_64.whl >/dev/null 2>&1; } \
+        || ! ls "$WHEEL_DIR"/cryptography-*-macosx*arm64.whl >/dev/null 2>&1 \
         || ! ls "$WHEEL_DIR"/protobuf-*-macosx*.whl >/dev/null 2>&1 \
         || ! ls "$WHEEL_DIR"/charset_normalizer-*-cp${mac_python}-*-${mac_platform_glob}.whl >/dev/null 2>&1; then
         mac_wheels_missing=1
@@ -362,10 +364,10 @@ if ! "$PYTHON" -c "import fastapi, uvicorn, jinja2, multipart" >/dev/null 2>&1; 
   if [ -d "vendor/wheels" ]; then
     if ! "$PYTHON" -m pip install --no-index --find-links "vendor/wheels" -r requirements-portable-bundle.txt; then
       echo "Some bundled wheels did not match this Python version. Trying online install..."
-      "$PYTHON" -m pip install -r requirements-portable-bundle.txt
+      "$PYTHON" -m pip install --only-binary=cryptography -r requirements-portable-bundle.txt
     fi
   else
-    "$PYTHON" -m pip install -r requirements-portable-bundle.txt
+    "$PYTHON" -m pip install --only-binary=cryptography -r requirements-portable-bundle.txt
   fi
   if ! "$PYTHON" -c "import fastapi, uvicorn, jinja2, multipart" >/dev/null 2>&1; then
     echo
@@ -609,10 +611,10 @@ if errorlevel 1 (
   if exist "vendor\wheels" (
     ".venv\Scripts\python.exe" -m pip install --no-index --find-links "vendor\wheels" -r requirements-portable-bundle.txt
     if errorlevel 1 (
-      ".venv\Scripts\python.exe" -m pip install -r requirements-portable-bundle.txt
+      ".venv\Scripts\python.exe" -m pip install --only-binary=cryptography -r requirements-portable-bundle.txt
     )
   ) else (
-    ".venv\Scripts\python.exe" -m pip install -r requirements-portable-bundle.txt
+    ".venv\Scripts\python.exe" -m pip install --only-binary=cryptography -r requirements-portable-bundle.txt
   )
   if errorlevel 1 (
     echo.

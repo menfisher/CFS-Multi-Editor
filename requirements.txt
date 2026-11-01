@@ -9,5 +9,7 @@ google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+# 49+ dropped Intel macOS wheels; 48.0.1 still has a universal2 wheel for 3.12–3.14.
+cryptography==48.0.1
 # Installed on first Address Book PDF insert use in portable packages (see pymupdf_runtime.py).
 pymupdf
