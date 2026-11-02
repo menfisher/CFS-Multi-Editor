@@ -349,11 +349,36 @@
       </section>
 
       <section class="address-book-pdf-palette address-book-pdf-green-palette">
-        <div class="address-book-pdf-palette-title">Field separator</div>
-        <label class="address-book-pdf-check-row">
-          <input type="checkbox" name="field_separator_pages" value="1" {% if address_book_settings.field_separator_pages %}checked{% endif %}>
-          <span>Print page between Fields</span>
-        </label>
+        <div class="address-book-pdf-palette-header">
+          <div class="address-book-pdf-palette-title">Field separator</div>
+          <button
+            type="button"
+            class="contact-notes-info-button address-book-pdf-separator-info-button"
+            data-address-book-pdf-separator-info-open
+            aria-label="About Field Separator Size"
+            title="About Field Separator Size"
+          >
+            <span aria-hidden="true">i</span>
+          </button>
+        </div>
+        <div class="address-book-pdf-field-separator-row">
+          <label class="address-book-pdf-check-row">
+            <input type="checkbox" name="field_separator_pages" value="1" {% if address_book_settings.field_separator_pages %}checked{% endif %}>
+            <span>Field Separator page</span>
+          </label>
+          <label class="address-book-pdf-field-separator-size" for="address-book-pdf-field-separator-font-size">
+            <span>Size</span>
+            <input
+              id="address-book-pdf-field-separator-font-size"
+              name="field_separator_font_size_pt"
+              type="number"
+              min="4"
+              max="36"
+              step="0.1"
+              value="{{ address_book_settings.field_separator_font_size_pt or selected_preset.toc_font_size_pt }}"
+            >
+          </label>
+        </div>
       </section>
 
       <section class="address-book-pdf-palette address-book-pdf-print-palette">
@@ -629,6 +654,23 @@
       </div>
     </form>
   </dialog>
+  <dialog class="app-modal" id="address-book-separator-info-modal" data-address-book-pdf-separator-info-modal aria-labelledby="address-book-separator-info-title">
+    <form method="dialog" class="app-modal-panel">
+      <div class="app-modal-header">
+        <h3 class="app-modal-title" id="address-book-separator-info-title">Field Separator Size</h3>
+        <p class="app-modal-copy"><strong>Size</strong> changes the type on Field Separator pages only. Meeting pages, TOC, and Index keep their own sizes.</p>
+        <p class="app-modal-copy">To see Size in the preview:</p>
+        <p class="app-modal-copy">1. Check <strong>Field Separator page</strong>.</p>
+        <p class="app-modal-copy">2. Choose a Field — not All Fields.</p>
+        <p class="app-modal-copy">3. Choose <strong>Separator Page</strong> in All Meetings.</p>
+        <p class="app-modal-copy">4. Change Size. The preview updates.</p>
+        <p class="app-modal-copy">5. Click <strong>Save</strong> to keep the setting.</p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="submit" class="contact-card-button contact-card-button-edit" value="close">OK</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="app-modal" id="address-book-insert-info-modal" data-address-book-pdf-insert-info-modal aria-labelledby="address-book-insert-info-title">
     <form method="dialog" class="app-modal-panel">
       <div class="app-modal-header">
@@ -663,5 +705,5 @@
 
 {% block extra_scripts %}
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="/static/js/address_book_pdf.js?v=96"></script>
+  <script src="/static/js/address_book_pdf.js?v=99"></script>
 {% endblock %}

@@ -745,6 +745,7 @@ def _ensure_field_list_tables(conn: sqlite3.Connection) -> None:
           meeting_font_size_json TEXT NOT NULL DEFAULT '',
           meeting_page_mode TEXT NOT NULL DEFAULT 'one_meeting',
           field_separator_pages INTEGER NOT NULL DEFAULT 0,
+          field_separator_font_size_pt REAL NOT NULL DEFAULT 0,
           double_column_index INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -789,6 +790,7 @@ def _ensure_field_list_tables(conn: sqlite3.Connection) -> None:
         ("meeting_font_size_json", "TEXT", "''"),
         ("meeting_page_mode", "TEXT", "'one_meeting'"),
         ("field_separator_pages", "INTEGER", "0"),
+        ("field_separator_font_size_pt", "REAL", "0"),
         ("double_column_index", "INTEGER", "0"),
     ]:
         if settings_columns and column_name not in settings_columns:

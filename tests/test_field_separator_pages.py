@@ -10,6 +10,7 @@ from app.database import initialize_database, set_request_db_path
 from app.services.address_book_pdf_service import (
     _PAGE_FRAME_SIDE_INSET_PT,
     build_address_book_pdf,
+    field_separator_row,
 )
 
 
@@ -323,3 +324,34 @@ class FieldSeparatorPageTests(unittest.TestCase):
         self.assertGreater(birmingham[0], left_edge + 3)
         self.assertLess(birmingham[2], right_edge - 3)
         self.assertFalse(tall_verticals(meeting_page))
+
+    def test_separator_font_size_changes_meeting_text(self) -> None:
+        def birmingham_height(size: float) -> float:
+            document = fitz.open(
+                stream=_build(
+                    {
+                        "field_separator_pages": 1,
+                        "field_separator_font_size_pt": size,
+                    }
+                ),
+                filetype="pdf",
+            )
+            page = next(
+                item
+                for item in document
+                if "AL Central" in item.get_text()
+                and "Birmingham" in item.get_text()
+                and "Ada Lovelace" not in item.get_text()
+                and "Table of Contents" not in item.get_text()
+            )
+            word = next(item for item in page.get_text("words") if item[4] == "Birmingham")
+            return word[3] - word[1]
+
+        self.assertGreater(birmingham_height(16), birmingham_height(8) + 2)
+
+    def test_separator_row_uses_elder_mobile(self) -> None:
+        row = field_separator_row(_fields()[0]["meetings"][0])
+        self.assertEqual(row["meeting_name"], "Birmingham")
+        self.assertEqual(row["elder_name"], "Mark Graham")
+        self.assertEqual(row["phone"], "205-555-1212")
+        self.assertIsNone(field_separator_row({"name": "Workers", "is_field_end_list": True}))

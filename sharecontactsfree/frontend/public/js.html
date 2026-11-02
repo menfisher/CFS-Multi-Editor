@@ -257,11 +257,10 @@ let openShareInviteMailto = function(ownerEmail, groupName, recipientEmails, inv
     bodyLines.push("", KEEP_PAGE_OPEN_PLAIN, "", RETRY_IMPORT_PLAIN)
     let body = bodyLines.join("\n")
     let params = [
-        `bcc=${encodeMailtoValue(recipients.join(","))}`,
         `subject=${encodeMailtoValue(subject)}`,
         `body=${encodeMailtoValue(body)}`,
     ]
-    window.location.href = `mailto:?${params.join("&")}`
+    window.location.href = `mailto:${recipients.map(encodeMailtoValue).join(",")}?${params.join("&")}`
     return true
 }
 

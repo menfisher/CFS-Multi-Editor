@@ -72,6 +72,7 @@ ADDRESS_BOOK_SETTING_KEYS = (
     "meeting_font_size_json",
     "meeting_page_mode",
     "field_separator_pages",
+    "field_separator_font_size_pt",
     "double_column_index",
     "selected_field_name",
     "selected_meeting_name",
@@ -168,6 +169,7 @@ def _default_address_book_settings() -> dict[str, Any]:
         "meeting_font_size_json": "",
         "meeting_page_mode": "one_meeting",
         "field_separator_pages": 0,
+        "field_separator_font_size_pt": 0.0,
         "double_column_index": 0,
         "selected_field_name": "",
         "selected_meeting_name": "",
@@ -375,6 +377,12 @@ def _normalize_address_book_settings_values(values: dict[str, Any] | None, fallb
         ),
         "meeting_page_mode": _clean(_setting_value(source, fallback_values, "meeting_page_mode")).lower(),
         "field_separator_pages": _setting_flag(source, fallback_values, "field_separator_pages"),
+        "field_separator_font_size_pt": _coerce_float(
+            _setting_value(source, fallback_values, "field_separator_font_size_pt"),
+            fallback_values["field_separator_font_size_pt"],
+            0.0,
+            36.0,
+        ),
         "double_column_index": _setting_flag(source, fallback_values, "double_column_index"),
         "selected_field_name": _clean(_setting_value(source, fallback_values, "selected_field_name")),
         "selected_meeting_name": _clean(_setting_value(source, fallback_values, "selected_meeting_name")),
@@ -519,6 +527,13 @@ def ensure_address_book_settings() -> None:
                 """
                 ALTER TABLE address_book_settings
                 ADD COLUMN field_separator_pages INTEGER NOT NULL DEFAULT 0
+                """
+            )
+        if "field_separator_font_size_pt" not in settings_columns:
+            conn.execute(
+                """
+                ALTER TABLE address_book_settings
+                ADD COLUMN field_separator_font_size_pt REAL NOT NULL DEFAULT 0
                 """
             )
         if "double_column_index" not in settings_columns:
@@ -2802,6 +2817,7 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
               meeting_font_size_json = ?,
               meeting_page_mode = ?,
               field_separator_pages = ?,
+              field_separator_font_size_pt = ?,
               double_column_index = ?,
               updated_at = ?
             WHERE id = 1
@@ -2848,6 +2864,7 @@ def save_address_book_settings(values: dict[str, Any]) -> dict[str, Any]:
                 normalized["meeting_font_size_json"],
                 normalized["meeting_page_mode"],
                 normalized["field_separator_pages"],
+                normalized["field_separator_font_size_pt"],
                 normalized["double_column_index"],
                 _now_text(),
             ),
@@ -4903,6 +4920,7 @@ FIELD_LIST_SHARED_SETTING_KEYS = (
     "meeting_font_size_json",
     "meeting_page_mode",
     "field_separator_pages",
+    "field_separator_font_size_pt",
     "double_column_index",
 )
 

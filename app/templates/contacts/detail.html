@@ -74,12 +74,14 @@
                       aria-label="Call {{ item.phone_value }}"
                       title="Call"
                     >&#128222;</a>
+                    {% if item.phone_type|lower not in ["home", "house"] %}
                     <a
                       class="contact-detail-action"
                       href="sms:{{ item.phone_value|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"
                       aria-label="Text {{ item.phone_value }}"
                       title="Text"
                     >&#128172;</a>
+                    {% endif %}
                   </span>
                 </li>
               {% endif %}

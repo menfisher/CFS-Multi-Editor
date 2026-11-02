@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.246",
+      "version": "1.247",
       "date_display": "11/1/2026",
+      "description": "Address Book Field Separator pages have a Size control and a Separator Page preview. Home phones keep the call link and no longer get a texting link."
+    },
+    {
+      "date_display": "11/1/2026",
+      "version": "1.246",
       "description": "Install on Intel Macs with Python 3.14 by using the last cryptography release that still has an Intel Mac wheel."
     },
     {

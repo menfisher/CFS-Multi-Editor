@@ -13,6 +13,7 @@ from app.database import fetch_one
 from app.services.address_book_pdf_service import (
     address_book_pdf_filename,
     build_address_book_pdf,
+    field_separator_row,
     order_address_book_fields,
 )
 from app.services.field_list_service import (
@@ -150,10 +151,18 @@ def _address_book_pdf_fields_from_context(field_list_context: dict, *, preview_l
     def meeting_payload(meeting: dict) -> dict:
         contacts = list(meeting.get("contacts", []))
         preview_contacts = contacts[:preview_limit] if preview_limit is not None else contacts
+        home_last_name = meeting.get("home_last_name") or _address_book_pdf_meeting_home_last_name(contacts)
+        enriched = {
+            **meeting,
+            "home_last_name": home_last_name,
+            "is_field_end_list": bool(meeting.get("is_field_end_list")),
+        }
         return {
             "name": meeting.get("name", ""),
-            "home_last_name": _address_book_pdf_meeting_home_last_name(contacts),
+            "home_last_name": home_last_name,
             "line_height": meeting.get("line_height") or 0,
+            "is_field_end_list": bool(meeting.get("is_field_end_list")),
+            "separator": field_separator_row(enriched),
             "contacts": [
                 _address_book_pdf_contact_preview(contact)
                 for contact in preview_contacts
@@ -260,6 +269,7 @@ def _address_book_pdf_settings_from_form(form) -> dict:
         "meeting_font_size_json": form.get("meeting_font_size_json"),
         "meeting_page_mode": form.get("meeting_page_mode"),
         "field_separator_pages": form.get("field_separator_pages"),
+        "field_separator_font_size_pt": form.get("field_separator_font_size_pt"),
         "double_column_index": form.get("double_column_index"),
         "selected_field_name": form.get("selected_field_name"),
         "selected_meeting_name": form.get("selected_meeting_name"),

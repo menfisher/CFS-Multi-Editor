@@ -72,6 +72,59 @@
   padding: 4px 8px;
 }
 
+.address-book-pdf-field-separator-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.address-book-pdf-field-separator-row .address-book-pdf-check-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.address-book-pdf-field-separator-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: #1f3437;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.address-book-pdf-field-separator-size .address-book-pdf-number-control,
+.address-book-pdf-sidebar-left .address-book-pdf-field-separator-size .address-book-pdf-number-control,
+.address-book-pdf-page .address-book-pdf-field-separator-size .address-book-pdf-number-control {
+  width: 3.8rem;
+}
+
+.address-book-pdf-page .address-book-pdf-field-separator-size input[type="number"],
+.address-book-pdf-field-separator-size input[type="number"] {
+  width: 3.8rem;
+  min-width: 3.8rem;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 22px 0 6px;
+  font-size: 0.78rem;
+}
+
+.address-book-pdf-page .address-book-pdf-field-separator-size .address-book-pdf-number-buttons,
+.address-book-pdf-field-separator-size .address-book-pdf-number-buttons {
+  right: 4px;
+  width: 16px;
+  gap: 1px;
+}
+
+.address-book-pdf-page .address-book-pdf-field-separator-size .address-book-pdf-number-step,
+.address-book-pdf-field-separator-size .address-book-pdf-number-step {
+  width: 16px;
+  height: 8px;
+  border-radius: 3px;
+  font-size: 0.42rem;
+}
+
 .address-book-pdf-sidebar-left .address-book-pdf-number-buttons {
   right: 6px;
   width: 18px;
@@ -482,6 +535,63 @@
 
 .address-book-pdf-page-sheet.has-cover-preview .address-book-pdf-printable {
   display: none;
+}
+
+.address-book-pdf-page-sheet.has-separator-preview .address-book-pdf-sample-title,
+.address-book-pdf-page-sheet.has-separator-preview .address-book-pdf-sample-rule,
+.address-book-pdf-page-sheet.has-separator-preview .address-book-pdf-bible-preview {
+  display: none;
+}
+
+.address-book-pdf-page-sheet.has-separator-preview .address-book-pdf-printable {
+  border: none;
+  box-shadow: 0 0 0 1.4px #1f3437, inset 0 0 0 2.2px #fffdfa, inset 0 0 0 3.3px #1f3437;
+  overflow: hidden;
+  gap: 0.45em;
+}
+
+.address-book-pdf-page-sheet.has-separator-preview .address-book-pdf-contact-list {
+  gap: 0.45em;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.address-book-pdf-separator-title {
+  font-weight: 800;
+  text-align: center;
+}
+
+.address-book-pdf-separator-meeting-block {
+  display: grid;
+  gap: 0.08em;
+}
+
+.address-book-pdf-separator-meeting {
+  font-weight: 800;
+}
+
+.address-book-pdf-separator-detail {
+  display: grid;
+  grid-template-columns: auto minmax(0.75em, 1fr) auto;
+  align-items: baseline;
+  column-gap: 0.25em;
+  padding-left: 1.6em;
+  min-width: 0;
+}
+
+.address-book-pdf-separator-elder,
+.address-book-pdf-separator-phone {
+  min-width: 0;
+}
+
+.address-book-pdf-separator-dots {
+  min-width: 0.6em;
+  border-bottom: 1px dotted rgba(31, 52, 55, 0.72);
+  transform: translateY(-0.28em);
+}
+
+.address-book-pdf-separator-phone {
+  white-space: nowrap;
 }
 
 .address-book-pdf-meeting-preview-section + .address-book-pdf-meeting-preview-section {

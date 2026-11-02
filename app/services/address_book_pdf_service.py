@@ -300,7 +300,11 @@ def _phone_is_mobile(phone: object) -> bool:
 
 def _phone_is_home(phone: object) -> bool:
     kind = _normalize_phone_kind(_phone_entry_type(phone))
-    return kind in {"home", "house"}
+    if kind in {"home", "house"}:
+        return True
+    if not isinstance(phone, dict):
+        return False
+    return _clean(phone.get("code")).lower() in {"h", "hm", "home", "house"}
 
 
 def _phone_belongs_to_elder(phone: object, contact: dict) -> bool:
@@ -332,6 +336,20 @@ def _separator_phone_text(contact: dict | None) -> str:
     homes = [item for item in phones if _phone_is_home(item)]
     chosen = (elder_mobiles or mobiles or homes or phones)[0]
     return _format_separator_phone_value(_phone_entry_value(chosen))
+
+
+def field_separator_row(meeting: dict) -> dict | None:
+    if _is_field_end_list_meeting(meeting):
+        return None
+    meeting_name = _meeting_base_name(_clean(meeting.get("name")), meeting.get("home_last_name"))
+    if not meeting_name:
+        return None
+    elder = _separator_elder_contact(meeting)
+    return {
+        "meeting_name": meeting_name,
+        "elder_name": _separator_elder_name(elder),
+        "phone": _separator_phone_text(elder),
+    }
 
 
 def _append_dot_leaders(
@@ -2537,6 +2555,10 @@ def build_address_book_pdf(
     meeting_page_mode = _clean(settings.get("meeting_page_mode") or "one_meeting").lower()
     pack_complete_meetings = meeting_page_mode == "complete_meetings"
     field_separator_pages = bool(settings.get("field_separator_pages"))
+    try:
+        field_separator_font_size = float(settings.get("field_separator_font_size_pt") or 0)
+    except (TypeError, ValueError):
+        field_separator_font_size = 0.0
     double_column_index = bool(settings.get("double_column_index"))
     include_bible_study = bool(settings.get("include_bible_study_union_info", 1))
 
@@ -2927,6 +2949,8 @@ def build_address_book_pdf(
             layout.get("title_font_size_pt"),
             layout.get("toc_font_size_pt"),
         )
+        if field_separator_font_size > 0:
+            meeting_size = max(4.0, min(36.0, field_separator_font_size))
         field_title_size = meeting_size
         title_step = field_title_size * max(0.8, float(layout.get("line_height") or 1.2))
         meeting_step = meeting_size * max(0.8, float(layout.get("line_height") or 1.2))
@@ -3174,7 +3198,8 @@ def build_address_book_pdf(
                         # "File sms:… not found" instead of opening Messages.
                         page.lines.append(_PdfLine(call_text, phone_x, y, font_size, uri=f"tel://{digits}", width=tw(call_text, font_size)))
                         page.lines.append(_PdfLine("-", phone_x + tw(call_text, font_size), y, font_size))
-                        page.lines.append(_PdfLine(text_text, phone_x + tw(f"{call_text}-", font_size), y, font_size, uri=f"sms://{digits}", width=tw(text_text, font_size)))
+                        sms_uri = "" if _phone_is_home(phone_item) else f"sms://{digits}"
+                        page.lines.append(_PdfLine(text_text, phone_x + tw(f"{call_text}-", font_size), y, font_size, uri=sms_uri, width=tw(text_text, font_size)))
                     else:
                         add_text(phone_value, phone_x)
                     custom_label = _clean(phone_item.get("custom_label") if isinstance(phone_item, dict) else "")
