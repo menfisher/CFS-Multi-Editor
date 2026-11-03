@@ -250,8 +250,8 @@ SYNC_NOTICE_MESSAGES = {
     "editor_secret_saved": "Editor secret was saved locally and queued for the next Drive upload.",
     "shared_settings_imported": "Shared app settings and book layouts were imported from Drive.",
     "editor_name_required": "Enter an Editor name before signing in.",
-    "editor_secret_required": "Tap the lock and enter the Editor secret before signing in.",
-    "editor_secret_invalid": "Editor secret is not correct. The app remains in NO-EDIT mode.",
+    "editor_secret_required": "Enter the Editor password, then click Sign in.",
+    "editor_secret_invalid": "Editor password is not correct. The app remains in NO-EDIT mode.",
     "editor_signed_in": "Editor session is active.",
     "editor_signed_in_update_available": (
         "Editor session is active. A newer ContactsFreeShare version is available "
@@ -1455,25 +1455,15 @@ def _log_editor_signout_drive_backup_failure(messages: list[str]) -> None:
 
 
 def _auto_backup_contacts_snapshot_to_google_drive() -> None:
-    summary = get_google_sync_summary()
-    state = summary.get("state") or {}
+    """Push live shared contact records, then write the Import-from-backup snapshot.
+
+    The dataset revision must follow the v2 per-contact files other Editors import.
+    Bumping it from this backup-only path made other computers skip those files.
+    """
+    export_shared_contacts_to_google_drive()
     access_token, _account_email = _get_valid_access_token()
     storage = _ensure_shared_drive_storage(access_token)
-    remote_sync_state = _load_shared_sync_state(access_token, storage)
-    next_contacts_revision, remote_sync_state = _next_dataset_sync_revision(
-        access_token,
-        storage,
-        revision_key="contacts_sync_revision",
-        local_revision=_normalize_sync_revision(state.get("contacts_sync_revision")),
-        remote_sync_state=remote_sync_state,
-    )
     _write_contacts_full_snapshot_to_google_drive(access_token, storage)
-    remote_sync_state["contacts_sync_revision"] = next_contacts_revision
-    _write_shared_sync_state(access_token, storage, remote_sync_state)
-    with get_connection() as conn:
-        _store_local_sync_revisions(conn=conn, contacts_sync_revision=next_contacts_revision)
-        _clear_pending_contacts_manifest_drive_export(conn)
-        conn.commit()
     _store_drive_state(last_drive_export_at=_now_text(), last_sync_error="")
 
 
@@ -1508,15 +1498,27 @@ def export_editor_session_drive_backups() -> None:
         state = dict(conn.execute("SELECT * FROM google_sync_state WHERE id = 1").fetchone() or {})
         contacts_snapshot_needed = bool(state.get("contacts_manifest_needs_drive_export") or 0) or _count_pending_shared_contact_exports(conn) > 0
         meetingdata_snapshot_needed = bool(state.get("meetingdata_needs_drive_export") or 0)
+        changes_list_needed = bool(state.get("changes_list_needs_drive_export") or 0)
         # Dedicated sign-out flags survive mid-session Shared Drive sync, which clears
         # contacts_manifest_needs_drive_export / shared_drive_needs_export before logout.
         contacts_json_needed = bool(state.get("contacts_signout_backup_needed") or 0) or contacts_snapshot_needed
         meetingdata_json_needed = bool(state.get("meetingdata_signout_backup_needed") or 0) or meetingdata_snapshot_needed
 
-    if not contacts_snapshot_needed and not meetingdata_snapshot_needed and not contacts_json_needed and not meetingdata_json_needed:
+    if (
+        not contacts_snapshot_needed
+        and not meetingdata_snapshot_needed
+        and not contacts_json_needed
+        and not meetingdata_json_needed
+        and not changes_list_needed
+    ):
         return
 
     errors: list[str] = []
+    if changes_list_needed:
+        try:
+            export_changes_list_to_google_drive()
+        except Exception as exc:
+            errors.append(f"changes_list: {exc}")
     if meetingdata_snapshot_needed:
         try:
             export_shared_meetingdata_to_google_drive()
@@ -4837,7 +4839,7 @@ def _shared_contact_drive_export_needed(
     return not _shared_contact_payload_matches(
         local_payload,
         remote_payload,
-        include_edit_logs=False,
+        include_edit_logs=True,
     )
 
 
@@ -5441,7 +5443,12 @@ def _peek_shared_contact_import_action(
     remote_revision: int,
     manifest_item: dict | None = None,
 ) -> str | None:
-    """Return import, revision_only, or skip without a Drive payload when safe; else None."""
+    """Return import or skip without a Drive payload when safe; else None to download.
+
+    Manifest field digests omit edit logs, so a digest match is not enough to skip
+    the download. Other Editors' Edit List rows live in those logs.
+    """
+    del manifest_item
     contact_id = int(contact_id)
     remote_revision = int(remote_revision or 0)
     row = conn.execute(
@@ -5453,18 +5460,6 @@ def _peek_shared_contact_import_action(
     local_revision = int(row["shared_drive_revision"] or 0)
     if not _shared_contact_remote_is_ahead(local_revision, remote_revision):
         return "skip"
-    manifest_digest = _clean((manifest_item or {}).get("content_digest"))
-    if not manifest_digest:
-        return None
-    local_payload = _build_shared_contact_record_payload(conn, contact_id)
-    if not local_payload:
-        return None
-    local_digest = _clean(local_payload.get("content_digest")) or _shared_contact_payload_digest(
-        local_payload,
-        include_edit_logs=False,
-    )
-    if local_digest == manifest_digest:
-        return "revision_only"
     return None
 
 
@@ -5489,7 +5484,7 @@ def _resolve_shared_contact_import_action(
     if local_payload and _shared_contact_payload_matches(
         local_payload,
         contact_payload,
-        include_edit_logs=False,
+        include_edit_logs=True,
     ):
         return "revision_only"
     return "import"
@@ -8675,6 +8670,26 @@ def _current_sync_work() -> dict:
     }
 
 
+def _editor_lock_is_active(lock: dict, *, now: datetime | None = None) -> bool:
+    current = now or _utc_now()
+    owner = _clean((lock or {}).get("editor_name"))
+    expiry = _parse_iso_datetime(_clean((lock or {}).get("expires_at")))
+    return bool(owner and expiry and expiry > current)
+
+
+def _clear_expired_remote_editor_lock(access_token: str, storage: dict, lock: dict, *, now: datetime | None = None) -> bool:
+    """Drop leftover Drive lock files so the next Editor is not blocked by an expired session."""
+    if _editor_lock_is_active(lock, now=now):
+        return False
+    if not _clean((lock or {}).get("editor_name")) and not _clean((lock or {}).get("session_id")):
+        return False
+    file_id = _clean((storage or {}).get("editor_lock_file_id"))
+    if not file_id:
+        return False
+    _drive_update_json_file_content(access_token, file_id, {})
+    return True
+
+
 def probe_remote_editor_lock(
     access_token: str | None = None,
     *,
@@ -8687,8 +8702,12 @@ def probe_remote_editor_lock(
     now = _utc_now()
     existing_owner = _clean(lock.get("editor_name"))
     existing_expiry = _parse_iso_datetime(_clean(lock.get("expires_at")))
-    existing_active = bool(existing_owner and existing_expiry and existing_expiry > now)
+    existing_active = _editor_lock_is_active(lock, now=now)
     if not existing_active:
+        try:
+            _clear_expired_remote_editor_lock(token, storage, lock, now=now)
+        except (RuntimeError, HTTPError, URLError, socket.timeout, TimeoutError):
+            pass
         return {"blocked": False}
     summary = get_google_sync_summary()
     local_state = summary.get("state") or {}
@@ -8748,7 +8767,12 @@ def acquire_editor_lock(
     existing_owner = _clean(lock.get("editor_name"))
     existing_session_id = _clean(lock.get("session_id"))
     existing_expiry = _parse_iso_datetime(_clean(lock.get("expires_at")))
-    existing_active = bool(existing_owner and existing_expiry and existing_expiry > now)
+    existing_active = _editor_lock_is_active(lock, now=now)
+    if not existing_active:
+        try:
+            _clear_expired_remote_editor_lock(access_token, storage, lock, now=now)
+        except (RuntimeError, HTTPError, URLError, socket.timeout, TimeoutError):
+            pass
     local_session_id = _clean(local_state.get("editor_session_id"))
     lock_is_own = existing_active and _editor_lock_is_own(
         lock,
@@ -8880,8 +8904,8 @@ def format_editor_lock_blocked_message(
             remaining_seconds = 0
     time_label = format_editor_lock_duration(int(remaining_seconds or 0))
     return (
-        f"{owner} is already signed in. The Google connection was removed and this app is in NO-EDIT mode. "
-        f"Remaining time: {time_label}. Check back periodically."
+        f"{owner} is already signed in. This app stays connected in NO-EDIT mode. "
+        f"Remaining time: {time_label}. Try Sign in again after they finish, or when that time ends."
     )
 
 

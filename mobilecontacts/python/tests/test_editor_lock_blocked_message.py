@@ -20,7 +20,7 @@ class EditorLockBlockedMessageTests(unittest.TestCase):
         self.assertIn("Alex is already signed in", message)
         self.assertIn("NO-EDIT mode", message)
         self.assertIn("Remaining time: 1:30", message)
-        self.assertIn("Check back periodically", message)
+        self.assertIn("stays connected", message)
 
     def test_format_editor_lock_blocked_message_from_expires_at(self) -> None:
         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=4, seconds=15)).isoformat()

@@ -206,7 +206,7 @@ class SharedContactDriveImportTests(unittest.TestCase):
         )
         self.assertEqual(action, "skip")
 
-    def test_peek_revision_only_when_manifest_digest_matches(self) -> None:
+    def test_peek_downloads_when_manifest_digest_matches(self) -> None:
         with patch(
             "app.services.google_sync_service._build_shared_contact_record_payload",
             return_value=self._remote_payload(revision=0),
@@ -219,7 +219,7 @@ class SharedContactDriveImportTests(unittest.TestCase):
                 2,
                 {"content_digest": digest},
             )
-        self.assertEqual(action, "revision_only")
+        self.assertIsNone(action)
 
     def test_peek_requires_download_without_manifest_digest(self) -> None:
         action = _peek_shared_contact_import_action(self.conn, 1, 2, {})
@@ -248,6 +248,29 @@ class SharedContactDriveImportTests(unittest.TestCase):
         with patch(
             "app.services.google_sync_service._build_shared_contact_record_payload",
             return_value=self._remote_payload(revision=0),
+        ):
+            action = _resolve_shared_contact_import_action(self.conn, 1, 2, remote_payload)
+        self.assertEqual(action, "import")
+
+    def test_resolve_import_when_only_edit_logs_differ(self) -> None:
+        local_payload = self._remote_payload(revision=0)
+        remote_payload = self._remote_payload(revision=2)
+        remote_payload["contact_edit_log_entries"] = [
+            {
+                "batch_id": "other-editor-batch",
+                "batch_created_at": "2026-11-03T12:00:00",
+                "batch_row_index": 1,
+                "editor_initials": "SS",
+                "contact_id": 1,
+                "contact_name": "Smith, Jane",
+                "label_name": "Phone",
+                "original_text": "555-1111",
+                "edited_text": "555-3333",
+            }
+        ]
+        with patch(
+            "app.services.google_sync_service._build_shared_contact_record_payload",
+            return_value=local_payload,
         ):
             action = _resolve_shared_contact_import_action(self.conn, 1, 2, remote_payload)
         self.assertEqual(action, "import")

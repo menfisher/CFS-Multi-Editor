@@ -81,6 +81,35 @@ class ProbeRemoteEditorLockReclaimTests(unittest.TestCase):
 
         self.assertFalse(result["blocked"])
 
+    @patch("app.services.google_sync_service._drive_update_json_file_content")
+    @patch("app.services.google_sync_service.get_google_sync_summary")
+    @patch("app.services.google_sync_service._load_editor_lock")
+    @patch("app.services.google_sync_service._ensure_editor_lock_drive_storage")
+    def test_probe_clears_expired_lock_instead_of_blocking(
+        self,
+        mock_storage,
+        mock_load_lock,
+        mock_summary,
+        mock_update,
+    ) -> None:
+        expires_at = (datetime.now(timezone.utc) - timedelta(hours=16)).isoformat()
+        mock_storage.return_value = {"editor_lock_file_id": "lock-file"}
+        mock_load_lock.return_value = {
+            "editor_name": "Stacey Seidlitz",
+            "account_email": "stacey@example.com",
+            "session_id": "old-session",
+            "expires_at": expires_at,
+        }
+        mock_summary.return_value = {
+            "state": {"editor_session_id": ""},
+            "account": {"email": "cv@example.com"},
+        }
+
+        result = probe_remote_editor_lock("token", pending_editor_name="cv")
+
+        self.assertFalse(result["blocked"])
+        mock_update.assert_called_once_with("token", "lock-file", {})
+
 
 class AcquireEditorLockReclaimTests(unittest.TestCase):
     @patch("app.services.google_sync_service._start_signin_sync_job")
@@ -161,6 +190,55 @@ class AcquireEditorLockReclaimTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["owner_name"], "Pat Reed")
+
+    @patch("app.services.google_sync_service._start_signin_sync_job")
+    @patch("app.services.google_sync_service._set_signin_sync_state")
+    @patch("app.services.google_sync_service.get_connection")
+    @patch("app.services.google_sync_service._set_editor_session")
+    @patch("app.services.google_sync_service._drive_update_json_file_content")
+    @patch("app.services.google_sync_service.get_google_sync_summary")
+    @patch("app.services.google_sync_service._load_editor_lock")
+    @patch("app.services.google_sync_service._ensure_shared_drive_storage")
+    @patch("app.services.google_sync_service._get_valid_access_token")
+    def test_acquire_takes_expired_lock_from_another_editor(
+        self,
+        mock_token,
+        mock_storage,
+        mock_load_lock,
+        mock_summary,
+        mock_update,
+        mock_set_session,
+        mock_connection,
+        _mock_set_signin_sync,
+        mock_start_sync,
+    ) -> None:
+        expires_at = datetime.now(timezone.utc) - timedelta(hours=16)
+        mock_token.return_value = ("token", "cv@example.com")
+        mock_storage.return_value = {"editor_lock_file_id": "lock-file"}
+        mock_load_lock.return_value = {
+            "editor_name": "Stacey Seidlitz",
+            "account_email": "stacey@example.com",
+            "session_id": "stacey-session",
+            "expires_at": expires_at.isoformat(),
+        }
+        mock_summary.return_value = {
+            "state": {
+                "editor_session_id": "",
+                "editor_lock_timeout_minutes": 30,
+            }
+        }
+        mock_connection.return_value.__enter__.return_value = mock_connection.return_value
+        mock_connection.return_value.__exit__.return_value = False
+
+        result = acquire_editor_lock("cv", settings_loaded=True, start_signin_sync=False)
+
+        self.assertEqual(result["status"], "acquired")
+        self.assertEqual(result["editor_name"], "cv")
+        self.assertGreaterEqual(mock_update.call_count, 1)
+        written = mock_update.call_args.args[2]
+        self.assertEqual(written["editor_name"], "cv")
+        mock_start_sync.assert_not_called()
+        self.assertEqual(mock_set_session.call_args.kwargs.get("mode"), "edit")
 
     @patch("app.services.google_sync_service._start_signin_sync_job")
     @patch("app.services.google_sync_service._set_signin_sync_state")

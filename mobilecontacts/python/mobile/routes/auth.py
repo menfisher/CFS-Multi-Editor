@@ -262,7 +262,7 @@ def _complete_editor_sign_in(email: str, pending_name: str, pending_secret: str)
         result = acquire_editor_lock(
             pending_name,
             settings_loaded=_editor_secret_configured(),
-            start_signin_sync=False,
+            start_signin_sync=True,
             minimal_drive_storage=True,
         )
     except (RuntimeError, HTTPError, URLError) as exc:

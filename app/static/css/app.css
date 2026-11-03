@@ -2966,7 +2966,7 @@ button.site-nav-dropdown-item:hover {
 }
 
 .google-editor-secret-inline[hidden] {
-  display: none;
+  display: none !important;
 }
 
 .google-editor-secret-inline input {

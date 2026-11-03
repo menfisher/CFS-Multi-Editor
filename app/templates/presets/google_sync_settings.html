@@ -1,22 +1,23 @@
 {% extends "base.html" %}
 
+{% set selected_access_role = state.access_role or "editor" %}
+{% if selected_access_role in ["field_list_creation", "address_book_creation", "changes_contributor", "non_editor"] %}
+  {% set selected_access_role = "non_editor" %}
+{% endif %}
+{% set editor_is_signed_in = (state.multi_editor_enabled|default(false)) and (account.status|default('') == 'connected') and (state.editor_mode|default('') == 'edit') and (selected_access_role == "editor") %}
+{% set selected_access_name = state.access_name or state.editor_name or state.pending_editor_name or "" %}
+{% set access_is_signed_in = (state.multi_editor_enabled|default(false)) and ((state.access_name|default('')) or editor_is_signed_in) %}
+{% set can_upload_shared_data = (account.status|default('') == 'connected') and (not (state.multi_editor_enabled|default(false)) or editor_is_signed_in) %}
+{% set flash_google_signin = request.query_params.get("notice", "") == "changes_list_connect_google_before_signout" %}
+{% set shared_drive_pending = state.shared_drive_needs_export or state.settings_needs_drive_export or state.contact_records_needs_drive_export or state.contacts_manifest_needs_drive_export or state.book_layouts_needs_drive_export or state.meetingdata_needs_drive_export or state.field_list_needs_drive_export or state.changes_list_needs_drive_export %}
+{% set upload_pending = shared_drive_pending or state.pending_upload_count or state.bootstrap_status in ["running", "failed"] %}
+{% set blocked_remaining_seconds = editor_lock_status.remaining_seconds|default(0)|int %}
+{% set blocked_remaining_label = ((blocked_remaining_seconds // 60)|string) ~ ":" ~ ("%02d"|format(blocked_remaining_seconds % 60)) if blocked_remaining_seconds > 0 else "unknown" %}
+{% set editor_remaining_label = ((blocked_remaining_seconds // 60)|string) ~ ":" ~ ("%02d"|format(blocked_remaining_seconds % 60)) if blocked_remaining_seconds > 0 else "ending" %}
+
 {% block title %}Google Connect Settings | Contacts Website{% endblock %}
 
 {% block content %}
-  {% set selected_access_role = state.access_role or "editor" %}
-  {% if selected_access_role in ["field_list_creation", "address_book_creation", "changes_contributor", "non_editor"] %}
-    {% set selected_access_role = "non_editor" %}
-  {% endif %}
-  {% set editor_is_signed_in = (state.multi_editor_enabled|default(false)) and (account.status|default('') == 'connected') and (state.editor_mode|default('') == 'edit') and (selected_access_role == "editor") %}
-  {% set selected_access_name = state.access_name or state.editor_name or state.pending_editor_name or "" %}
-  {% set access_is_signed_in = (state.multi_editor_enabled|default(false)) and ((state.access_name|default('')) or editor_is_signed_in) %}
-  {% set can_upload_shared_data = (account.status|default('') == 'connected') and (not (state.multi_editor_enabled|default(false)) or editor_is_signed_in) %}
-  {% set flash_google_signin = request.query_params.get("notice", "") == "changes_list_connect_google_before_signout" %}
-  {% set shared_drive_pending = state.shared_drive_needs_export or state.settings_needs_drive_export or state.contact_records_needs_drive_export or state.contacts_manifest_needs_drive_export or state.book_layouts_needs_drive_export or state.meetingdata_needs_drive_export or state.field_list_needs_drive_export or state.changes_list_needs_drive_export %}
-  {% set upload_pending = shared_drive_pending or state.pending_upload_count or state.bootstrap_status in ["running", "failed"] %}
-  {% set blocked_remaining_seconds = editor_lock_status.remaining_seconds|default(0)|int %}
-  {% set blocked_remaining_label = ((blocked_remaining_seconds // 60)|string) ~ ":" ~ ("%02d"|format(blocked_remaining_seconds % 60)) if blocked_remaining_seconds > 0 else "unknown" %}
-  {% set editor_remaining_label = ((blocked_remaining_seconds // 60)|string) ~ ":" ~ ("%02d"|format(blocked_remaining_seconds % 60)) if blocked_remaining_seconds > 0 else "ending" %}
   <div class="google-connect-page">
   <section class="panel page-top-panel meetingdata-filter-panel contacts-filter-panel google-connect-title-panel" style="--meetingdata-title-bar-color: #c8f0cb;">
     <div class="editor-actions google-connect-title-row">
@@ -66,10 +67,17 @@
 
   {% if notice_message %}
     {% set update_available_notice = notice_key == "editor_signed_in_update_available" %}
+    {% set persistent_signin_notice = notice_key in [
+      "editor_secret_required",
+      "editor_secret_invalid",
+      "editor_name_required",
+      "editor_lock_failed",
+      "editor_lock_blocked",
+    ] %}
     <section
-      class="panel google-sync-banner {% if update_available_notice %}google-sync-banner-warn{% else %}google-sync-banner-info{% endif %}"
+      class="panel google-sync-banner {% if update_available_notice or persistent_signin_notice %}google-sync-banner-warn{% else %}google-sync-banner-info{% endif %}"
       id="google-connect-temporary-notice"
-      {% if not update_available_notice %}data-auto-hide-ms="3600"{% endif %}
+      {% if not update_available_notice and not persistent_signin_notice %}data-auto-hide-ms="3600"{% endif %}
     >
       <div>{{ notice_message }}</div>
       {% if update_available_notice %}
@@ -417,7 +425,7 @@
       <div class="app-modal-header">
         <h3 class="app-modal-title">NO-EDIT Mode</h3>
         <p class="app-modal-copy">
-          {{ state.editor_lock_owner_name or "Another Editor" }} is already signed in. The Google connection was removed and this app is in NO-EDIT mode.
+          {{ state.editor_lock_owner_name or "Another Editor" }} is already signed in. Google stays connected. Try Sign in again after they finish, or when the remaining time ends.
         </p>
         <p class="app-modal-copy">
           Remaining time: <strong id="google-editor-blocked-countdown" data-remaining-seconds="{{ blocked_remaining_seconds }}">{{ blocked_remaining_label }}</strong>
@@ -534,13 +542,16 @@
           accessNameField.classList.toggle("is-non-editor-initials", !isEditorRole);
         }
         if (editorSecretInput) {
-          editorSecretInput.value = "";
+          editorSecretInput.required = isEditorRole && !editorIsSignedIn;
+          if (!isEditorRole) {
+            editorSecretInput.value = "";
+          }
         }
       };
 
       syncAccessRoleUi();
       accessRoleSelect?.addEventListener("change", syncAccessRoleUi);
-      if (editorSecretInput) {
+      if (editorSecretInput && !editorIsSignedIn) {
         editorSecretInput.value = "";
         window.setTimeout(() => {
           editorSecretInput.value = "";
@@ -950,6 +961,7 @@
             return;
           }
           stopSigninSyncPolling();
+          window.closeBusyModal?.();
           window.refreshShareContactsNav?.();
         } catch (_error) {
           signinSyncPollFailures += 1;
@@ -1093,14 +1105,14 @@
       removeStaleSigninWarnings();
       if (
         initialState.signin_sync_in_progress
-        || noticeCode === "editor_signed_in"
-        || noticeCode === "editor_signed_in_update_available"
         || noticeCode === "signin_sync_retry_started"
       ) {
         if (window.showBusyModal && !String(initialState.signin_sync_error || "").trim()) {
           window.showBusyModal("Signing in", "Connecting to Google Drive and syncing the latest app data.");
         }
         signinSyncTimer = window.setTimeout(pollSigninSyncStatus, 250);
+      } else if (noticeCode === "editor_signed_in" || noticeCode === "editor_signed_in_update_available") {
+        window.closeBusyModal?.();
       }
       if (editorSessionTime) {
         updateEditorSessionTime(Number(editorSessionTime.dataset.remainingSeconds || 0));
@@ -1159,6 +1171,12 @@
         const submitter = event.submitter;
         if (!(submitter instanceof HTMLElement)) return;
         if (submitter.id === "google-access-sign-in-button") {
+          const role = accessRoleSelect?.value || "editor";
+          if (role === "editor" && !(editorSecretInput?.value || "").trim()) {
+            event.preventDefault();
+            editorSecretInput?.focus();
+            return;
+          }
           event.preventDefault();
           if (window.showBusyModal) {
             window.showBusyModal(

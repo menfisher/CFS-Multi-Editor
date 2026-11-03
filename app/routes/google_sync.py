@@ -160,7 +160,6 @@ def google_connect_callback(
                 # block the OAuth redirect on another Drive round-trip here.
                 return RedirectResponse(url=_editor_signed_in_redirect_url(), status_code=303)
             if status == "blocked":
-                disconnect_google_account(preserve_editor_lock_notice=True)
                 return RedirectResponse(url=_google_connect_notice_url("editor_lock_blocked"), status_code=303)
             if status == "stale":
                 return RedirectResponse(url=_google_connect_notice_url("editor_lock_stale"), status_code=303)
@@ -236,13 +235,15 @@ def google_editor_sign_in(
     if str(account.get("status") or "") != "connected":
         return RedirectResponse(url="/google/connect/start", status_code=303)
     try:
+        # Keep lock acquire fast (minimal Drive files), but start the background
+        # sign-in sync so this computer loads other Editors' shared CFS data.
         result = acquire_editor_lock(
             normalized_name,
             settings_loaded=True,
             minimal_drive_storage=True,
-            start_signin_sync=False,
+            start_signin_sync=True,
         )
-    except (RuntimeError, HTTPError, URLError) as exc:
+    except Exception as exc:
         message = describe_google_http_error(exc) if isinstance(exc, HTTPError) else str(exc)
         record_google_sync_error(f"Editor lock failed: {message}")
         return RedirectResponse(url=_google_connect_notice_url("editor_lock_failed"), status_code=303)
@@ -251,7 +252,6 @@ def google_editor_sign_in(
         save_access_session("editor", str(result.get("editor_name") or normalized_name))
         return RedirectResponse(url=_editor_signed_in_redirect_url(), status_code=303)
     if status == "blocked":
-        disconnect_google_account(preserve_editor_lock_notice=True)
         return RedirectResponse(url=_google_connect_notice_url("editor_lock_blocked"), status_code=303)
     if status == "stale":
         return RedirectResponse(url=_google_connect_notice_url("editor_lock_stale"), status_code=303)
