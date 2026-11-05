@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from html import unescape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote_plus, urlencode
@@ -9661,6 +9662,36 @@ def _google_single_line(value: object) -> str:
     return re.sub(r"[ \t]+", " ", text).strip()
 
 
+_GOOGLE_NOTE_BREAK = re.compile(r"<br\s*/?>|</(?:div|p)\s*>", re.IGNORECASE)
+_GOOGLE_NOTE_BLOCK_OPEN = re.compile(r"<(?:div|p)[^>]*>", re.IGNORECASE)
+_GOOGLE_NOTE_TAG = re.compile(r"<[^>]+>")
+_GOOGLE_NOTE_PRINT_CODE = re.compile(r"^\s*(?:pb|pa)/\s*", re.IGNORECASE)
+
+
+def _google_plain_notes(value: object) -> str:
+    """Google Notes is plain text. Convert CFS HTML breaks and drop print codes."""
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = _GOOGLE_NOTE_BLOCK_OPEN.sub("", text)
+    text = _GOOGLE_NOTE_BREAK.sub("\n", text)
+    text = _GOOGLE_NOTE_TAG.sub("", text)
+    text = unescape(text)
+    lines: list[str] = []
+    for line in text.split("\n"):
+        line = _GOOGLE_NOTE_PRINT_CODE.sub("", line, count=1)
+        if line.strip():
+            lines.append(line.rstrip())
+    return "\n".join(lines).strip()
+
+
+def _prefer_local_print_code_notes(local_notes: object, google_notes: object) -> str:
+    """Keep CFS pb/ and pa/ lines when Google only has the same notes without those codes."""
+    local = str(local_notes or "")
+    incoming = str(google_notes or "")
+    if local.strip() and _google_plain_notes(local) == _google_plain_notes(incoming):
+        return local
+    return incoming
+
+
 def _strip_trailing_parenthetical(value: str) -> str:
     return re.sub(r"\s*\([^)]*\)\s*$", "", str(value or "")).strip()
 
@@ -10532,9 +10563,9 @@ def _contact_person_payload(contact: dict) -> dict:
     if custom_fields:
         payload["userDefined"] = custom_fields
 
-    note_text = _clean(contact.get("notes"))
+    note_text = _google_plain_notes(contact.get("notes"))
     if note_text and note_text.lower() != "no entry":
-        payload["biographies"] = [{"value": note_text}]
+        payload["biographies"] = [{"value": note_text, "contentType": "TEXT_PLAIN"}]
 
     birthday = _parse_birthday(contact.get("birthday"))
     if birthday:
@@ -11535,7 +11566,7 @@ def _insert_contact_from_google_person(conn, fields: dict, *, status: str = "imp
 def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> None:
     existing = conn.execute(
         """
-        SELECT photo, photo_drive_file_id, mtg_home_elder_flag, meets_in_state, do_not_print
+        SELECT photo, photo_drive_file_id, mtg_home_elder_flag, meets_in_state, do_not_print, notes
         FROM contacts
         WHERE id = ?
         """,
@@ -11594,7 +11625,7 @@ def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> N
             fields["given_name"],
             photo,
             fields["birthday"],
-            fields["notes"],
+            _prefer_local_print_code_notes(existing_row.get("notes"), fields["notes"]),
             mtg_home_elder_flag,
             meets_in_state,
             do_not_print,
