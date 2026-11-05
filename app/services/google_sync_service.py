@@ -4343,7 +4343,23 @@ def ensure_google_drive_app_revisions_storage() -> dict:
     }
 
 
-def ensure_google_drive_root_storage() -> dict:
+def ensure_google_drive_root_storage(*, access_token: str | None = None) -> dict:
+    token = str(access_token or "").strip()
+    if token:
+        # Borrowed token (owner Drive for Pending Edits). Find the folder on that
+        # Drive and do not write its IDs into the signed-in user's sqlite.
+        root_folder = _drive_find_best_root_folder(token)
+        if root_folder is None:
+            root_folder = _drive_create_folder(
+                token,
+                name=GOOGLE_DRIVE_ROOT_FOLDER_NAME,
+                parent_id="root",
+            )
+        return {
+            "account_email": "",
+            "root_folder_id": _clean(root_folder.get("id")),
+        }
+
     ensure_google_sync_records()
     account = _load_google_account()
     if str(account.get("account_status") or "") != "connected":
@@ -4351,15 +4367,15 @@ def ensure_google_drive_root_storage() -> dict:
     if not _account_has_drive_scope(account):
         raise RuntimeError(SYNC_NOTICE_MESSAGES["drive_scope_missing"])
 
-    access_token, account_email = _get_valid_access_token()
+    current_token, account_email = _get_valid_access_token()
     state = _load_google_sync_state()
 
-    root_folder = _drive_get_file(access_token, state.get("drive_root_folder_id") or "")
+    root_folder = _drive_get_file(current_token, state.get("drive_root_folder_id") or "")
     if root_folder is None:
-        root_folder = _drive_find_best_root_folder(access_token)
+        root_folder = _drive_find_best_root_folder(current_token)
     if root_folder is None:
         root_folder = _drive_create_folder(
-            access_token,
+            current_token,
             name=GOOGLE_DRIVE_ROOT_FOLDER_NAME,
             parent_id="root",
         )
@@ -4373,8 +4389,8 @@ def ensure_google_drive_root_storage() -> dict:
 
 def _ensure_shared_drive_storage(access_token: str | None = None, *, contact_only: bool = False) -> dict:
     """Resolve shared Drive folder/file IDs with one children listing (not N find calls)."""
-    storage = ensure_google_drive_root_storage()
     token = access_token or _get_valid_access_token()[0]
+    storage = ensure_google_drive_root_storage(access_token=access_token)
     cache_key = _clean(storage.get("root_folder_id"))
     if cache_key:
         if contact_only:
@@ -4448,8 +4464,8 @@ def _ensure_shared_drive_storage(access_token: str | None = None, *, contact_onl
 
 
 def _ensure_shared_settings_drive_storage(access_token: str | None = None) -> dict:
-    storage = ensure_google_drive_root_storage()
     token = access_token or _get_valid_access_token()[0]
+    storage = ensure_google_drive_root_storage(access_token=access_token)
     shared_folder = _drive_find_child(
         token,
         parent_id=storage["root_folder_id"],
@@ -4482,8 +4498,8 @@ def _ensure_shared_settings_drive_storage(access_token: str | None = None) -> di
 
 
 def _ensure_editor_lock_drive_storage(access_token: str | None = None) -> dict:
-    storage = ensure_google_drive_root_storage()
     token = access_token or _get_valid_access_token()[0]
+    storage = ensure_google_drive_root_storage(access_token=access_token)
     shared_folder = _drive_find_child(
         token,
         parent_id=storage["root_folder_id"],
@@ -4515,8 +4531,8 @@ def _ensure_editor_lock_drive_storage(access_token: str | None = None) -> dict:
 
 
 def _ensure_shared_book_layouts_drive_storage(access_token: str | None = None) -> dict:
-    storage = ensure_google_drive_root_storage()
     token = access_token or _get_valid_access_token()[0]
+    storage = ensure_google_drive_root_storage(access_token=access_token)
     shared_folder = _drive_find_child(
         token,
         parent_id=storage["root_folder_id"],
@@ -7939,11 +7955,11 @@ def import_print_role_shared_data_from_google_drive() -> None:
     import_changes_list_from_google_drive()
 
 
-def export_pending_edits_contact_assets_to_google_drive() -> None:
+def export_pending_edits_contact_assets_to_google_drive(*, access_token: str | None = None) -> None:
     """Upload only pending photos and their contact records for Pending Edits workflows."""
-    access_token, _account_email = _get_valid_access_token()
-    storage = _ensure_shared_drive_storage(access_token, contact_only=True)
-    remote_sync_state = _load_shared_sync_state(access_token, storage)
+    token = access_token or _get_valid_access_token()[0]
+    storage = _ensure_shared_drive_storage(token, contact_only=True)
+    remote_sync_state = _load_shared_sync_state(token, storage)
 
     with get_connection() as conn:
         state = dict(conn.execute("SELECT * FROM google_sync_state WHERE id = 1").fetchone() or {})
@@ -7960,9 +7976,9 @@ def export_pending_edits_contact_assets_to_google_drive() -> None:
         return
 
     if pending_photo_ids:
-        _sync_pending_contact_photos_to_google_drive(access_token, storage["contact_photos_folder_id"])
+        _sync_pending_contact_photos_to_google_drive(token, storage["contact_photos_folder_id"])
 
-    existing_manifest = _drive_load_json_file_content(access_token, storage["contacts_current_file_id"])
+    existing_manifest = _drive_load_json_file_content(token, storage["contacts_current_file_id"])
     if str(existing_manifest.get("format") or "").strip() != "contactsfreeshare.shared_contacts.v2":
         raise RuntimeError(
             "Shared contacts are not set up on Google Drive yet. "
@@ -7970,7 +7986,7 @@ def export_pending_edits_contact_assets_to_google_drive() -> None:
         )
 
     contact_record_files = _drive_children_by_name(
-        access_token,
+        token,
         parent_id=storage["contact_records_folder_id"],
     )
     uploaded_contact_ids: list[int] = []
@@ -7983,14 +7999,14 @@ def export_pending_edits_contact_assets_to_google_drive() -> None:
             file_item = contact_record_files.get(filename)
             if file_item is None:
                 file_item = _drive_create_json_file_with_content(
-                    access_token,
+                    token,
                     name=filename,
                     parent_id=storage["contact_records_folder_id"],
                     payload=payload,
                 )
                 contact_record_files[filename] = file_item
             else:
-                _drive_update_json_file_content(access_token, _clean(file_item.get("id")), payload)
+                _drive_update_json_file_content(token, _clean(file_item.get("id")), payload)
             uploaded_contact_ids.append(contact_id)
             conn.execute(
                 """
@@ -8009,16 +8025,16 @@ def export_pending_edits_contact_assets_to_google_drive() -> None:
                 conn,
                 uploaded_contact_ids,
             )
-            _drive_update_json_file_content(access_token, storage["contacts_current_file_id"], manifest_payload)
+            _drive_update_json_file_content(token, storage["contacts_current_file_id"], manifest_payload)
             next_contacts_revision, remote_sync_state = _next_dataset_sync_revision(
-                access_token,
+                token,
                 storage,
                 revision_key="contacts_sync_revision",
                 local_revision=local_contacts_revision,
                 remote_sync_state=remote_sync_state,
             )
             remote_sync_state["contacts_sync_revision"] = next_contacts_revision
-            _write_shared_sync_state(access_token, storage, remote_sync_state)
+            _write_shared_sync_state(token, storage, remote_sync_state)
             _store_local_sync_revisions(conn=conn, contacts_sync_revision=next_contacts_revision)
         conn.commit()
 
@@ -8207,9 +8223,9 @@ def sync_mobile_editor_contact_changes() -> dict:
     }
 
 
-def export_pending_edits_support_to_google_drive() -> None:
+def export_pending_edits_support_to_google_drive(*, access_token: str | None = None) -> None:
     """Upload pending contact photos and dirty contact records for Pending Edits workflows."""
-    export_pending_edits_contact_assets_to_google_drive()
+    export_pending_edits_contact_assets_to_google_drive(access_token=access_token)
 
 
 _CHANGES_LIST_DRIVE_EXPORT_LOCK = threading.Lock()

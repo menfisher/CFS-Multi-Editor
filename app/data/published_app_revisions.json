@@ -2,6 +2,11 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
+      "version": "1.249",
+      "date_display": "11/5/2026",
+      "description": "Pending Edits on Contacts Mobile signs in with the Drive account and initials. No password or Google sign-in is required. Upload writes the Pending Edits list, and contact photos when needed, to that Drive."
+    },
+    {
       "version": "1.248",
       "date_display": "11/3/2026",
       "description": "Multi-Editor computers now load other Editors' contact edits from Drive on sign-in. Sign-out writes the live shared files so the Edit List is shared. An expired leftover Editor lock no longer blocks sign-in."

@@ -44,7 +44,12 @@ from mobile.routes.contacts import (
     mark_google_contacts_refreshed,
 )
 from mobile.sync_adapter import has_cached_contacts
-from mobile.user_db import mobile_user_db_session, use_user_database, user_db_write_lock
+from mobile.user_db import (
+    mobile_user_db_session,
+    use_user_database,
+    user_db_exists,
+    user_db_write_lock,
+)
 from mobile.web_templates import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -81,21 +86,80 @@ def _clear_pending_sign_in(request: Request) -> None:
     request.session.pop(PENDING_EDITOR_SECRET_KEY, None)
 
 
+def _normalize_drive_email(raw: str) -> str:
+    return str(raw or "").strip().lower()
+
+
+def _complete_pending_edits_sign_in(
+    request: Request,
+    *,
+    access_name: str,
+    drive_email: str,
+) -> RedirectResponse:
+    email = _normalize_drive_email(drive_email)
+    if "@" not in email:
+        return RedirectResponse(
+            url="/?error=" + quote("Enter the Google account whose Drive stores CFS."),
+            status_code=303,
+        )
+    if not user_db_exists(email):
+        return RedirectResponse(
+            url="/?error="
+            + quote(
+                f"Pending Edits writes to {email} Drive. "
+                "An Editor must sign in once on Contacts Mobile with that Google account first."
+            ),
+            status_code=303,
+        )
+
+    with user_db_write_lock(email), mobile_user_db_session(email):
+        use_user_database(email)
+        summary = get_google_sync_summary()
+        account = summary.get("account") or {}
+        if str(account.get("status") or "") != "connected":
+            return RedirectResponse(
+                url="/?error="
+                + quote(
+                    f"{email} is not connected to Google Drive. "
+                    "An Editor must sign in once on Contacts Mobile with that Google account first."
+                ),
+                status_code=303,
+            )
+
+        save_access_session("non_editor", access_name)
+        _store_mobile_access_session(request, "non_editor", access_name)
+        request.session["owner_email"] = email
+        _clear_pending_sign_in(request)
+        if has_cached_contacts():
+            mark_google_contacts_refreshed(request)
+        else:
+            clear_google_contacts_refresh_flag(request)
+        _background_non_editor_sign_in_sync(email)
+        return RedirectResponse(url=_post_sign_in_redirect(True), status_code=303)
+
+
 def _store_pending_sign_in(
     request: Request,
     *,
     access_role: str,
     access_name: str,
     editor_secret: str = "",
+    drive_email: str = "",
 ) -> RedirectResponse | None:
     normalized_role = normalize_access_role(access_role)
     normalized_name = str(access_name or "").strip()
     if not normalized_name:
         return RedirectResponse(url="/?error=Enter%20your%20name%20or%20initials%20before%20signing%20in.", status_code=303)
-    if normalized_role == "editor" and not str(editor_secret or "").strip():
+    if normalized_role == "non_editor":
+        return _complete_pending_edits_sign_in(
+            request,
+            access_name=normalized_name,
+            drive_email=drive_email,
+        )
+    if not str(editor_secret or "").strip():
         return RedirectResponse(url="/?error=Enter%20the%20Editor%20password%20before%20signing%20in.", status_code=303)
 
-    if normalized_role == "editor" and is_multi_editor_enabled():
+    if is_multi_editor_enabled():
         lock_status = get_editor_lock_status()
         remaining_seconds = int(lock_status.get("remaining_seconds") or 0)
         owner_name = str(lock_status.get("owner_name") or "").strip()
@@ -128,12 +192,14 @@ def auth_prepare_sign_in(
     access_role: str = Form(default="editor"),
     access_name: str = Form(default=""),
     editor_secret: str = Form(default=""),
+    drive_email: str = Form(default=""),
 ):
     response = _store_pending_sign_in(
         request,
         access_role=access_role,
         access_name=access_name,
         editor_secret=editor_secret,
+        drive_email=drive_email,
     )
     return response or RedirectResponse(url="/", status_code=303)
 
@@ -153,12 +219,14 @@ def auth_login_post(
     access_role: str = Form(default="editor"),
     access_name: str = Form(default=""),
     editor_secret: str = Form(default=""),
+    drive_email: str = Form(default=""),
 ):
     response = _store_pending_sign_in(
         request,
         access_role=access_role,
         access_name=access_name,
         editor_secret=editor_secret,
+        drive_email=drive_email,
     )
     return response or RedirectResponse(url="/", status_code=303)
 
@@ -526,12 +594,14 @@ def _clear_shared_sign_in_state() -> None:
         pass
 
 
-def _background_logout_cleanup(email: str) -> None:
+def _background_logout_cleanup(email: str, *, is_non_editor: bool = False) -> None:
     if not email:
         return
     with mobile_user_db_session(email):
         try:
-            if is_multi_editor_enabled():
+            if is_non_editor:
+                clear_access_session()
+            elif is_multi_editor_enabled():
                 _clear_shared_sign_in_state()
             else:
                 clear_access_session()
@@ -562,6 +632,7 @@ def _background_logout_cleanup(email: str) -> None:
 @router.post("/logout")
 def auth_logout(request: Request):
     email = str(request.session.get("owner_email") or "").strip()
+    is_non_editor = mobile_is_non_editor(request)
 
     # Clear the browser session first so Log out always returns quickly.
     _clear_pending_sign_in(request)
@@ -572,7 +643,7 @@ def auth_logout(request: Request):
     if email:
         threading.Thread(
             target=_background_logout_cleanup,
-            args=(email,),
+            kwargs={"email": email, "is_non_editor": is_non_editor},
             daemon=True,
             name="mobile-logout-cleanup",
         ).start()

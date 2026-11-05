@@ -180,6 +180,15 @@ def mobile_user_db_session(email: str):
                 _push_local_db_to_cloud(normalized)
 
 
+def user_db_exists(email: str) -> bool:
+    normalized = str(email or "").strip()
+    if not normalized:
+        return False
+    if user_db_path(normalized).exists():
+        return True
+    return is_cloud_data_root() and _local_db_path(email_slug(normalized)).exists()
+
+
 def use_user_database(email: str) -> Path:
     normalized = str(email or "").strip()
     if not normalized:

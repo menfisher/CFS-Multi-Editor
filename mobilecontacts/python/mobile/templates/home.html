@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   {% include "includes/mobile_head.html" %}
   <title>Mobile Contacts</title>
-  <link rel="stylesheet" href="/static/css/mobile.css?v=41">
+  <link rel="stylesheet" href="/static/css/mobile.css?v=42">
 </head>
 <body class="mobile-shell mobile-home-page">
   <main class="mobile-panel mobile-home-panel">
@@ -25,7 +25,10 @@
     <section class="mobile-home-multi-editor">
       <h2>{% if multi_editor_enabled %}Sign in{% else %}Multi-Editor sign in{% endif %}</h2>
       {% if multi_editor_enabled %}
-      <p class="mobile-home-hint">Choose Pending Edits or Editor, enter your name, then sign in with Google.</p>
+      <p class="mobile-home-hint">Choose Pending Edits or Editor, then enter your name.</p>
+      <p class="mobile-home-hint" id="mobile-pending-edits-account-hint" hidden>
+        Pending Edits writes to the Drive account you enter. No password is needed.
+      </p>
       {% else %}
       <p class="mobile-home-hint">Choose Editor or Pending Edits access, then connect Google.</p>
       {% endif %}
@@ -41,11 +44,15 @@
           <span id="mobile-access-name-label">Editor name</span>
           <input type="text" name="access_name" maxlength="40" autocomplete="name" required>
         </label>
+        <label class="mobile-form-field" id="mobile-drive-email-field" hidden>
+          <span>Drive account</span>
+          <input type="email" name="drive_email" id="mobile-drive-email" value="al.ms.lacontacts@gmail.com" autocomplete="username">
+        </label>
         <label class="mobile-form-field" id="mobile-editor-secret-field">
           <span>Editor password</span>
           <input type="password" name="editor_secret" autocomplete="current-password">
         </label>
-        <button type="submit" class="mobile-button">Sign in with role</button>
+        <button type="submit" class="mobile-button" id="mobile-signin-submit">Sign in with Google</button>
       </form>
     </section>
   </main>
@@ -80,15 +87,21 @@
       if (isStandalone && standaloneHint) {
         standaloneHint.hidden = false;
       }
-      signInForm?.addEventListener("submit", blockStandaloneSignIn);
       googleSignInLink?.addEventListener("click", blockStandaloneSignIn);
 
       const roleSelect = document.getElementById("mobile-access-role");
       const nameLabel = document.getElementById("mobile-access-name-label");
       const secretField = document.getElementById("mobile-editor-secret-field");
       const secretInput = secretField?.querySelector("input");
+      const driveField = document.getElementById("mobile-drive-email-field");
+      const driveInput = document.getElementById("mobile-drive-email");
+      const pendingHint = document.getElementById("mobile-pending-edits-account-hint");
+      const submitButton = document.getElementById("mobile-signin-submit");
       const syncRoleFields = () => {
         const isEditor = roleSelect?.value === "editor";
+        if (pendingHint) {
+          pendingHint.hidden = isEditor;
+        }
         if (nameLabel) {
           nameLabel.textContent = isEditor ? "Editor name" : "Your initials";
         }
@@ -101,7 +114,22 @@
             secretInput.value = "";
           }
         }
+        if (driveField) {
+          driveField.hidden = isEditor;
+        }
+        if (driveInput) {
+          driveInput.required = !isEditor;
+        }
+        if (submitButton) {
+          submitButton.textContent = isEditor ? "Sign in with Google" : "Sign in";
+        }
       };
+      signInForm?.addEventListener("submit", (event) => {
+        if (roleSelect?.value === "non_editor") {
+          return;
+        }
+        blockStandaloneSignIn(event);
+      });
       roleSelect?.addEventListener("change", syncRoleFields);
       syncRoleFields();
     });
