@@ -18,7 +18,7 @@
         <div v-if="viewMode !== 'shared' && ownerSyncRequiredMessage" class="amber-text text-darken-3">
             {{ownerSyncRequiredMessage}}
         </div>
-        <div v-if="viewMode !== 'shared'" style="margin:0.5rem 0;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div v-if="viewMode !== 'shared'" style="margin:0.5rem 0">
             <button
                 type="button"
                 class="btn waves-effect waves-light blue-grey darken-1"
@@ -29,7 +29,7 @@
             >
                 <i class="material-icons left" style="font-size:1rem;line-height:2rem">build</i>Repair Labels
             </button>
-            <span v-if="cardRepairSummary" class="teal-text">{{cardRepairSummary}}</span>
+            <div v-if="cardRepairSummary" class="teal-text" style="margin-top:0.25rem;font-size:0.9rem">{{cardRepairSummary}}</div>
         </div>
         <table class="responsive-table striped owner-groups-table" v-if="viewMode !== 'shared'">
             <tr><th>Group name</th><th>Status</th><th>Contacts</th><th>Share</th><th>Sync</th><th>Skipped</th></tr>
