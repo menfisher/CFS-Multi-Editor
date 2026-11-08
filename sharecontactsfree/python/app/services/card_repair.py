@@ -10,9 +10,11 @@ from .. import db
 from ..google_auth import owner_credentials, recipient_credentials
 from ..people_api import get_people_batch, is_rate_limit_error
 from ..people_recipient import (
+    assignment_shared_group_name,
     ensure_assignment_contact_label,
     get_person_etag,
     normalize_person_resource_name,
+    remove_stale_assignment_label,
     update_contact,
 )
 from .contact_hash import compute_contact_hash
@@ -151,7 +153,9 @@ def _repair_items_for_recipient(recipient_email: str) -> list[dict[str, Any]]:
     return items
 
 
-def _persist_mapping_hash(mapping: dict[str, Any], last_hash: str, owner_etag: str) -> None:
+def _persist_mapping_hash(
+    mapping: dict[str, Any], last_hash: str, owner_etag: str, last_assignment_label: str = ""
+) -> None:
     siblings = db.find_sibling_mappings(
         str(mapping.get("owner") or ""),
         str(mapping.get("recipient_email") or ""),
@@ -183,6 +187,7 @@ def _persist_mapping_hash(mapping: dict[str, Any], last_hash: str, owner_etag: s
             last_hash=last_hash,
             last_photo_hash=str(row.get("last_photo_hash") or ""),
             owner_etag=owner_etag or str(row.get("owner_etag") or ""),
+            last_assignment_label=last_assignment_label,
         )
 
 
@@ -202,13 +207,19 @@ def _repair_mapping(
         return "missing_recipient"
     if not update_contact(recipient_creds, recipient_person_id, owner_person, etag):
         return "update_failed"
+    new_assignment_label = assignment_shared_group_name(owner_person)
+    old_assignment_label = str(mapping.get("last_assignment_label") or "")
     ensure_assignment_contact_label(
         recipient_creds, recipient_person_id, owner_person, group_cache
+    )
+    remove_stale_assignment_label(
+        recipient_creds, recipient_person_id, old_assignment_label, new_assignment_label
     )
     _persist_mapping_hash(
         mapping,
         compute_contact_hash(owner_person),
         str(owner_person.get("etag") or ""),
+        last_assignment_label=new_assignment_label,
     )
     return "ok"
 
