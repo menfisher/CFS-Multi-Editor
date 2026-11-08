@@ -1031,6 +1031,72 @@ def remove_contact_from_group(
         return False
 
 
+_ASSIGNMENT_LABEL_RE = re.compile(r"^.+ - .+ \(shared\)$", re.I)
+
+
+def list_group_names(creds: Credentials) -> dict[str, str]:
+    """Map every contact group resourceName to its name for this account."""
+    service = people_service(creds)
+    names: dict[str, str] = {}
+    page_token = None
+    while True:
+        kwargs: dict[str, Any] = {"pageSize": 200}
+        if page_token:
+            kwargs["pageToken"] = page_token
+        data = service.contactGroups().list(**kwargs).execute()
+        for group in data.get("contactGroups") or []:
+            resource_name = str(group.get("resourceName") or "").strip()
+            if resource_name:
+                names[resource_name] = str(group.get("name") or "").strip()
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+    return names
+
+
+def remove_outdated_assignment_labels(
+    creds: Credentials,
+    recipient_person_id: str,
+    current_label_name: str,
+    protected_group_ids: set[str],
+    group_names: dict[str, str],
+) -> int:
+    """Remove 'Field - Meeting (Shared)' labels this contact no longer qualifies for.
+
+    Used when the previously stored label is unknown (rows created before the
+    last_assignment_label column existed). Reads the recipient contact's real
+    memberships, so it also catches e.g. 'Deleted - 2026 (Shared)' after a restore.
+    Share import groups are protected and never touched.
+    """
+    normalized = normalize_person_resource_name(recipient_person_id)
+    if not normalized:
+        return 0
+    current = str(current_label_name or "").strip().casefold()
+    service = people_service(creds)
+    try:
+        person = (
+            service.people().get(resourceName=normalized, personFields="memberships").execute()
+        )
+    except HttpError:
+        return 0
+    removed = 0
+    for membership in person.get("memberships") or []:
+        group_id = str(
+            (membership.get("contactGroupMembership") or {}).get("contactGroupResourceName")
+            or ""
+        ).strip()
+        if not group_id or group_id in protected_group_ids:
+            continue
+        name = group_names.get(group_id, "")
+        if not name or not _ASSIGNMENT_LABEL_RE.match(name):
+            continue
+        if name.casefold() == current:
+            continue
+        if remove_contact_from_group(creds, normalized, group_id):
+            removed += 1
+    return removed
+
+
 def remove_stale_assignment_label(
     creds: Credentials,
     recipient_person_id: str,

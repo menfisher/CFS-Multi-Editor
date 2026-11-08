@@ -659,7 +659,7 @@ def _dispatch(owner_email: str, method: str, args: list[Any]) -> Any:
     if method == "startCardRepair":
         from .services.card_repair import card_repair_summary_line, start_card_repair
 
-        status = start_card_repair()
+        status = start_card_repair(restart=True)
         return {"status": status, "summary": card_repair_summary_line(status)}
     raise ValueError(f"Unknown method: {method}")
 

@@ -13,7 +13,9 @@ from ..people_recipient import (
     assignment_shared_group_name,
     ensure_assignment_contact_label,
     get_person_etag,
+    list_group_names,
     normalize_person_resource_name,
+    remove_outdated_assignment_labels,
     remove_stale_assignment_label,
     update_contact,
 )
@@ -191,11 +193,27 @@ def _persist_mapping_hash(
         )
 
 
+def _recipient_repair_context(recipient_email: str, recipient_creds) -> dict[str, Any]:
+    """Per-recipient caches. Group ids are account-specific, so never share across recipients."""
+    app_data = db.get_app_data(recipient_email) or {}
+    protected = {
+        str(group.get("created") or "").strip()
+        for group in (app_data.get("sharedGroups") or [])
+        if isinstance(group, dict) and str(group.get("created") or "").startswith("contactGroups/")
+    }
+    try:
+        names = list_group_names(recipient_creds)
+    except Exception:
+        logger.exception("Could not list contact groups for %s", recipient_email)
+        names = {}
+    return {"ids": {}, "names": names, "protected": protected}
+
+
 def _repair_mapping(
     mapping: dict[str, Any],
     owner_people: dict[str, dict[str, Any]],
     recipient_creds,
-    group_cache: dict[str, str],
+    context: dict[str, Any],
 ) -> str:
     owner_person_id = str(mapping.get("owner_person_id") or "")
     owner_person = owner_people.get(owner_person_id)
@@ -210,10 +228,17 @@ def _repair_mapping(
     new_assignment_label = assignment_shared_group_name(owner_person)
     old_assignment_label = str(mapping.get("last_assignment_label") or "")
     ensure_assignment_contact_label(
-        recipient_creds, recipient_person_id, owner_person, group_cache
+        recipient_creds, recipient_person_id, owner_person, context["ids"]
     )
     remove_stale_assignment_label(
         recipient_creds, recipient_person_id, old_assignment_label, new_assignment_label
+    )
+    remove_outdated_assignment_labels(
+        recipient_creds,
+        recipient_person_id,
+        new_assignment_label,
+        context["protected"],
+        context["names"],
     )
     _persist_mapping_hash(
         mapping,
@@ -224,14 +249,14 @@ def _repair_mapping(
     return "ok"
 
 
-def start_card_repair(*, resume: bool = False) -> dict[str, Any]:
+def start_card_repair(*, resume: bool = False, restart: bool = False) -> dict[str, Any]:
     status = _apply_stall(load_card_repair_status())
     state = str(status.get("state") or "idle")
     if state in {"queued", "running"} and not resume:
         return _public_status(status)
     if state == "paused_rate_limit" and not resume:
         return _public_status(status)
-    if state == "done" and not resume:
+    if state == "done" and not resume and not restart:
         return _public_status(status)
 
     if state == "stalled" or resume:
@@ -292,7 +317,7 @@ def run_card_repair_slice(job: dict[str, Any] | None = None) -> dict[str, Any]:
     recipient_index = max(0, int(status.get("recipient_index") or 0))
     mapping_offset = max(0, int(status.get("mapping_offset") or 0))
     ops_used = 0
-    group_cache: dict[str, str] = {}
+    contexts: dict[str, dict[str, Any]] = {}
     owner_people_cache: dict[str, dict[str, dict[str, Any]]] = {}
 
     try:
@@ -337,8 +362,10 @@ def run_card_repair_slice(job: dict[str, Any] | None = None) -> dict[str, Any]:
                 )
                 owner_people_cache[owner] = get_people_batch(owner_creds, owner_ids[:REPAIR_SLICE])
 
+            if recipient_email not in contexts:
+                contexts[recipient_email] = _recipient_repair_context(recipient_email, creds)
             result = _repair_mapping(
-                mapping, owner_people_cache[owner], creds, group_cache
+                mapping, owner_people_cache[owner], creds, contexts[recipient_email]
             )
             ops_used += 1
             mapping_offset += 1

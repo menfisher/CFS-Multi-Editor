@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, call, patch
 from app import db
 from app.people_recipient import (
     remove_contact_from_group,
+    remove_outdated_assignment_labels,
     remove_stale_assignment_label,
 )
 
@@ -107,6 +108,79 @@ class RemoveStaleAssignmentLabelTests(unittest.TestCase):
             )
         self.assertTrue(result)
         service.contactGroups.return_value.members.return_value.modify.assert_not_called()
+
+
+class RemoveOutdatedAssignmentLabelsTests(unittest.TestCase):
+    def _service(self, memberships: list[str]) -> MagicMock:
+        service = MagicMock()
+        service.people.return_value.get.return_value.execute.return_value = {
+            "memberships": [
+                {"contactGroupMembership": {"contactGroupResourceName": gid}}
+                for gid in memberships
+            ]
+        }
+        return service
+
+    def test_removes_deleted_label_but_keeps_current_and_import_groups(self) -> None:
+        names = {
+            "contactGroups/import": "AlMsLa (Shared)",
+            "contactGroups/current": "Contacts - LA North (Shared)",
+            "contactGroups/deleted": "Deleted - 2026 (Shared)",
+            "contactGroups/myContacts": "myContacts",
+        }
+        service = self._service(list(names))
+        with patch("app.people_recipient.people_service", return_value=service):
+            removed = remove_outdated_assignment_labels(
+                MagicMock(),
+                "people/carol",
+                "Contacts - LA North (Shared)",
+                {"contactGroups/import"},
+                names,
+            )
+        self.assertEqual(removed, 1)
+        modify = service.contactGroups.return_value.members.return_value.modify
+        modify.assert_called_once_with(
+            resourceName="contactGroups/deleted",
+            body={"resourceNamesToRemove": ["people/carol"]},
+        )
+
+    def test_protected_import_group_with_dash_in_name_is_kept(self) -> None:
+        names = {"contactGroups/import": "AL South - Birmingham (GRAHAM) (shared)"}
+        service = self._service(list(names))
+        with patch("app.people_recipient.people_service", return_value=service):
+            removed = remove_outdated_assignment_labels(
+                MagicMock(), "people/x", "", {"contactGroups/import"}, names
+            )
+        self.assertEqual(removed, 0)
+
+
+class StartCardRepairTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        db._active_database_path = Path(self._tmpdir.name) / "test.db"
+        db.init_db()
+
+    def tearDown(self) -> None:
+        db._active_database_path = None
+        self._tmpdir.cleanup()
+
+    def test_done_state_blocks_restart_unless_requested(self) -> None:
+        from app.services import card_repair
+
+        db.upsert_sync_mapping(
+            share_id="s1",
+            owner="o@example.com",
+            group_resource_name="contactGroups/g1",
+            recipient_email="r@example.com",
+            owner_person_id="people/p1",
+            recipient_person_id="people/r1",
+        )
+        card_repair.save_card_repair_status({**card_repair._empty_status(), "state": "done"})
+        with patch("app.services.push_worker.kick_push_queue"):
+            self.assertEqual(card_repair.start_card_repair()["state"], "done")
+            self.assertEqual(
+                card_repair.start_card_repair(restart=True)["state"], "queued"
+            )
 
 
 class DbMigrationTests(unittest.TestCase):
