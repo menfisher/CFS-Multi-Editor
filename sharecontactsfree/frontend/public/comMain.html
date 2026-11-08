@@ -18,8 +18,18 @@
         <div v-if="viewMode !== 'shared' && ownerSyncRequiredMessage" class="amber-text text-darken-3">
             {{ownerSyncRequiredMessage}}
         </div>
-        <div v-if="viewMode !== 'shared' && cardRepairSummary" class="teal-text" style="margin:0.5rem 0">
-            {{cardRepairSummary}}
+        <div v-if="viewMode !== 'shared'" style="margin:0.5rem 0;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+            <button
+                type="button"
+                class="btn waves-effect waves-light blue-grey darken-1"
+                :disabled="cardRepairStatus && ['queued','running','paused_rate_limit'].indexOf(String(cardRepairStatus.state||'')) >= 0"
+                @click="startCardRepair"
+                title="Re-apply correct Field+Meeting labels to all recipient contacts and remove stale ones"
+                style="font-size:0.8rem;padding:0 0.8rem;height:2rem;line-height:2rem"
+            >
+                <i class="material-icons left" style="font-size:1rem;line-height:2rem">build</i>Repair Labels
+            </button>
+            <span v-if="cardRepairSummary" class="teal-text">{{cardRepairSummary}}</span>
         </div>
         <table class="responsive-table striped owner-groups-table" v-if="viewMode !== 'shared'">
             <tr><th>Group name</th><th>Status</th><th>Contacts</th><th>Share</th><th>Sync</th><th>Skipped</th></tr>

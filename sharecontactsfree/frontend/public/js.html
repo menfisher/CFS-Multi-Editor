@@ -1711,6 +1711,21 @@ let clearOwnerShareNotices = function(options){
             this._cardRepairPoller = setInterval(tick, 5000)
             tick()
         },
+        startCardRepair: function(){
+            let call = window.appCall
+            if (typeof call !== "function"){
+                return
+            }
+            this.cardRepairSummary = "Card repair: starting…"
+            call("startCardRepair", [])
+                .then((payload)=>{
+                    this.applyCardRepairStatus(payload)
+                    this.ensureCardRepairStatusPoll()
+                })
+                .catch((err)=>{
+                    this.cardRepairSummary = "Card repair: " + String((err && err.message) || "failed to start")
+                })
+        },
         stopOwnerPushStatusPoll: function(resourceName){
             if (this._ownerPushPollers && this._ownerPushPollers[resourceName]){
                 clearInterval(this._ownerPushPollers[resourceName])
