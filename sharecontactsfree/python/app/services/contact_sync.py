@@ -17,13 +17,14 @@ from ..people_recipient import (
     ensure_assignment_contact_label,
     ensure_contact_in_group,
     get_person_etags_batch,
+    has_custom_contact_photo,
     normalize_person_resource_name,
     remove_stale_assignment_label,
     set_contact_photo,
     update_contact,
 )
 from .contact_hash import compute_contact_hash, compute_photo_hash
-from .recipient_import import _ensure_recipient_group
+from .recipient_import import _contact_match_keys, _ensure_recipient_group
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,172 @@ def _discover_mappings_for_unmapped_contact(
     return discovered
 
 
+def _mapping_key(mapping: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(mapping.get("share_id") or ""),
+        str(mapping.get("group_resource_name") or ""),
+        db.normalize_email(str(mapping.get("recipient_email") or "")),
+    )
+
+
+def _contacts_identity_match(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
+    """True when two People payloads are the same person (phones/emails, else name)."""
+    left_keys = _contact_match_keys(left)
+    right_keys = _contact_match_keys(right)
+    left_strong = {key for key in left_keys if key.startswith(("email:", "phone:"))}
+    right_strong = {key for key in right_keys if key.startswith(("email:", "phone:"))}
+    if left_strong and right_strong:
+        return bool(left_strong & right_strong)
+    left_names = {key for key in left_keys if key.startswith("name:")}
+    right_names = {key for key in right_keys if key.startswith("name:")}
+    return bool(left_names & right_names)
+
+
+def _unique_identity_staged_id(
+    share_id: str, member_data: dict[str, Any], current_owner_person_id: str
+) -> str:
+    current_id = normalize_person_resource_name(current_owner_person_id)
+    matches: list[str] = []
+    for staged in db.read_shared_contacts(share_id):
+        staged_id = normalize_person_resource_name(str(staged.get("resourceName") or ""))
+        if not staged_id or staged_id == current_id:
+            continue
+        if _contacts_identity_match(member_data, staged):
+            matches.append(staged_id)
+    if len(matches) != 1:
+        return ""
+    return matches[0]
+
+
+def _delete_recipient_person(recipient_email: str, recipient_person_id: str) -> bool:
+    rid = normalize_person_resource_name(recipient_person_id)
+    if not rid:
+        return True
+    creds = recipient_credentials(recipient_email)
+    if not creds:
+        return False
+    try:
+        return bool(delete_contact(creds, rid))
+    except Exception:
+        logger.exception(
+            "Failed deleting recipient contact %s for %s", rid, recipient_email
+        )
+        return False
+
+
+def _prune_one_mapping(mapping: dict[str, Any], *, drop_staged: bool = False) -> dict[str, Any]:
+    """Delete one recipient card and its mapping when the owner contact left the share."""
+    share_id = str(mapping.get("share_id") or "")
+    owner = str(mapping.get("owner") or "")
+    group_resource_name = str(mapping.get("group_resource_name") or "")
+    recipient_email = str(mapping.get("recipient_email") or "")
+    owner_person_id = str(mapping.get("owner_person_id") or "")
+    rid = str(mapping.get("recipient_person_id") or "")
+    if rid and not _delete_recipient_person(recipient_email, rid):
+        return {
+            "status": "error",
+            "reason": "delete_failed",
+            "action": "prune",
+            "mapping_id": mapping.get("id"),
+        }
+    if share_id and owner and group_resource_name and recipient_email and owner_person_id:
+        db.delete_sync_mapping_rows(
+            share_id,
+            owner,
+            group_resource_name,
+            recipient_email,
+            owner_person_ids=[owner_person_id],
+        )
+    if drop_staged and share_id and owner_person_id:
+        db.delete_shared_contact_member(share_id, owner_person_id)
+    return {
+        "status": "pruned",
+        "action": "prune",
+        "mapping_id": mapping.get("id"),
+        "recipient_person_id": rid,
+    }
+
+
+def _relink_identity_mappings(
+    *,
+    owner: str,
+    owner_person_id: str,
+    member_data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Point existing recipient cards at a new owner Google ID.
+
+    CFS is the source of truth. When Google recreates a contact, keep the
+    recipient card and retarget the mapping. Extra duplicate cards from the
+    new ID are removed; the contact itself is not deleted from recipients.
+    """
+    relinked: list[dict[str, Any]] = []
+    for staged in db.list_staged_share_groups_for_owner(owner):
+        share_id = str(staged.get("share_id") or "").strip()
+        group_resource_name = str(staged.get("group_resource_name") or "").strip()
+        if not share_id or not group_resource_name:
+            continue
+        old_id = _unique_identity_staged_id(share_id, member_data, owner_person_id)
+        if not old_id:
+            continue
+        for mapping in db.find_mappings_for_owner_person(owner, old_id):
+            if (
+                str(mapping.get("share_id") or "") != share_id
+                or str(mapping.get("group_resource_name") or "") != group_resource_name
+            ):
+                continue
+            recipient_email = db.normalize_email(str(mapping.get("recipient_email") or ""))
+            new_mappings = [
+                item
+                for item in db.find_mappings_for_owner_person(owner, owner_person_id)
+                if _mapping_key(item) == (share_id, group_resource_name, recipient_email)
+            ]
+            extra_rid = ""
+            if new_mappings:
+                extra_rid = normalize_person_resource_name(
+                    str(new_mappings[0].get("recipient_person_id") or "")
+                )
+            kept_rid = normalize_person_resource_name(
+                str(mapping.get("recipient_person_id") or "")
+            )
+            if extra_rid and extra_rid != kept_rid:
+                _delete_recipient_person(recipient_email, extra_rid)
+            db.retarget_sync_mapping_owner_person(
+                share_id=share_id,
+                owner=owner,
+                group_resource_name=group_resource_name,
+                recipient_email=recipient_email,
+                old_owner_person_id=old_id,
+                new_owner_person_id=owner_person_id,
+            )
+            db.patch_shared_contact_member(share_id, old_id, member_data)
+            mapping["owner_person_id"] = owner_person_id
+            mapping["relinked"] = True
+            relinked.append(mapping)
+    return relinked
+
+
+def _prune_missing_owner_person(owner: str, owner_person_id: str) -> list[dict[str, Any]]:
+    """Remove recipient cards after a CFS permanent delete (owner Google 404)."""
+    person_id = normalize_person_resource_name(owner_person_id)
+    mappings = db.find_mappings_for_owner_person(owner, person_id) if person_id else []
+    if not mappings:
+        for staged in db.list_staged_share_groups_for_owner(owner):
+            share_id = str(staged.get("share_id") or "").strip()
+            if share_id and person_id:
+                db.delete_shared_contact_member(share_id, person_id)
+        return [{"status": "pruned", "action": "prune", "reason": "owner_missing"}]
+
+    outcomes: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for mapping in mappings:
+        key = _mapping_key(mapping)
+        if key in seen:
+            continue
+        seen.add(key)
+        outcomes.append(_prune_one_mapping(mapping, drop_staged=True))
+    return outcomes
+
+
 def prune_orphan_recipient_contacts(
     *,
     share_id: str,
@@ -245,6 +412,23 @@ def prune_orphan_recipient_contacts(
         "deleted": deleted,
         "failed": failed,
     }
+
+
+def _load_recipient_person(creds, recipient_person_id: str) -> dict[str, Any]:
+    rid = normalize_person_resource_name(recipient_person_id)
+    if not rid or creds is None:
+        return {}
+    try:
+        person = (
+            people_service(creds)
+            .people()
+            .get(resourceName=rid, personFields="metadata,photos")
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to load recipient person %s", rid)
+        return {}
+    return person if isinstance(person, dict) else {}
 
 
 def _apply_recipient_photo(
@@ -366,12 +550,18 @@ def _apply_mapping_update(
     etag_changed = owner_etag != prev_etag
 
     if recipient_person_id:
+        rid = normalize_person_resource_name(recipient_person_id)
+        recipient_person: dict[str, Any] = {}
+        if photo_hash != "no-photo":
+            recipient_person = _load_recipient_person(creds, rid)
+            if recipient_person and not has_custom_contact_photo(recipient_person):
+                photo_changed = True
         if not hash_changed and not photo_changed and not etag_changed:
             return {"status": "skipped", "reason": "unchanged", "mapping_id": mapping.get("id")}
 
-        rid = normalize_person_resource_name(recipient_person_id)
-        etags = get_person_etags_batch(creds, [rid])
-        etag = etags.get(rid)
+        etag = str(recipient_person.get("etag") or "")
+        if not etag:
+            etag = get_person_etags_batch(creds, [rid]).get(rid)
         if not etag:
             share_id = str(mapping.get("share_id") or "")
             group_resource_name = str(mapping.get("group_resource_name") or "")
@@ -392,6 +582,14 @@ def _apply_mapping_update(
         else:
             new_assignment_label = assignment_shared_group_name(member_data)
             old_assignment_label = str(mapping.get("last_assignment_label") or "")
+            if (
+                old_assignment_label.strip()
+                and new_assignment_label.strip()
+                and old_assignment_label != new_assignment_label
+            ):
+                from .card_repair import queue_person_for_label_repair
+
+                queue_person_for_label_repair(owner_person_id)
             if hash_changed or etag_changed:
                 if not update_contact(creds, rid, member_data, etag):
                     return {"status": "error", "reason": "update_failed", "mapping_id": mapping.get("id")}
@@ -526,6 +724,33 @@ def _apply_mapping_update(
     return {"status": "error", "reason": "unexpected_state", "mapping_id": mapping.get("id")}
 
 
+def _record_mapping_outcome(
+    summary: dict[str, Any], person_id: str, outcome: dict[str, Any]
+) -> None:
+    summary["results"].append({"person_id": person_id, **outcome})
+    status = outcome.get("status")
+    if status == "updated":
+        summary["updated"] += 1
+    elif status == "created":
+        summary["created"] += 1
+    elif status == "pruned":
+        summary["pruned"] += 1
+    elif status == "skipped":
+        summary["skipped"] += 1
+    elif status == "error":
+        summary["errors"] += 1
+        summary["error_details"].append(
+            f"{person_id} mapping {outcome.get('mapping_id')}: {outcome.get('reason')}"
+        )
+    if outcome.get("relinked"):
+        summary["relinked"] += 1
+    if outcome.get("photo_failed"):
+        summary["errors"] += 1
+        summary["error_details"].append(
+            f"{person_id} mapping {outcome.get('mapping_id')}: photo_failed"
+        )
+
+
 def sync_contact_changes(owner_email: str, owner_person_ids: list[str]) -> dict[str, Any]:
     """Push specific owner contacts to all mapped connected recipients."""
     owner = db.normalize_email(owner_email)
@@ -534,6 +759,8 @@ def sync_contact_changes(owner_email: str, owner_person_ids: list[str]) -> dict[
         "requested": len(person_ids),
         "updated": 0,
         "created": 0,
+        "relinked": 0,
+        "pruned": 0,
         "skipped": 0,
         "errors": 0,
         "pending": 0,
@@ -553,12 +780,33 @@ def sync_contact_changes(owner_email: str, owner_person_ids: list[str]) -> dict[
     for person_id in person_ids:
         member_data = members_by_id.get(person_id)
         if not member_data:
-            summary["errors"] += 1
-            summary["error_details"].append(f"Missing owner data for {person_id}")
+            # CFS permanent delete removes the owner Google card first. That is
+            # not an error: prune the recipient copies of that same person.
+            for outcome in _prune_missing_owner_person(owner, person_id):
+                _record_mapping_outcome(summary, person_id, outcome)
             continue
 
         owner_etag = str(member_data.get("etag") or "")
+        _ensure_membership_group_resource_names(owner_creds, person_id, member_data)
         mappings = db.find_mappings_for_owner_person(owner, person_id)
+        relinked_mappings = _relink_identity_mappings(
+            owner=owner,
+            owner_person_id=person_id,
+            member_data=member_data,
+        )
+        if relinked_mappings:
+            existing = {_mapping_key(item) for item in mappings}
+            for item in relinked_mappings:
+                key = _mapping_key(item)
+                if key in existing:
+                    mappings = [
+                        mapping if _mapping_key(mapping) != key else item
+                        for mapping in mappings
+                    ]
+                else:
+                    mappings.append(item)
+                    existing.add(key)
+
         # Existing mappings (Charlie, Emmy, ...) are not enough. A later
         # recipient of the same group, or a contact added back to AlMsLa,
         # still needs a create mapping.
@@ -569,20 +817,9 @@ def sync_contact_changes(owner_email: str, owner_person_ids: list[str]) -> dict[
             owner_creds=owner_creds,
         )
         if discovered:
-            existing = {
-                (
-                    str(item.get("share_id") or ""),
-                    str(item.get("group_resource_name") or ""),
-                    db.normalize_email(str(item.get("recipient_email") or "")),
-                )
-                for item in mappings
-            }
+            existing = {_mapping_key(item) for item in mappings}
             for item in discovered:
-                key = (
-                    str(item.get("share_id") or ""),
-                    str(item.get("group_resource_name") or ""),
-                    db.normalize_email(str(item.get("recipient_email") or "")),
-                )
+                key = _mapping_key(item)
                 if key not in existing:
                     mappings.append(item)
                     existing.add(key)
@@ -605,28 +842,13 @@ def sync_contact_changes(owner_email: str, owner_person_ids: list[str]) -> dict[
                 owner_etag=owner_etag,
                 owner_token=owner_token,
             )
+            if mapping.get("relinked"):
+                outcome = {**outcome, "relinked": True}
             if outcome.get("status") == "skipped" and outcome.get("reason") == "not_connected":
                 from .app_data import patch_staged_shared_contacts_for_owner_person
 
                 staged = patch_staged_shared_contacts_for_owner_person(owner, person_id, member_data)
                 outcome = {**outcome, "staged_patched": staged}
-            summary["results"].append({"person_id": person_id, **outcome})
-            status = outcome.get("status")
-            if status == "updated":
-                summary["updated"] += 1
-            elif status == "created":
-                summary["created"] += 1
-            elif status == "skipped":
-                summary["skipped"] += 1
-            elif status == "error":
-                summary["errors"] += 1
-                summary["error_details"].append(
-                    f"{person_id} mapping {mapping.get('id')}: {outcome.get('reason')}"
-                )
-            if outcome.get("photo_failed"):
-                summary["errors"] += 1
-                summary["error_details"].append(
-                    f"{person_id} mapping {mapping.get('id')}: photo_failed"
-                )
+            _record_mapping_outcome(summary, person_id, outcome)
 
     return summary

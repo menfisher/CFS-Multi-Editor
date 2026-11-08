@@ -68,7 +68,7 @@
             <div class="mobile-pending-edits-changes-display{% if entry.completed_by %} is-completed{% endif %}">
               {{ entry.changes_text_html | safe }}
             </div>
-            <input type="hidden" data-field="changes_text" value="{{ entry.changes_text }}">
+            <textarea hidden data-field="changes_text">{{ entry.changes_text }}</textarea>
           {% else %}
             <textarea
               class="mobile-pending-edits-textarea{% if entry.completed_by %} is-completed{% endif %}"

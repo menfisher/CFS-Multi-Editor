@@ -8241,7 +8241,10 @@ def export_changes_list_to_google_drive(
 ) -> None:
     from app.services.changes_list_service import (
         export_changes_list_payload,
+        local_changes_list_missing_from_payload,
+        mark_changes_list_for_drive_export,
         merge_changes_list_entry_lists,
+        retain_completed_changes_list_entries,
     )
 
     token = access_token or _get_valid_access_token()[0]
@@ -8260,8 +8263,14 @@ def export_changes_list_to_google_drive(
     # open Pending Edits page (Completed Edit(s) stops updating after the first tap).
     if merge_remote:
         remote_payload = _drive_load_json_file_content(token, resolved_storage["changes_list_current_file_id"])
+        # Completed edit(s) can land while Drive is downloading. Re-read so the
+        # uploaded file keeps the green rows instead of the stale white copies.
+        local_entries = export_changes_list_payload()
         if isinstance(remote_payload, dict) and isinstance(remote_payload.get("entries"), list):
-            local_entries = merge_changes_list_entry_lists(remote_payload["entries"], local_entries)
+            local_entries = retain_completed_changes_list_entries(
+                merge_changes_list_entry_lists(remote_payload["entries"], local_entries),
+                local_entries,
+            )
     payload = {
         "format": "contactsfreeshare.changes_list.v1",
         "exported_at": _iso_now(),
@@ -8273,14 +8282,17 @@ def export_changes_list_to_google_drive(
     _store_local_sync_revisions(changes_list_sync_revision=next_revision)
     _store_drive_state(last_drive_export_at=_now_text(), last_sync_error="")
     with get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE google_sync_state
-            SET changes_list_needs_drive_export = 0, updated_at = ?
-            WHERE id = 1
-            """,
-            (_now_text(),),
-        )
+        if local_changes_list_missing_from_payload(local_entries):
+            mark_changes_list_for_drive_export(conn)
+        else:
+            conn.execute(
+                """
+                UPDATE google_sync_state
+                SET changes_list_needs_drive_export = 0, updated_at = ?
+                WHERE id = 1
+                """,
+                (_now_text(),),
+            )
         conn.commit()
 
 
@@ -8316,6 +8328,7 @@ def import_changes_list_from_google_drive(
         merge_changes_list_entry_lists,
         reconcile_pending_edits_upload_flags,
         replace_changes_list_from_payload,
+        retain_completed_changes_list_entries,
     )
 
     # Hold the export lock so a background Completed Edit(s) upload cannot race
@@ -8350,7 +8363,12 @@ def import_changes_list_from_google_drive(
         local_entries = export_changes_list_payload()
         # Prefer completed local rows over stale incomplete Drive copies, while still
         # picking up new remote Pending Edits from other editors/devices.
-        merged_entries = merge_changes_list_entry_lists(remote_entries or [], local_entries)
+        # Re-read after the Drive download so Completed edit(s) during that wait
+        # cannot be replaced by the white snapshot taken before they turned green.
+        merged_entries = retain_completed_changes_list_entries(
+            merge_changes_list_entry_lists(remote_entries or [], local_entries),
+            export_changes_list_payload(),
+        )
 
         if remote_revision > 0 and remote_revision == local_revision:
             if changes_list_entries_equal(merged_entries, local_entries):

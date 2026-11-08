@@ -993,10 +993,7 @@ def _ensure_address_structured_columns(conn: sqlite3.Connection) -> None:
             (*next_values, int(row["id"])),
         )
 
-def _ensure_contact_edit_log_table(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS contact_edit_log_entries (
+_CONTACT_EDIT_LOG_COLUMNS_SQL = """
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           batch_id TEXT NOT NULL,
           batch_created_at TEXT NOT NULL,
@@ -1006,11 +1003,39 @@ def _ensure_contact_edit_log_table(conn: sqlite3.Connection) -> None:
           contact_name TEXT NOT NULL,
           label_name TEXT NOT NULL,
           original_text TEXT NOT NULL DEFAULT '',
-          edited_text TEXT NOT NULL DEFAULT '',
-          FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
-        )
+          edited_text TEXT NOT NULL DEFAULT ''
         """
+
+
+def _ensure_contact_edit_log_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS contact_edit_log_entries ({_CONTACT_EDIT_LOG_COLUMNS_SQL})"
     )
+    existing = conn.execute(
+        """
+        SELECT sql FROM sqlite_master
+        WHERE type = 'table' AND name = 'contact_edit_log_entries'
+        """
+    ).fetchone()
+    table_sql = str((existing["sql"] if existing else "") or "")
+    if "ON DELETE CASCADE" in table_sql.upper() or "REFERENCES contacts" in table_sql.upper():
+        conn.execute(
+            f"CREATE TABLE contact_edit_log_entries_new ({_CONTACT_EDIT_LOG_COLUMNS_SQL})"
+        )
+        conn.execute(
+            """
+            INSERT INTO contact_edit_log_entries_new (
+              id, batch_id, batch_created_at, batch_row_index, editor_initials,
+              contact_id, contact_name, label_name, original_text, edited_text
+            )
+            SELECT
+              id, batch_id, batch_created_at, batch_row_index, editor_initials,
+              contact_id, contact_name, label_name, original_text, edited_text
+            FROM contact_edit_log_entries
+            """
+        )
+        conn.execute("DROP TABLE contact_edit_log_entries")
+        conn.execute("ALTER TABLE contact_edit_log_entries_new RENAME TO contact_edit_log_entries")
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_contact_edit_log_entries_batch

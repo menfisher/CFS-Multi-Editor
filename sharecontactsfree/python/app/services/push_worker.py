@@ -482,7 +482,7 @@ def _dispatch_job(
     if job["job_type"] == "card_repair":
         from .card_repair import run_card_repair_slice
 
-        result = run_card_repair_slice(job)
+        result = run_card_repair_slice(job, wall_seconds=wall_seconds)
         if result.get("reason") == "rate_limit":
             time.sleep(60)
         return {"job_id": job["id"], **result}

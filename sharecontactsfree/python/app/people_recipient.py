@@ -976,7 +976,10 @@ def delete_contact(creds: Credentials, recipient_person_id: str) -> bool:
     try:
         service.people().deleteContact(resourceName=normalized).execute()
         return True
-    except HttpError:
+    except HttpError as exc:
+        status = getattr(getattr(exc, "resp", None), "status", None)
+        if status in (404, 410):
+            return True
         return False
 
 
@@ -1060,6 +1063,7 @@ def remove_outdated_assignment_labels(
     current_label_name: str,
     protected_group_ids: set[str],
     group_names: dict[str, str],
+    memberships: list[dict[str, Any]] | None = None,
 ) -> int:
     """Remove 'Field - Meeting (Shared)' labels this contact no longer qualifies for.
 
@@ -1067,20 +1071,25 @@ def remove_outdated_assignment_labels(
     last_assignment_label column existed). Reads the recipient contact's real
     memberships, so it also catches e.g. 'Deleted - 2026 (Shared)' after a restore.
     Share import groups are protected and never touched.
+    Pass memberships when the caller already loaded the person to avoid a GET.
     """
     normalized = normalize_person_resource_name(recipient_person_id)
     if not normalized:
         return 0
     current = str(current_label_name or "").strip().casefold()
-    service = people_service(creds)
-    try:
-        person = (
-            service.people().get(resourceName=normalized, personFields="memberships").execute()
-        )
-    except HttpError:
-        return 0
+    if memberships is None:
+        service = people_service(creds)
+        try:
+            person = (
+                service.people()
+                .get(resourceName=normalized, personFields="memberships")
+                .execute()
+            )
+        except HttpError:
+            return 0
+        memberships = list(person.get("memberships") or [])
     removed = 0
-    for membership in person.get("memberships") or []:
+    for membership in memberships or []:
         group_id = str(
             (membership.get("contactGroupMembership") or {}).get("contactGroupResourceName")
             or ""

@@ -1443,7 +1443,26 @@ def permanently_delete_contact(contact_id: int) -> bool:
             },
         )
 
+    contact_name = (
+        _format_contact_name(contact.get("family_name"), contact.get("given_name"))
+        or f"Contact {contact_id}"
+    )
+    assignment = " - ".join(part for part in (field_name, meeting_name) if part) or "Deleted"
+    editor_initials = get_current_editor_initials() or "SE"
     with get_connection() as conn:
+        _store_contact_edit_entries(
+            conn,
+            contact_id,
+            contact_name,
+            editor_initials,
+            [
+                {
+                    "label_name": "Contact",
+                    "original_text": assignment,
+                    "edited_text": "Permanently deleted",
+                }
+            ],
+        )
         conn.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
         conn.commit()
     mark_contacts_manifest_for_drive_export()

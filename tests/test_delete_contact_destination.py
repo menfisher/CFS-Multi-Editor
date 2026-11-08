@@ -9,6 +9,8 @@ from app.services.contact_service import (
     delete_contact,
     get_contact_detail,
     is_deleted_contact,
+    list_contact_edit_batches,
+    permanently_delete_contact,
 )
 
 
@@ -48,3 +50,24 @@ class DeleteContactDestinationTests(unittest.TestCase):
         self.assertFalse(
             is_deleted_contact({"fields_text": "AL Central", "meetings_text": "Birmingham"})
         )
+
+    def test_permanent_delete_stays_on_contacts_edit_list(self) -> None:
+        contact_id = create_contact(
+            {
+                "family_name": "Paul",
+                "given_name": "Roger",
+                "fields_text": "Deleted",
+                "meetings_text": "2026",
+            }
+        )
+        self.assertTrue(delete_contact(contact_id))
+        self.assertTrue(permanently_delete_contact(contact_id))
+        self.assertIsNone(get_contact_detail(contact_id))
+        batches = list_contact_edit_batches()
+        self.assertTrue(batches)
+        latest = batches[0]
+        self.assertEqual(latest["contact_name"], "Paul, Roger")
+        self.assertEqual(latest["entries"][0]["label_name"], "Contact")
+        html = latest["entries"][0]["edited_text_html"]
+        self.assertIn("Permanently", html)
+        self.assertIn("deleted", html)

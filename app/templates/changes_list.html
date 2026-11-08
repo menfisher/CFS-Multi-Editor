@@ -76,7 +76,7 @@
               aria-label="Select changes for {{ entry.name_event or 'this row' }}"
             >
               <div class="changes-list-changes-body">{{ entry.changes_text_html | safe }}</div>
-              <input type="hidden" data-row-id="{{ entry.id }}" data-field="changes_text" value="{{ entry.changes_text }}">
+              <textarea hidden data-row-id="{{ entry.id }}" data-field="changes_text">{{ entry.changes_text }}</textarea>
             </div>
           {% else %}
             <textarea class="changes-list-row-cell changes-list-textarea {% if entry.completed_by %}is-completed{% endif %}" data-row-id="{{ entry.id }}" data-field="changes_text" data-completed-by="{{ entry.completed_by }}" rows="1" {% if not can_edit_changes %}disabled{% endif %}>{{ entry.changes_text }}</textarea>
@@ -186,7 +186,7 @@
           if (entry.completed_by) {
             fields.changesDisplay.classList.add("is-completed");
             fields.changesDisplay.dataset.completedBy = entry.completed_by;
-          } else {
+          } else if (!fields.changesDisplay.dataset.completedBy) {
             fields.changesDisplay.classList.remove("is-completed");
             fields.changesDisplay.dataset.completedBy = "";
           }
@@ -197,7 +197,7 @@
           if (entry.completed_by) {
             fields.changesText.classList.add("is-completed");
             fields.changesText.dataset.completedBy = entry.completed_by;
-          } else {
+          } else if (!fields.changesText.dataset.completedBy) {
             fields.changesText.classList.remove("is-completed");
             fields.changesText.dataset.completedBy = "";
           }

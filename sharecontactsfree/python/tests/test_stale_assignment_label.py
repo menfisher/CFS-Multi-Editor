@@ -144,6 +144,28 @@ class RemoveOutdatedAssignmentLabelsTests(unittest.TestCase):
             body={"resourceNamesToRemove": ["people/carol"]},
         )
 
+    def test_uses_supplied_memberships_without_another_get(self) -> None:
+        names = {
+            "contactGroups/current": "Contacts - LA North (Shared)",
+            "contactGroups/deleted": "Deleted - 2026 (Shared)",
+        }
+        service = MagicMock()
+        memberships = [
+            {"contactGroupMembership": {"contactGroupResourceName": gid}}
+            for gid in names
+        ]
+        with patch("app.people_recipient.people_service", return_value=service):
+            removed = remove_outdated_assignment_labels(
+                MagicMock(),
+                "people/carol",
+                "Contacts - LA North (Shared)",
+                set(),
+                names,
+                memberships=memberships,
+            )
+        self.assertEqual(removed, 1)
+        service.people.return_value.get.assert_not_called()
+
     def test_protected_import_group_with_dash_in_name_is_kept(self) -> None:
         names = {"contactGroups/import": "AL South - Birmingham (GRAHAM) (shared)"}
         service = self._service(list(names))

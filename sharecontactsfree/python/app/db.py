@@ -580,6 +580,70 @@ def patch_shared_contact_member(
     return True
 
 
+def delete_shared_contact_member(share_id: str, owner_person_id: str) -> bool:
+    """Remove one staged member by owner person resourceName. Returns True if removed."""
+    share_key = str(share_id or "").strip()
+    person_id = str(owner_person_id or "").strip()
+    if not share_key or not person_id:
+        return False
+    with connect() as conn:
+        meta = conn.execute(
+            """
+            SELECT owner, group_name, group_resource_name
+            FROM shared_contacts
+            WHERE share_id = ?
+            ORDER BY member_index
+            LIMIT 1
+            """,
+            (share_key,),
+        ).fetchone()
+        if not meta:
+            return False
+        rows = conn.execute(
+            """
+            SELECT member_json
+            FROM shared_contacts
+            WHERE share_id = ?
+            ORDER BY member_index
+            """,
+            (share_key,),
+        ).fetchall()
+        members: list[dict[str, Any]] = []
+        found = False
+        for row in rows:
+            try:
+                member = json.loads(row["member_json"])
+            except json.JSONDecodeError:
+                continue
+            if str(member.get("resourceName") or "").strip() == person_id:
+                found = True
+                continue
+            members.append(member)
+        if not found:
+            return False
+        conn.execute("DELETE FROM shared_contacts WHERE share_id = ?", (share_key,))
+        created = _now()
+        for idx, member in enumerate(members):
+            conn.execute(
+                """
+                INSERT INTO shared_contacts
+                (share_id, owner, group_name, group_resource_name, member_index, member_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    share_key,
+                    str(meta["owner"] or ""),
+                    str(meta["group_name"] or ""),
+                    str(meta["group_resource_name"] or ""),
+                    idx,
+                    json.dumps(member),
+                    created,
+                ),
+            )
+        _commit(conn)
+    return True
+
+
 def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if not row:
         return None
@@ -731,6 +795,63 @@ def upsert_sync_mapping(
                 ),
             )
         _commit(conn)
+
+
+def retarget_sync_mapping_owner_person(
+    *,
+    share_id: str,
+    owner: str,
+    group_resource_name: str,
+    recipient_email: str,
+    old_owner_person_id: str,
+    new_owner_person_id: str,
+) -> bool:
+    """Point an existing mapping at a new owner Google person ID.
+
+    Used when CFS recreates a contact and Google assigns a new people/ ID.
+    Any mapping already stored under the new ID for this recipient is dropped
+    so the old recipient card stays the canonical copy.
+    """
+    owner_key = normalize_email(owner)
+    recipient_key = normalize_email(recipient_email)
+    old_id = str(old_owner_person_id or "").strip()
+    new_id = str(new_owner_person_id or "").strip()
+    if not share_id or not owner_key or not group_resource_name or not recipient_key:
+        return False
+    if not old_id or not new_id or old_id == new_id:
+        return False
+    with connect() as conn:
+        old_row = conn.execute(
+            """
+            SELECT id FROM sync_mappings
+            WHERE share_id = ? AND owner = ? AND group_resource_name = ?
+              AND recipient_email = ? AND owner_person_id = ?
+            """,
+            (share_id, owner_key, group_resource_name, recipient_key, old_id),
+        ).fetchone()
+        if not old_row:
+            return False
+        conn.execute(
+            """
+            DELETE FROM sync_mappings
+            WHERE share_id = ? AND owner = ? AND group_resource_name = ?
+              AND recipient_email = ? AND owner_person_id = ? AND id != ?
+            """,
+            (
+                share_id,
+                owner_key,
+                group_resource_name,
+                recipient_key,
+                new_id,
+                old_row["id"],
+            ),
+        )
+        conn.execute(
+            "UPDATE sync_mappings SET owner_person_id = ? WHERE id = ?",
+            (new_id, old_row["id"]),
+        )
+        _commit(conn)
+    return True
 
 
 def delete_sync_mapping_rows(

@@ -2,18 +2,23 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.250",
+      "version": "1.251",
+      "date_display": "11/7/2026",
+      "description": "Pending Edits completed rows stay green after you leave the page. Permanent deletes are recorded in the Contacts Edit list."
+    },
+    {
       "date_display": "11/5/2026",
+      "version": "1.250",
       "description": "Google Contacts Notes get real line breaks instead of HTML, and CFS pb/ and pa/ print codes stay in CFS instead of showing in Google."
     },
     {
-      "version": "1.249",
       "date_display": "11/5/2026",
+      "version": "1.249",
       "description": "Pending Edits on Contacts Mobile signs in with the Drive account and initials. No password or Google sign-in is required. Upload writes the Pending Edits list, and contact photos when needed, to that Drive."
     },
     {
-      "version": "1.248",
       "date_display": "11/3/2026",
+      "version": "1.248",
       "description": "Multi-Editor computers now load other Editors' contact edits from Drive on sign-in. Sign-out writes the live shared files so the Edit List is shared. An expired leftover Editor lock no longer blocks sign-in."
     },
     {

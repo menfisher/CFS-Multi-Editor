@@ -152,11 +152,16 @@ def get_group_member_ids(creds: Credentials, resource_name: str, max_members: in
     return list(data.get("memberResourceNames") or [])
 
 
-def get_people_batch(creds: Credentials, resource_names: list[str]) -> dict[str, dict[str, Any]]:
+def get_people_batch(
+    creds: Credentials,
+    resource_names: list[str],
+    *,
+    person_fields: str | None = None,
+) -> dict[str, dict[str, Any]]:
     if not resource_names:
         return {}
     service = people_service(creds)
-    fields = (
+    fields = person_fields or (
         "names,emailAddresses,phoneNumbers,addresses,organizations,"
         "biographies,birthdays,nicknames,photos,relations,urls,userDefined,"
         "memberships"

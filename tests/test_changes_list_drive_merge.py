@@ -4,6 +4,7 @@ from app.services.changes_list_service import (
     _entry_has_content,
     changes_list_entries_equal,
     merge_changes_list_entry_lists,
+    retain_completed_changes_list_entries,
     update_changes_entry,
 )
 
@@ -122,6 +123,75 @@ class ChangesListDriveMergeTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["completed_by"], "Cv")
         self.assertTrue(merged[0]["changes_text"].startswith("Cv - "))
+
+    def test_merge_keeps_completed_row_when_hidden_input_flattened_newlines(self) -> None:
+        incomplete = {
+            "sort_order": 2,
+            "automatic_date": "Cv, 07/16/2026, 10:35",
+            "name_event": "Test, Joe",
+            "changes_text": "Phone: 555-0100 → 555-0101\nNotes: old → new",
+            "completed_by": "",
+            "completed_at": "",
+        }
+        completed = {
+            "sort_order": 3,
+            "automatic_date": "Cv, 07/16/2026, 10:35",
+            "name_event": "Test, Joe",
+            "changes_text": "Cv - Phone: 555-0100 → 555-0101 Notes: old → new",
+            "completed_by": "Cv",
+            "completed_at": "2026-07-16T10:46:03",
+        }
+
+        merged = merge_changes_list_entry_lists([incomplete], [completed])
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["completed_by"], "Cv")
+
+    def test_merge_drops_white_twin_when_date_padding_differs(self) -> None:
+        incomplete = {
+            "sort_order": 2,
+            "automatic_date": "Cv, 7/16/2026, 10:35",
+            "name_event": "Test, Joe",
+            "changes_text": "Phone: 555-0100 → 555-0101",
+            "completed_by": "",
+            "completed_at": "",
+        }
+        completed = {
+            "sort_order": 3,
+            "automatic_date": "CV, 07/16/2026, 10:35",
+            "name_event": "Test, Joe",
+            "changes_text": "Cv - Phone: 555-0100 → 555-0101",
+            "completed_by": "Cv",
+            "completed_at": "2026-07-16T10:46:03",
+        }
+
+        merged = merge_changes_list_entry_lists([incomplete], [completed])
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["completed_by"], "Cv")
+
+    def test_retain_completed_rows_drops_stale_white_drive_copy(self) -> None:
+        incomplete = {
+            "sort_order": 2,
+            "automatic_date": "Ck, 08/01/2026, 09:00",
+            "name_event": "Smith, John",
+            "changes_text": "Email: a → b",
+            "completed_by": "",
+            "completed_at": "",
+        }
+        completed = {
+            "sort_order": 2,
+            "automatic_date": "Ck, 08/01/2026, 09:00",
+            "name_event": "Smith, John",
+            "changes_text": "Ck - Email: a → b",
+            "completed_by": "Ck",
+            "completed_at": "2026-08-01T09:05:00",
+        }
+
+        merged = retain_completed_changes_list_entries([incomplete], [completed])
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["completed_by"], "Ck")
 
     def test_merge_changes_list_entry_lists_puts_newest_rows_first(self) -> None:
         older = {
@@ -249,6 +319,71 @@ class ChangesListDriveMergeTests(unittest.TestCase):
             or str(entry.get("changes_text") or "").strip()
         ]
         self.assertEqual(dated_rows, [])
+
+    def test_update_changes_entry_keeps_newlines_when_hidden_input_flattens_them(self) -> None:
+        import sqlite3
+        from contextlib import contextmanager
+        from unittest.mock import patch
+
+        original = "Phone: 555-0100 → 555-0101\nNotes: old → new"
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE changes_list_entries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              sort_order INTEGER NOT NULL,
+              automatic_date TEXT NOT NULL DEFAULT '',
+              name_event TEXT NOT NULL DEFAULT '',
+              changes_text TEXT NOT NULL DEFAULT '',
+              completed_by TEXT NOT NULL DEFAULT '',
+              completed_at TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE google_sync_state (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              changes_list_needs_drive_export INTEGER NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO google_sync_state (id) VALUES (1);
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO changes_list_entries (
+              sort_order, automatic_date, name_event, changes_text
+            ) VALUES (2, 'Ck, 07/14/2026, 10:56', 'Cuevas, Cindy', ?)
+            """,
+            (original,),
+        )
+        conn.commit()
+
+        @contextmanager
+        def fake_get_connection():
+            try:
+                yield conn
+            finally:
+                pass
+
+        with patch("app.services.changes_list_service.get_connection", fake_get_connection):
+            from app.services.changes_list_service import list_changes_entries
+
+            entry_id = int(
+                [
+                    entry["id"]
+                    for entry in list_changes_entries()
+                    if str(entry.get("name_event") or "").strip()
+                ][0]
+            )
+            updated = update_changes_entry(
+                entry_id,
+                name_event="Cuevas, Cindy",
+                changes_text="Phone: 555-0100 → 555-0101 Notes: old → new",
+                initials="Ck",
+            )
+
+        self.assertEqual(updated["changes_text"], original)
 
 
 if __name__ == "__main__":
