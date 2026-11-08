@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS sync_mappings (
     last_hash TEXT,
     last_photo_hash TEXT,
     last_sync TEXT,
-    owner_etag TEXT
+    owner_etag TEXT,
+    last_assignment_label TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS recipient_oauth (
@@ -108,6 +109,15 @@ ON share_push_jobs (status, updated_at);
 """
 
 
+def _migrate_sync_mappings(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after the initial schema without dropping existing data."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(sync_mappings)").fetchall()}
+    if "last_assignment_label" not in columns:
+        conn.execute(
+            "ALTER TABLE sync_mappings ADD COLUMN last_assignment_label TEXT DEFAULT ''"
+        )
+
+
 def init_db() -> None:
     from . import db_storage
 
@@ -116,6 +126,7 @@ def init_db() -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate_sync_mappings(conn)
         _commit(conn)
 
 
@@ -614,18 +625,20 @@ def load_sync_mappings(
 
 
 def _mapping_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    row_dict = dict(row)
     return {
-        "id": row["id"],
-        "share_id": row["share_id"],
-        "owner": row["owner"],
-        "group_resource_name": row["group_resource_name"],
-        "recipient_email": row["recipient_email"],
-        "owner_person_id": row["owner_person_id"],
-        "recipient_person_id": row["recipient_person_id"] or "",
-        "last_hash": row["last_hash"] or "",
-        "last_photo_hash": row["last_photo_hash"] or "",
-        "last_sync": row["last_sync"] or "",
-        "owner_etag": row["owner_etag"] or "",
+        "id": row_dict["id"],
+        "share_id": row_dict["share_id"],
+        "owner": row_dict["owner"],
+        "group_resource_name": row_dict["group_resource_name"],
+        "recipient_email": row_dict["recipient_email"],
+        "owner_person_id": row_dict["owner_person_id"],
+        "recipient_person_id": row_dict.get("recipient_person_id") or "",
+        "last_hash": row_dict.get("last_hash") or "",
+        "last_photo_hash": row_dict.get("last_photo_hash") or "",
+        "last_sync": row_dict.get("last_sync") or "",
+        "owner_etag": row_dict.get("owner_etag") or "",
+        "last_assignment_label": row_dict.get("last_assignment_label") or "",
     }
 
 
@@ -651,6 +664,7 @@ def upsert_sync_mapping(
     last_hash: str = "",
     last_photo_hash: str = "",
     owner_etag: str = "",
+    last_assignment_label: str = "",
 ) -> None:
     owner_key = normalize_email(owner)
     recipient_key = normalize_email(recipient_email)
@@ -678,7 +692,8 @@ def upsert_sync_mapping(
                     last_hash = ?,
                     last_photo_hash = ?,
                     last_sync = ?,
-                    owner_etag = ?
+                    owner_etag = ?,
+                    last_assignment_label = ?
                 WHERE id = ?
                 """,
                 (
@@ -687,6 +702,7 @@ def upsert_sync_mapping(
                     last_photo_hash,
                     now,
                     owner_etag,
+                    last_assignment_label,
                     row["id"],
                 ),
             )
@@ -696,8 +712,9 @@ def upsert_sync_mapping(
                 INSERT INTO sync_mappings (
                     share_id, owner, group_resource_name, recipient_email,
                     owner_person_id, recipient_person_id,
-                    last_hash, last_photo_hash, last_sync, owner_etag
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_hash, last_photo_hash, last_sync, owner_etag,
+                    last_assignment_label
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     share_id,
@@ -710,6 +727,7 @@ def upsert_sync_mapping(
                     last_photo_hash,
                     now,
                     owner_etag,
+                    last_assignment_label,
                 ),
             )
         _commit(conn)

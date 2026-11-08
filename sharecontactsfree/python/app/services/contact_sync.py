@@ -10,6 +10,7 @@ from .. import db
 from ..google_auth import owner_credentials, recipient_credentials
 from ..people_api import get_group_member_ids, get_people_batch, people_service
 from ..people_recipient import (
+    assignment_shared_group_name,
     create_contact_in_group,
     delete_contact,
     delete_contact_photo,
@@ -17,6 +18,7 @@ from ..people_recipient import (
     ensure_contact_in_group,
     get_person_etags_batch,
     normalize_person_resource_name,
+    remove_stale_assignment_label,
     set_contact_photo,
     update_contact,
 )
@@ -301,7 +303,12 @@ def _propagate_to_siblings(
             continue
         try:
             if update_contact(creds, rid, member_data, etag):
+                new_assignment_label = assignment_shared_group_name(member_data)
+                old_assignment_label = str(sibling.get("last_assignment_label") or "")
                 ensure_assignment_contact_label(creds, rid, member_data)
+                remove_stale_assignment_label(
+                    creds, rid, old_assignment_label, new_assignment_label
+                )
                 stored_photo_hash = str(sibling.get("last_photo_hash") or "")
                 if photo_changed:
                     if _apply_recipient_photo(
@@ -325,6 +332,7 @@ def _propagate_to_siblings(
                     last_hash=contact_hash,
                     last_photo_hash=stored_photo_hash,
                     owner_etag=owner_etag,
+                    last_assignment_label=new_assignment_label,
                 )
                 updated += 1
         except Exception:
@@ -367,6 +375,7 @@ def _apply_mapping_update(
         if not etag:
             share_id = str(mapping.get("share_id") or "")
             group_resource_name = str(mapping.get("group_resource_name") or "")
+            prev_assignment_label = str(mapping.get("last_assignment_label") or "")
             db.upsert_sync_mapping(
                 share_id=share_id,
                 owner=owner,
@@ -377,13 +386,19 @@ def _apply_mapping_update(
                 last_hash=prev_hash,
                 last_photo_hash=prev_photo,
                 owner_etag=prev_etag,
+                last_assignment_label=prev_assignment_label,
             )
             recipient_person_id = ""
         else:
+            new_assignment_label = assignment_shared_group_name(member_data)
+            old_assignment_label = str(mapping.get("last_assignment_label") or "")
             if hash_changed or etag_changed:
                 if not update_contact(creds, rid, member_data, etag):
                     return {"status": "error", "reason": "update_failed", "mapping_id": mapping.get("id")}
                 ensure_assignment_contact_label(creds, rid, member_data)
+                remove_stale_assignment_label(
+                    creds, rid, old_assignment_label, new_assignment_label
+                )
             stored_photo_hash = prev_photo
             photo_failed = False
             if photo_changed:
@@ -415,6 +430,7 @@ def _apply_mapping_update(
                 last_hash=contact_hash,
                 last_photo_hash=stored_photo_hash,
                 owner_etag=owner_etag,
+                last_assignment_label=new_assignment_label,
             )
             siblings = _propagate_to_siblings(
                 owner=owner,
@@ -486,6 +502,7 @@ def _apply_mapping_update(
         else:
             stored_photo_hash = photo_hash
 
+        new_assignment_label = assignment_shared_group_name(member_data)
         db.upsert_sync_mapping(
             share_id=str(mapping.get("share_id") or ""),
             owner=owner,
@@ -496,6 +513,7 @@ def _apply_mapping_update(
             last_hash=contact_hash,
             last_photo_hash=stored_photo_hash,
             owner_etag=owner_etag,
+            last_assignment_label=new_assignment_label,
         )
         ensure_contact_in_group(creds, rid, group_id)
         ensure_assignment_contact_label(creds, rid, member_data)

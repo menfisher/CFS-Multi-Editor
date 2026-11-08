@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from google.oauth2.credentials import Credentials
@@ -1005,5 +1008,60 @@ def ensure_contact_in_group(
         ).execute()
         return True
     except HttpError:
+        return False
+
+
+def remove_contact_from_group(
+    creds: Credentials,
+    recipient_person_id: str,
+    group_id: str,
+) -> bool:
+    """Remove a recipient contact from a Google contact group."""
+    normalized = normalize_person_resource_name(recipient_person_id)
+    if not normalized or not group_id:
+        return False
+    service = people_service(creds)
+    try:
+        service.contactGroups().members().modify(
+            resourceName=group_id,
+            body={"resourceNamesToRemove": [normalized]},
+        ).execute()
+        return True
+    except HttpError:
+        return False
+
+
+def remove_stale_assignment_label(
+    creds: Credentials,
+    recipient_person_id: str,
+    old_label_name: str,
+    new_label_name: str,
+) -> bool:
+    """Remove an outdated Field+Meeting (Shared) label from a recipient contact.
+
+    Called after a contact's CFS assignment changes (e.g. moved from
+    'Deleted - 2026' back to 'Contacts - LA North'). Looks up the old label
+    group by name and removes the contact from it so the stale label does not
+    linger in the recipient account.
+
+    Returns True when the label was removed (or was already absent).
+    Returns False when the removal failed or the group could not be found.
+    Does nothing and returns True when old and new labels are equal.
+    """
+    old = str(old_label_name or "").strip()
+    new = str(new_label_name or "").strip()
+    if not old or old == new:
+        return True
+    try:
+        old_group_id = find_group_by_name(creds, old)
+        if not old_group_id:
+            return True
+        return remove_contact_from_group(creds, recipient_person_id, old_group_id)
+    except Exception:
+        logger.exception(
+            "Failed to remove stale assignment label %r from %s",
+            old,
+            recipient_person_id,
+        )
         return False
 
