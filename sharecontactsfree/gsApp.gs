@@ -203,7 +203,15 @@ function repairSharedStoreAccessForAllRecipients() {
       failed.push(email)
     }
   })
-  const result = {total: emails.length, failed}
+  let locked = false
+  let lockError = ""
+  try {
+    lockSharedStoreFile_(DriveApp.getFileById(ss.getId()))
+    locked = true
+  } catch (e) {
+    lockError = String((e && e.message) ? e.message : e)
+  }
+  const result = {total: emails.length, failed, locked, lockError}
   Logger.log(JSON.stringify(result))
   return result
 }

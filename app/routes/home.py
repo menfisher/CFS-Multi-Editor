@@ -66,8 +66,10 @@ def home():
 
 @router.get("/changes-list", response_class=HTMLResponse)
 def changes_list(request: Request):
-    # Heal CR/LF completed vs incomplete duplicates left by older Drive downloads.
-    dedupe_local_changes_list_entries()
+    # Heal completed vs incomplete duplicates left by older Drive downloads
+    # (CR/LF, guessed "nw -" / "Delete -" prefixes). Push the collapsed list to Drive.
+    if dedupe_local_changes_list_entries():
+        schedule_changes_list_drive_export(merge_remote=True)
     summary = get_google_sync_summary()
     account = summary.get("account") or {}
     drive_ready = str(account.get("status") or "") == "connected" and bool(account.get("drive_scope_ready"))

@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   {% include "includes/mobile_head.html" %}
-  <title>Mobile Contacts</title>
-  <link rel="stylesheet" href="/static/css/mobile.css?v=42">
+  <title>ContactsFreeShare Mobile</title>
+  <link rel="stylesheet" href="/static/css/mobile.css?v=45">
 </head>
 <body class="mobile-shell mobile-home-page">
   <main class="mobile-panel mobile-home-panel">
-    <h1>Contacts Mobile</h1>
+    <h1>ContactsFreeShare Mobile</h1>
     <p class="mobile-home-lead">Sign in to view and edit contacts on your phone.</p>
     {% if error %}
       <p class="mobile-error">{{ error }}</p>
@@ -19,11 +19,14 @@
     </p>
 
     {% if not multi_editor_enabled %}
-    <a class="mobile-button mobile-home-primary-button" id="mobile-home-google-signin" href="/auth/login">Sign in with Google</a>
+    <section class="mobile-home-single-editor">
+      <h2>Single-Editor sign in</h2>
+      <a class="mobile-button mobile-home-google-button" id="mobile-home-google-signin" href="/auth/login">Sign in with Google</a>
+    </section>
     {% endif %}
 
     <section class="mobile-home-multi-editor">
-      <h2>{% if multi_editor_enabled %}Sign in{% else %}Multi-Editor sign in{% endif %}</h2>
+      <h2>{% if multi_editor_enabled %}Sign in{% else %}Multi-Editor sign in <span class="mobile-home-audience">(for AL, MS, LA staff)</span>{% endif %}</h2>
       {% if multi_editor_enabled %}
       <p class="mobile-home-hint">Choose Pending Edits or Editor, then enter your name.</p>
       <p class="mobile-home-hint" id="mobile-pending-edits-account-hint" hidden>
@@ -41,7 +44,7 @@
           </select>
         </label>
         <label class="mobile-form-field">
-          <span id="mobile-access-name-label">Editor name</span>
+          <span id="mobile-access-name-label">Editor initials</span>
           <input type="text" name="access_name" maxlength="40" autocomplete="name" required>
         </label>
         <label class="mobile-form-field" id="mobile-drive-email-field" hidden>
@@ -52,7 +55,8 @@
           <span>Editor password</span>
           <input type="password" name="editor_secret" autocomplete="current-password">
         </label>
-        <button type="submit" class="mobile-button" id="mobile-signin-submit">Sign in with Google</button>
+        <button type="submit" class="mobile-button mobile-home-google-button" id="mobile-signin-submit">Sign in with Google</button>
+        <p class="mobile-home-hint">Sign in with al.ms.lacontacts@gmail.com if making edits to contacts in that account.</p>
       </form>
     </section>
   </main>
@@ -103,7 +107,7 @@
           pendingHint.hidden = isEditor;
         }
         if (nameLabel) {
-          nameLabel.textContent = isEditor ? "Editor name" : "Your initials";
+          nameLabel.textContent = isEditor ? "Editor initials" : "Your initials";
         }
         if (secretField) {
           secretField.hidden = !isEditor;

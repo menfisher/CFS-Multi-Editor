@@ -193,6 +193,83 @@ class ChangesListDriveMergeTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["completed_by"], "Ck")
 
+    def test_merge_drops_white_twin_when_incomplete_text_looks_like_a_prefix(self) -> None:
+        # "nw - …" and "Delete - …" used to be stripped as completion prefixes, so
+        # the green "Cv - nw - …" copy no longer matched and the white row returned.
+        incomplete_nw = {
+            "sort_order": 2,
+            "automatic_date": "Cv, 11/11/2026, 15:10",
+            "name_event": "Test, Joe",
+            "changes_text": "nw - t892qub3uckf",
+            "completed_by": "",
+            "completed_at": "",
+        }
+        completed_nw = {
+            "sort_order": 3,
+            "automatic_date": "Cv, 11/11/2026, 15:10",
+            "name_event": "Test, Joe",
+            "changes_text": "Cv - nw - t892qub3uckf",
+            "completed_by": "Cv",
+            "completed_at": "2026-11-11T15:12:00",
+        }
+        incomplete_delete = {
+            "sort_order": 4,
+            "automatic_date": "Cv, 11/11/2026, 15:11",
+            "name_event": "Test, Jane",
+            "changes_text": "Delete - he never moved here",
+            "completed_by": "",
+            "completed_at": "",
+        }
+        completed_delete = {
+            "sort_order": 5,
+            "automatic_date": "Cv, 11/11/2026, 15:11",
+            "name_event": "Test, Jane",
+            "changes_text": "Cv - Delete - he never moved here",
+            "completed_by": "Cv",
+            "completed_at": "2026-11-11T15:12:30",
+        }
+
+        merged = merge_changes_list_entry_lists(
+            [incomplete_nw, incomplete_delete],
+            [completed_nw, completed_delete],
+        )
+
+        self.assertEqual(len(merged), 2)
+        by_name = {entry["name_event"]: entry for entry in merged}
+        self.assertEqual(by_name["Test, Joe"]["completed_by"], "Cv")
+        self.assertEqual(by_name["Test, Joe"]["changes_text"], "Cv - nw - t892qub3uckf")
+        self.assertEqual(by_name["Test, Jane"]["completed_by"], "Cv")
+        self.assertEqual(
+            by_name["Test, Jane"]["changes_text"],
+            "Cv - Delete - he never moved here",
+        )
+
+    def test_merge_keeps_unrelated_incomplete_prefix_rows(self) -> None:
+        first = {
+            "sort_order": 2,
+            "automatic_date": "Cv, 11/11/2026, 15:10",
+            "name_event": "Test, Joe",
+            "changes_text": "nw - t892qub3uckf",
+            "completed_by": "",
+            "completed_at": "",
+        }
+        second = {
+            "sort_order": 3,
+            "automatic_date": "Cv, 11/11/2026, 15:11",
+            "name_event": "Test, Joe",
+            "changes_text": "nw - cmcjmc45",
+            "completed_by": "",
+            "completed_at": "",
+        }
+
+        merged = merge_changes_list_entry_lists([first], [second])
+
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(
+            {entry["changes_text"] for entry in merged},
+            {"nw - t892qub3uckf", "nw - cmcjmc45"},
+        )
+
     def test_merge_changes_list_entry_lists_puts_newest_rows_first(self) -> None:
         older = {
             "sort_order": 2,
@@ -384,6 +461,70 @@ class ChangesListDriveMergeTests(unittest.TestCase):
             )
 
         self.assertEqual(updated["changes_text"], original)
+
+    def test_dedupe_local_collapses_prefix_looking_white_twins(self) -> None:
+        import sqlite3
+        from contextlib import contextmanager
+        from unittest.mock import patch
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE changes_list_entries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              sort_order INTEGER NOT NULL,
+              automatic_date TEXT NOT NULL DEFAULT '',
+              name_event TEXT NOT NULL DEFAULT '',
+              changes_text TEXT NOT NULL DEFAULT '',
+              completed_by TEXT NOT NULL DEFAULT '',
+              completed_at TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE google_sync_state (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              changes_list_needs_drive_export INTEGER NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO google_sync_state (id) VALUES (1);
+            INSERT INTO changes_list_entries (
+              sort_order, automatic_date, name_event, changes_text, completed_by, completed_at
+            ) VALUES
+              (1, '', '', '', '', ''),
+              (2, 'Cv, 11/11/2026, 15:10', 'Test, Joe', 'nw - t892qub3uckf', '', ''),
+              (3, 'Cv, 11/11/2026, 15:10', 'Test, Joe', 'Cv - nw - t892qub3uckf', 'Cv', '2026-11-11T15:12:00');
+            """
+        )
+        conn.commit()
+
+        @contextmanager
+        def fake_get_connection():
+            try:
+                yield conn
+            finally:
+                pass
+
+        with patch("app.services.changes_list_service.get_connection", fake_get_connection):
+            from app.services.changes_list_service import (
+                dedupe_local_changes_list_entries,
+                list_changes_entries,
+            )
+
+            self.assertTrue(dedupe_local_changes_list_entries())
+            remaining = [
+                entry
+                for entry in list_changes_entries()
+                if str(entry.get("changes_text") or "").strip()
+            ]
+            export_flag = conn.execute(
+                "SELECT changes_list_needs_drive_export FROM google_sync_state WHERE id = 1"
+            ).fetchone()[0]
+
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["completed_by"], "Cv")
+        self.assertEqual(remaining[0]["changes_text"], "Cv - nw - t892qub3uckf")
+        self.assertEqual(int(export_flag), 1)
 
 
 if __name__ == "__main__":

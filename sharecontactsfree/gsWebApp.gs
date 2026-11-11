@@ -162,6 +162,61 @@ function isRecipientConnected_(){
     return service.hasAccess()
 }
 
+function collectActiveRecipientEmails_(){
+    let activeShareIds = {}
+    try {
+        activeShareIds = collectActiveShareIds_() || {}
+    } catch (e) {
+        activeShareIds = {}
+    }
+    let scriptProps = PropertiesService.getScriptProperties().getProperties()
+    let recipients = {}
+    Object.keys(scriptProps).forEach(key=>{
+        let normalized = String(key || "").trim().toLowerCase()
+        if (!normalized || normalized.indexOf("@") < 0){
+            return
+        }
+        let data
+        try {
+            data = JSON.parse(scriptProps[key] || "{}")
+        } catch (e) {
+            return
+        }
+        let sharedGroups = Array.isArray(data.sharedGroups) ? data.sharedGroups : []
+        let hasActive = sharedGroups.some(group=>group && group.shareId && activeShareIds[String(group.shareId)])
+        if (hasActive){
+            recipients[normalized] = true
+        }
+    })
+    return Object.keys(recipients)
+}
+
+function lockSharedStoreFile_(file){
+    let props = PropertiesService.getScriptProperties()
+    let sharingAccess = null
+    try {
+        sharingAccess = file.getSharingAccess()
+    } catch (e) {}
+    let isPublic = (
+        sharingAccess === DriveApp.Access.ANYONE ||
+        sharingAccess === DriveApp.Access.ANYONE_WITH_LINK
+    )
+    if (isPublic){
+        collectActiveRecipientEmails_().forEach(email=>{
+            try {
+                file.addViewer(email)
+            } catch (e) {}
+        })
+    }
+    try {
+        file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE)
+        props.setProperty("sharedSheetLinkAccessEnabled", "false")
+    } catch (e) {
+        // Recipients cannot change Drive sharing; the owner request locks it.
+        props.deleteProperty("sharedSheetLinkAccessEnabled")
+    }
+}
+
 function getSharedSheet_(createIfMissing){
     let props = PropertiesService.getScriptProperties()
     let sheetId = props.getProperty("sharedSheetId")
@@ -183,14 +238,8 @@ function getSharedSheet_(createIfMissing){
         sheet.setName("SharedContacts")
         props.setProperty("sharedSheetId", ss.getId())
     }
-    // Avoid per-recipient Drive ACL churn by granting link-view access once.
-    try {
-        DriveApp.getFileById(sheet.getParent().getId())
-            .setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW)
-        props.setProperty("sharedSheetLinkAccessEnabled", "true")
-    } catch (e) {
-        // Leave existing permissions as-is if sharing cannot be updated.
-    }
+    // Recipients get explicit viewer access only. Never "anyone with the link".
+    lockSharedStoreFile_(DriveApp.getFileById(sheet.getParent().getId()))
     if (sheet.getLastRow() === 0){
         sheet.appendRow(SHARED_CONTACTS_HEADER_)
     }
@@ -199,9 +248,6 @@ function getSharedSheet_(createIfMissing){
 
 function ensureSharedSheetAccess_(emails, options){
     options = options || {}
-    let trustedAccessible = options.trustedAccessible || {}
-    let props = PropertiesService.getScriptProperties()
-    let linkAccessEnabled = props.getProperty("sharedSheetLinkAccessEnabled") === "true"
     emails = Array.from(new Set((emails || []).map(email=>String(email || "").trim().toLowerCase()).filter(Boolean)))
     if (!emails.length){
         return {granted: 0, failedEmails: []}
@@ -212,19 +258,6 @@ function ensureSharedSheetAccess_(emails, options){
         file = DriveApp.getFileById(sheet.getParent().getId())
     } catch (e) {
         return {granted: 0, failedEmails: emails}
-    }
-    let hasLinkViewAccess = false
-    try {
-        let sharingAccess = file.getSharingAccess()
-        hasLinkViewAccess = (
-            sharingAccess === DriveApp.Access.ANYONE ||
-            sharingAccess === DriveApp.Access.ANYONE_WITH_LINK
-        )
-    } catch (e) {
-        hasLinkViewAccess = false
-    }
-    if (hasLinkViewAccess){
-        return {granted: emails.length, failedEmails: []}
     }
     let viewerSet = {}
     let editorSet = {}
@@ -247,10 +280,6 @@ function ensureSharedSheetAccess_(emails, options){
     let granted = 0
     let failedEmails = []
     emails.forEach(email=>{
-        if (trustedAccessible[email]){
-            granted++
-            return
-        }
         if (viewerSet[email] || editorSet[email]){
             granted++
             return
@@ -260,12 +289,7 @@ function ensureSharedSheetAccess_(emails, options){
             granted++
             viewerSet[email] = true
         } catch (e) {
-            // Re-check after failure to avoid false warnings when access already exists.
             try {
-                if (hasLinkViewAccess || linkAccessEnabled){
-                    granted++
-                    return
-                }
                 let refreshedViewers = file.getViewers()
                     .map(user=>String(user.getEmail() || "").trim().toLowerCase())
                     .filter(Boolean)

@@ -87,21 +87,45 @@ def _normalize_name_for_key(value: str) -> str:
 
 def _normalize_changes_text_for_key(changes_text: str) -> str:
     """Stable text for merge keys across desktop/mobile/Drive copies of one edit."""
-    body = _changes_text_for_diff(str(changes_text or ""))
     # Drive and SQLite often disagree on CR vs LF for the same Pending Edit.
     # Hidden <input> values also turn newlines into spaces when Completed edit(s)
     # saves the row, so collapse all whitespace to keep that copy matched.
-    body = body.replace("\r\n", "\n").replace("\r", "\n")
+    body = str(changes_text or "").replace("\r\n", "\n").replace("\r", "\n")
     return re.sub(r"\s+", " ", body).strip()
 
 
+def _strip_completed_by_prefix(changes_text: str, completed_by: str) -> str:
+    """Remove only this row's Completed edit(s) initials, not guessed 'nw -' / 'Delete -' prefixes."""
+    text = str(changes_text or "")
+    initials = str(completed_by or "").strip()
+    if not initials:
+        return text
+    prefix = f"{initials} - "
+    if text.lower().startswith(prefix.lower()):
+        return text[len(prefix) :]
+    compact = text.strip()
+    compact_key = compact.casefold()
+    if compact_key in {initials.casefold(), f"{initials.casefold()} -"}:
+        return ""
+    return text
+
+
+def _changes_body_for_merge(entry: dict) -> str:
+    """Identity body for merge/twin keys. Incomplete rows keep their full text."""
+    text = str(entry.get("changes_text") or "")
+    completed_by = str(entry.get("completed_by") or "").strip()
+    if completed_by:
+        text = _strip_completed_by_prefix(text, completed_by)
+    return _normalize_changes_text_for_key(text)
+
+
 def _changes_list_entry_key(entry: dict) -> tuple[str, str, str]:
-    # Ignore the "Cv - " completion prefix so completed/incomplete copies of the
-    # same Pending Edits row merge instead of duplicating.
+    # Ignore the stored Completed edit(s) initials prefix so green/white copies
+    # of the same Pending Edits row merge. Do not guess prefixes on white rows.
     return (
         _normalize_date_for_key(str(entry.get("automatic_date") or "")),
         _normalize_name_for_key(str(entry.get("name_event") or "")),
-        _normalize_changes_text_for_key(str(entry.get("changes_text") or "")),
+        _changes_body_for_merge(entry),
     )
 
 
@@ -109,15 +133,23 @@ def _completion_twin_key(entry: dict) -> tuple[str, str]:
     """Match a green completed row to its white Drive/mobile copy even if dates differ."""
     return (
         _normalize_name_for_key(str(entry.get("name_event") or "")),
-        _normalize_changes_text_for_key(str(entry.get("changes_text") or "")),
+        _changes_body_for_merge(entry),
     )
 
 
 def _entry_merge_rank(entry: dict) -> tuple[int, int, str]:
     """Higher rank wins when two sources describe the same Pending Edits row."""
-    completed = 1 if str(entry.get("completed_by") or "").strip() else 0
-    prefix, _body = _split_completed_prefix(str(entry.get("changes_text") or ""))
-    has_prefix = 1 if prefix else 0
+    completed_by = str(entry.get("completed_by") or "").strip()
+    completed = 1 if completed_by else 0
+    text = str(entry.get("changes_text") or "").strip()
+    has_prefix = 0
+    if completed_by:
+        prefix = f"{completed_by} - "
+        if text.lower().startswith(prefix.lower()) or text.casefold() in {
+            completed_by.casefold(),
+            f"{completed_by.casefold()} -",
+        }:
+            has_prefix = 1
     return (completed, has_prefix, str(entry.get("completed_at") or "").strip())
 
 
@@ -849,7 +881,10 @@ def dedupe_local_changes_list_entries() -> bool:
     merged = merge_changes_list_entry_lists(current)
     if _content_signatures(merged) == _content_signatures(current):
         return False
-    return replace_changes_list_from_payload(merged)
+    replaced = replace_changes_list_from_payload(merged)
+    if replaced:
+        mark_changes_list_for_drive_export()
+    return replaced
 
 
 def local_changes_list_missing_from_payload(uploaded_entries: object) -> bool:

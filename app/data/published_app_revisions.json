@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.251",
+      "version": "1.252",
+      "date_display": "11/11/2026",
+      "description": "Pending Edits completed rows stay green when the change text starts with initials or Delete. Contacts Edit List no longer marks the next Notes line as deleted."
+    },
+    {
       "date_display": "11/7/2026",
+      "version": "1.251",
       "description": "Pending Edits completed rows stay green after you leave the page. Permanent deletes are recorded in the Contacts Edit list."
     },
     {

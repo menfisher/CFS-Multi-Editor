@@ -859,8 +859,18 @@ def _meeting_markup_to_text(value: object) -> str:
     return normalized.strip()
 
 
+_EDIT_LOG_BREAK = re.compile(r"<br\s*/?>|</(?:div|p)\s*>", re.IGNORECASE)
+_EDIT_LOG_BLOCK_OPEN = re.compile(r"<(?:div|p)[^>]*>", re.IGNORECASE)
+
+
+def _normalize_edit_log_line_breaks(value: object) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = _EDIT_LOG_BLOCK_OPEN.sub("", text)
+    return _EDIT_LOG_BREAK.sub("\n", text)
+
+
 def _meeting_log_display_text(value: object) -> str:
-    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = _normalize_edit_log_line_breaks(value).strip()
     return text if text else "blank"
 
 
@@ -913,8 +923,8 @@ def _build_single_line_edit_highlight_html(original: str, edited: str) -> str:
 
 
 def _build_meeting_edit_highlight_html(original_text: object, edited_text: object) -> str:
-    original = str(original_text or "")
-    edited = str(edited_text or "")
+    original = _normalize_edit_log_line_breaks(original_text)
+    edited = _normalize_edit_log_line_breaks(edited_text)
     if not edited.strip():
         return '<mark class="meeting-edit-highlight">blank</mark>'
     if original == edited:
