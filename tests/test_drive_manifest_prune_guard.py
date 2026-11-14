@@ -4,7 +4,10 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 from app.services import google_sync_service as gss
-from app.services.google_sync_service import _drive_manifest_should_preserve_local_contacts
+from app.services.google_sync_service import (
+    _drive_manifest_has_foreign_id_space,
+    _drive_manifest_should_preserve_local_contacts,
+)
 
 
 class DriveManifestPruneGuardTests(unittest.TestCase):
@@ -22,6 +25,19 @@ class DriveManifestPruneGuardTests(unittest.TestCase):
 
     def test_does_not_guard_when_local_is_empty(self) -> None:
         self.assertFalse(_drive_manifest_should_preserve_local_contacts(0, 10))
+
+    def test_keeps_local_when_drive_ids_do_not_overlap(self) -> None:
+        local_ids = set(range(1, 31))
+        remote_ids = set(range(9000, 9079))
+        self.assertTrue(_drive_manifest_has_foreign_id_space(local_ids, remote_ids))
+
+    def test_allows_import_when_drive_ids_overlap(self) -> None:
+        local_ids = set(range(1, 31))
+        remote_ids = set(range(20, 50))
+        self.assertFalse(_drive_manifest_has_foreign_id_space(local_ids, remote_ids))
+
+    def test_foreign_id_guard_ignores_tiny_local_sets(self) -> None:
+        self.assertFalse(_drive_manifest_has_foreign_id_space({1, 2, 3}, {9000, 9001}))
 
 
 class SmallerDriveManifestImportTests(unittest.TestCase):
@@ -138,6 +154,102 @@ class SmallerDriveManifestImportTests(unittest.TestCase):
         self.assertTrue(result)
         restore.assert_not_called()
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 30)
+
+    def test_import_does_not_delete_local_contacts_when_drive_ids_do_not_overlap(self) -> None:
+        manifest = {
+            "format": "contactsfreeshare.shared_contacts.v2",
+            "contacts": [
+                {
+                    "id": 9000 + contact_id,
+                    "family_name": f"Other{contact_id}",
+                    "given_name": "Drive",
+                    "shared_drive_revision": 6,
+                    "file_name": f"contact_{9000 + contact_id}.json",
+                }
+                for contact_id in range(1, 26)
+            ],
+            "assignment_options": [],
+        }
+
+        with (
+            patch.object(
+                gss,
+                "get_google_sync_summary",
+                return_value={"state": {"contacts_sync_revision": 4}},
+            ),
+            patch.object(gss, "_drive_load_json_file_content", return_value=manifest),
+            patch.object(gss, "_delete_local_contact_record") as delete_local,
+            patch.object(gss, "_store_local_sync_revisions") as store_revisions,
+            patch.object(gss, "_drive_children_by_name") as list_files,
+            patch.object(gss, "_merge_shared_contact_record_from_drive") as merge_record,
+        ):
+            result = gss.import_shared_contacts_from_google_drive(
+                access_token="token",
+                storage={"contacts_current_file_id": "current"},
+                remote_sync_state={"contacts_sync_revision": 5},
+                backfill_manifest_digests=False,
+            )
+
+        self.assertTrue(result)
+        delete_local.assert_not_called()
+        list_files.assert_not_called()
+        merge_record.assert_not_called()
+        store_revisions.assert_called_once_with(contacts_sync_revision=5)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 30)
+
+    def test_empty_local_restores_full_backup_even_when_revisions_match(self) -> None:
+        self.conn.execute("DELETE FROM contacts")
+        self.conn.commit()
+        v2_manifest = {
+            "format": "contactsfreeshare.shared_contacts.v2",
+            "contacts": [
+                {
+                    "id": 99,
+                    "family_name": "Leftover",
+                    "given_name": "Card",
+                    "shared_drive_revision": 6,
+                    "file_name": "contact_99.json",
+                }
+            ],
+        }
+        full_backup = {
+            "tables": {
+                "contacts": [{"id": 1, "family_name": "Restored", "given_name": "One"}],
+            }
+        }
+
+        def load_file(_token, file_id):
+            if file_id == "full":
+                return full_backup
+            return v2_manifest
+
+        with (
+            patch.object(
+                gss,
+                "get_google_sync_summary",
+                return_value={"state": {"contacts_sync_revision": 5}},
+            ),
+            patch.object(gss, "_drive_load_json_file_content", side_effect=load_file),
+            patch(
+                "app.services.backup_service.restore_contacts_backup_payload",
+                return_value={"contacts": 1},
+            ) as restore,
+            patch.object(gss, "_store_local_sync_revisions") as store_revisions,
+            patch.object(gss, "_import_changed_contact_photos_from_google_drive"),
+        ):
+            result = gss.import_shared_contacts_from_google_drive(
+                access_token="token",
+                storage={
+                    "contacts_current_file_id": "current",
+                    "contacts_full_file_id": "full",
+                },
+                remote_sync_state={"contacts_sync_revision": 5},
+                backfill_manifest_digests=False,
+            )
+
+        self.assertTrue(result)
+        restore.assert_called_once_with(full_backup, restore_files=False)
+        store_revisions.assert_called_once_with(contacts_sync_revision=5)
 
 
 if __name__ == "__main__":

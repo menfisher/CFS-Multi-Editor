@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.252",
+      "version": "1.253",
+      "date_display": "11/14/2026",
+      "description": "Drive Upload rebuilds the shared contact list from CFS instead of stitching leftover IDs. Sign-in keeps CFS contacts when Drive has a different ID set."
+    },
+    {
       "date_display": "11/11/2026",
+      "version": "1.252",
       "description": "Pending Edits completed rows stay green when the change text starts with initials or Delete. Contacts Edit List no longer marks the next Notes line as deleted."
     },
     {

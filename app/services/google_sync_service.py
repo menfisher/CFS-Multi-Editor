@@ -5064,33 +5064,69 @@ def _manifest_contact_entry_from_row(row, *, conn=None, include_content_digest: 
     return entry
 
 
-def _patch_shared_contacts_manifest(existing_manifest: dict, conn, contact_ids: list[int]) -> dict:
-    patched = dict(existing_manifest)
-    patched["exported_at"] = _iso_now()
-    contacts_by_id = {
-        int(item.get("id") or 0): dict(item)
-        for item in (patched.get("contacts") or [])
-        if isinstance(item, dict) and int(item.get("id") or 0) > 0
+def _drive_manifest_membership_delta(conn, existing_manifest: dict | None) -> tuple[list[int], list[int]]:
+    """Return (local CFS IDs missing from Drive, Drive IDs that are not in CFS)."""
+    local_ids = {
+        int(row["id"])
+        for row in conn.execute("SELECT id FROM contacts").fetchall()
+        if int(row["id"] or 0) > 0
     }
-    if contact_ids:
-        placeholders = ",".join("?" for _ in contact_ids)
-        rows = conn.execute(
-            f"""
-            SELECT id, shared_drive_revision, status, family_name, given_name
-            FROM contacts
-            WHERE id IN ({placeholders})
-            ORDER BY id
-            """,
-            tuple(contact_ids),
-        ).fetchall()
-        for row in rows:
-            contacts_by_id[int(row["id"])] = _manifest_contact_entry_from_row(
-                row,
-                conn=conn,
-                include_content_digest=True,
-            )
-    patched["contacts"] = [contacts_by_id[contact_id] for contact_id in sorted(contacts_by_id)]
-    return patched
+    remote_ids = _manifest_contact_ids(existing_manifest if isinstance(existing_manifest, dict) else {})
+    return sorted(local_ids - remote_ids), sorted(remote_ids - local_ids)
+
+
+def _replace_shared_contacts_manifest_from_local(
+    conn,
+    *,
+    existing_manifest: dict | None = None,
+    refreshed_contact_ids: list[int] | None = None,
+) -> dict:
+    """Drive's contact list is exactly the local CFS set. Leftover Drive IDs are dropped."""
+    payload = _shared_contacts_manifest_payload(conn)
+    existing_by_id = {
+        int(item.get("id") or 0): dict(item)
+        for item in _shared_contact_manifest_entries(existing_manifest if isinstance(existing_manifest, dict) else {})
+        if int(item.get("id") or 0) > 0
+    }
+    refreshed = {int(contact_id) for contact_id in (refreshed_contact_ids or []) if int(contact_id) > 0}
+    replaced_contacts: list[dict] = []
+    for entry in payload.get("contacts") or []:
+        if not isinstance(entry, dict):
+            continue
+        contact_id = int(entry.get("id") or 0)
+        if contact_id <= 0:
+            continue
+        if contact_id in refreshed:
+            row = conn.execute(
+                """
+                SELECT id, shared_drive_revision, status, family_name, given_name
+                FROM contacts
+                WHERE id = ?
+                """,
+                (contact_id,),
+            ).fetchone()
+            if row:
+                replaced_contacts.append(
+                    _manifest_contact_entry_from_row(row, conn=conn, include_content_digest=True)
+                )
+                continue
+        merged = dict(entry)
+        old = existing_by_id.get(contact_id)
+        if old and _manifest_contact_row_matches(merged, old):
+            old_digest = _clean(old.get("content_digest"))
+            if old_digest:
+                merged["content_digest"] = old_digest
+        replaced_contacts.append(merged)
+    payload["contacts"] = replaced_contacts
+    return payload
+
+
+def _patch_shared_contacts_manifest(existing_manifest: dict, conn, contact_ids: list[int]) -> dict:
+    return _replace_shared_contacts_manifest_from_local(
+        conn,
+        existing_manifest=existing_manifest,
+        refreshed_contact_ids=contact_ids,
+    )
 
 
 def _shared_contacts_manifest_payload(conn, *, include_content_digest: bool = False) -> dict:
@@ -5150,20 +5186,18 @@ def _build_patched_contacts_manifest_for_drive_export(
         loaded = _drive_load_json_file_content(access_token, storage["contacts_current_file_id"])
         if isinstance(loaded, dict):
             manifest_source = loaded
-    if (
-        isinstance(manifest_source, dict)
-        and str(manifest_source.get("format") or "").strip() == "contactsfreeshare.shared_contacts.v2"
-        and _shared_contact_manifest_entries(manifest_source)
-    ):
-        patch_ids = sorted(
-            {
-                int(contact_id)
-                for contact_id in (*uploaded_contact_ids, *changed_contact_ids)
-                if int(contact_id) > 0
-            }
-        )
-        return _patch_shared_contacts_manifest(manifest_source, conn, patch_ids)
-    return _shared_contacts_manifest_payload(conn)
+    patch_ids = sorted(
+        {
+            int(contact_id)
+            for contact_id in (*uploaded_contact_ids, *changed_contact_ids)
+            if int(contact_id) > 0
+        }
+    )
+    return _replace_shared_contacts_manifest_from_local(
+        conn,
+        existing_manifest=manifest_source,
+        refreshed_contact_ids=patch_ids,
+    )
 
 
 def _write_contacts_full_snapshot_to_google_drive(access_token: str, storage: dict) -> None:
@@ -5941,6 +5975,8 @@ def export_shared_contacts_to_google_drive() -> bool:
     pending_contact_export_count = 0
     pending_photo_export_count = 0
     bootstrap_needed = False
+    missing_from_drive_ids: list[int] = []
+    leftover_drive_ids: list[int] = []
 
     with get_connection() as conn:
         total_contacts = _count_contacts(conn)
@@ -5960,47 +5996,51 @@ def export_shared_contacts_to_google_drive() -> bool:
             pending_photo_export_count=pending_photo_export_count,
             bootstrap_remaining_count=bootstrap_remaining_count,
         )
-        if skip_manifest_read:
-            manifest_is_v2 = True
+        _set_upload_progress(
+            conn,
+            in_progress=True,
+            phase="drive_shared_data",
+            current_contact="Drive: loading contact manifest",
+        )
+        conn.commit()
+        existing_manifest = _drive_load_json_file_content(access_token, storage["contacts_current_file_id"])
+        manifest_is_v2 = (
+            isinstance(existing_manifest, dict)
+            and str(existing_manifest.get("format") or "").strip() == "contactsfreeshare.shared_contacts.v2"
+        )
+        missing_from_drive_ids, leftover_drive_ids = _drive_manifest_membership_delta(
+            conn,
+            existing_manifest,
+        )
+        if (
+            manifest_is_v2
+            and pending_contact_export_count <= 0
+            and pending_photo_export_count <= 0
+            and bootstrap_remaining_count <= 0
+            and not missing_from_drive_ids
+            and (leftover_drive_ids or contacts_manifest_needs_drive_export)
+        ):
+            return _export_contacts_manifest_only_to_google_drive(
+                conn,
+                access_token,
+                storage,
+                remote_sync_state,
+                existing_manifest,
+                local_contacts_revision,
+            )
+        if skip_manifest_read and not missing_from_drive_ids:
             bootstrap_needed = False
         else:
-            _set_upload_progress(
-                conn,
-                in_progress=True,
-                phase="drive_shared_data",
-                current_contact="Drive: loading contact manifest",
-            )
-            conn.commit()
-            existing_manifest = _drive_load_json_file_content(access_token, storage["contacts_current_file_id"])
-            manifest_is_v2 = (
-                isinstance(existing_manifest, dict)
-                and str(existing_manifest.get("format") or "").strip() == "contactsfreeshare.shared_contacts.v2"
-            )
-            if (
-                manifest_is_v2
-                and contacts_manifest_needs_drive_export
-                and pending_contact_export_count <= 0
-                and pending_photo_export_count <= 0
-                and bootstrap_remaining_count <= 0
-            ):
-                return _export_contacts_manifest_only_to_google_drive(
-                    conn,
-                    access_token,
-                    storage,
-                    remote_sync_state,
-                    existing_manifest,
-                    local_contacts_revision,
-                )
             bootstrap_needed = (not manifest_is_v2) or bootstrap_remaining_count > 0
 
     if pending_photo_export_count > 0:
         _set_drive_upload_step("Drive: uploading contact photos")
         _sync_pending_contact_photos_to_google_drive(access_token, storage["contact_photos_folder_id"])
-    if bootstrap_needed:
+    if bootstrap_needed or missing_from_drive_ids:
         _set_drive_upload_step("Drive: listing contact files")
     contact_record_files = (
         _drive_children_by_name(access_token, parent_id=storage["contact_records_folder_id"])
-        if bootstrap_needed
+        if bootstrap_needed or missing_from_drive_ids
         else {}
     )
 
@@ -6156,7 +6196,16 @@ def export_shared_contacts_to_google_drive() -> bool:
             _store_drive_state(last_drive_export_at=_now_text(), last_sync_error="")
             return False
 
-        if _count_pending_shared_contact_exports(conn) <= 0:
+        if _count_pending_shared_contact_exports(conn) <= 0 and not missing_from_drive_ids:
+            if leftover_drive_ids and manifest_is_v2:
+                return _export_contacts_manifest_only_to_google_drive(
+                    conn,
+                    access_token,
+                    storage,
+                    remote_sync_state,
+                    existing_manifest,
+                    local_contacts_revision,
+                )
             conn.commit()
             _store_drive_state(last_drive_export_at=_now_text(), last_sync_error="")
             return True
@@ -6182,7 +6231,14 @@ def export_shared_contacts_to_google_drive() -> bool:
             ORDER BY id
             """
         ).fetchall()
-        changed_contact_ids = [int(row["id"]) for row in changed_rows]
+        changed_contact_ids = sorted(
+            {
+                int(row["id"])
+                for row in changed_rows
+                if int(row["id"] or 0) > 0
+            }
+            | {int(contact_id) for contact_id in missing_from_drive_ids if int(contact_id) > 0}
+        )
         exported_contact_ids: list[int] = []
         uploaded_contact_ids: list[int] = []
         manifest_by_contact_id = {
@@ -6326,7 +6382,17 @@ def export_shared_contacts_to_google_drive() -> bool:
                 if isinstance(item, dict) and _clean(item.get("file_name"))
             }
             removed_drive_record_count = 0
-            for file_name in _removed_contact_record_file_names(existing_manifest, manifest_payload):
+            leftover_file_names = list(_removed_contact_record_file_names(existing_manifest, manifest_payload))
+            if contact_record_files:
+                leftover_file_names = sorted(
+                    {
+                        _clean(file_item.get("name"))
+                        for file_item in contact_record_files.values()
+                        if _clean(file_item.get("name")) and _clean(file_item.get("name")) not in referenced_files
+                    }
+                    | set(leftover_file_names)
+                )
+            for file_name in leftover_file_names:
                 _set_upload_progress(
                     conn,
                     in_progress=True,
@@ -6336,12 +6402,14 @@ def export_shared_contacts_to_google_drive() -> bool:
                     current_contact=f"Drive: finding old contact file {file_name}",
                 )
                 conn.commit()
-                file_item = _drive_find_child(
-                    access_token,
-                    parent_id=storage["contact_records_folder_id"],
-                    name=file_name,
-                    mime_type="application/json",
-                )
+                file_item = contact_record_files.get(file_name)
+                if file_item is None:
+                    file_item = _drive_find_child(
+                        access_token,
+                        parent_id=storage["contact_records_folder_id"],
+                        name=file_name,
+                        mime_type="application/json",
+                    )
                 file_id = _clean((file_item or {}).get("id"))
                 if file_id:
                     _set_upload_progress(
@@ -6421,6 +6489,19 @@ def _drive_manifest_should_preserve_local_contacts(local_count: int, remote_coun
     return safe_local >= _LOCAL_CONTACT_PRUNE_GUARD_MIN_COUNT and safe_remote * 2 < safe_local
 
 
+def _drive_manifest_has_foreign_id_space(local_ids, remote_ids) -> bool:
+    """True when Drive contact IDs are a different set than this CFS database.
+
+    Leftover shared-contact files can publish a large manifest whose IDs do not
+    overlap local cards. Treating those as deletes wipes CFS to 0 contacts.
+    """
+    local = {int(contact_id) for contact_id in (local_ids or []) if int(contact_id or 0) > 0}
+    remote = {int(contact_id) for contact_id in (remote_ids or []) if int(contact_id or 0) > 0}
+    if len(local) < _LOCAL_CONTACT_PRUNE_GUARD_MIN_COUNT or not remote:
+        return False
+    return not (local & remote)
+
+
 def import_shared_contacts_from_google_drive(
     *,
     access_token: str | None = None,
@@ -6437,8 +6518,6 @@ def import_shared_contacts_from_google_drive(
     summary = get_google_sync_summary()
     local_contacts_revision = _normalize_sync_revision((summary.get("state") or {}).get("contacts_sync_revision"))
     remote_contacts_revision = _normalize_sync_revision(sync_state.get("contacts_sync_revision"))
-    if remote_contacts_revision > 0 and remote_contacts_revision == local_contacts_revision:
-        return True
     with get_connection() as conn:
         local_contact_count = _count_contacts(conn)
         previous_photo_state = {
@@ -6454,6 +6533,12 @@ def import_shared_contacts_from_google_drive(
                 """
             ).fetchall()
         }
+    if (
+        remote_contacts_revision > 0
+        and remote_contacts_revision == local_contacts_revision
+        and local_contact_count > 0
+    ):
+        return True
     payload = _drive_load_json_file_content(token, resolved_storage["contacts_current_file_id"])
     if isinstance(payload, dict) and payload.get("tables"):
         backup_rows = (payload.get("tables") or {}).get("contacts") or []
@@ -6472,15 +6557,19 @@ def import_shared_contacts_from_google_drive(
         _import_changed_contact_photos_from_google_drive(token, previous_photo_state)
         return True
 
-    if not isinstance(payload, dict) or str(payload.get("format") or "").strip() != "contactsfreeshare.shared_contacts.v2":
-        if local_contact_count <= 0 and _clean(resolved_storage.get("contacts_full_file_id")):
-            full_payload = _drive_load_json_file_content(token, resolved_storage["contacts_full_file_id"])
-            if isinstance(full_payload, dict) and full_payload.get("tables"):
+    if local_contact_count <= 0 and _clean(resolved_storage.get("contacts_full_file_id")):
+        full_payload = _drive_load_json_file_content(token, resolved_storage["contacts_full_file_id"])
+        if isinstance(full_payload, dict) and full_payload.get("tables"):
+            backup_rows = (full_payload.get("tables") or {}).get("contacts") or []
+            backup_count = len(backup_rows) if isinstance(backup_rows, list) else 0
+            if backup_count > 0:
                 restore_contacts_backup_payload(full_payload, restore_files=False)
                 if remote_contacts_revision > 0:
                     _store_local_sync_revisions(contacts_sync_revision=remote_contacts_revision)
                 _import_changed_contact_photos_from_google_drive(token, previous_photo_state)
                 return True
+
+    if not isinstance(payload, dict) or str(payload.get("format") or "").strip() != "contactsfreeshare.shared_contacts.v2":
         export_shared_contacts_to_google_drive()
         return False
 
@@ -6501,6 +6590,16 @@ def import_shared_contacts_from_google_drive(
         if isinstance(item, dict) and int(item.get("id") or 0) > 0
     ]
     remote_ids = {int(item["id"]) for item in remote_contacts}
+    if _drive_manifest_has_foreign_id_space(local_revision_by_id, remote_ids):
+        _LOGGER.warning(
+            "Skipped Drive shared-contacts import because none of %s local contact IDs "
+            "appear in the Drive manifest (%s entries). Keeping local contacts.",
+            local_contact_count,
+            len(remote_contacts),
+        )
+        if remote_contacts_revision > 0:
+            _store_local_sync_revisions(contacts_sync_revision=remote_contacts_revision)
+        return True
     # Only Drive-ahead contacts need import. Local-ahead mismatches used to be counted
     # every sign-in, then skipped without updating revisions, so the same set (e.g. 162)
     # kept reappearing forever.
@@ -8021,12 +8120,22 @@ def export_pending_edits_contact_assets_to_google_drive(*, access_token: str | N
             )
 
         if uploaded_contact_ids:
-            manifest_payload = _patch_shared_contacts_manifest(
-                existing_manifest,
+            manifest_payload = _replace_shared_contacts_manifest_from_local(
                 conn,
-                uploaded_contact_ids,
+                existing_manifest=existing_manifest,
+                refreshed_contact_ids=uploaded_contact_ids,
             )
             _drive_update_json_file_content(token, storage["contacts_current_file_id"], manifest_payload)
+            referenced_files = {
+                _clean(item.get("file_name"))
+                for item in manifest_payload.get("contacts") or []
+                if isinstance(item, dict) and _clean(item.get("file_name"))
+            }
+            for file_item in contact_record_files.values():
+                file_name = _clean(file_item.get("name"))
+                file_id = _clean(file_item.get("id"))
+                if file_name and file_id and file_name not in referenced_files:
+                    _drive_delete_file_if_exists(token, file_id)
             next_contacts_revision, remote_sync_state = _next_dataset_sync_revision(
                 token,
                 storage,
@@ -8135,12 +8244,22 @@ def export_mobile_pending_shared_contacts_to_google_drive(
             )
 
         if uploaded_contact_ids:
-            manifest_payload = _patch_shared_contacts_manifest(
-                existing_manifest,
+            manifest_payload = _replace_shared_contacts_manifest_from_local(
                 conn,
-                uploaded_contact_ids,
+                existing_manifest=existing_manifest,
+                refreshed_contact_ids=uploaded_contact_ids,
             )
             _drive_update_json_file_content(token, resolved_storage["contacts_current_file_id"], manifest_payload)
+            for file_name in _removed_contact_record_file_names(existing_manifest, manifest_payload):
+                file_item = _drive_find_child(
+                    token,
+                    parent_id=resolved_storage["contact_records_folder_id"],
+                    name=file_name,
+                    mime_type="application/json",
+                )
+                file_id = _clean((file_item or {}).get("id"))
+                if file_id:
+                    _drive_delete_file_if_exists(token, file_id)
             next_contacts_revision, remote_sync_state = _next_dataset_sync_revision(
                 token,
                 resolved_storage,
