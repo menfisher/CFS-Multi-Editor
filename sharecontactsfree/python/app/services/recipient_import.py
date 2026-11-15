@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from copy import deepcopy
@@ -698,6 +699,81 @@ def _attach_existing_recipient_to_group(
     return rid
 
 
+_DOUBLE_QUOTE_NICKNAME_RE = re.compile(r'["“”]([^"“”]+)["“”]')
+_SINGLE_QUOTE_NICKNAME_RE = re.compile(r"(?<=\s)['‘]([^'’]+)['’]")
+_PAREN_NICKNAME_RE = re.compile(r"\(([^)]+)\)")
+_NICKNAME_RES = (
+    _DOUBLE_QUOTE_NICKNAME_RE,
+    _SINGLE_QUOTE_NICKNAME_RE,
+    _PAREN_NICKNAME_RE,
+)
+
+
+def _parse_name_field(value: str) -> tuple[str, set[str]]:
+    """Core name plus quoted/parenthetical nicknames.
+
+    Steve \"Stevie\", Jim (James), and Claire 'Squeak' keep the legal name as
+    the core and the nickname as an alias. Apostrophes in D'Wayne stay put.
+    Ampersands are not nicknames: Victor & Elaine is not Victor or Elaine.
+    """
+    aliases: set[str] = set()
+    text = str(value or "").strip()
+    for rx in _NICKNAME_RES:
+        for match in rx.finditer(text):
+            alias = " ".join(match.group(1).split()).casefold()
+            if alias:
+                aliases.add(alias)
+        text = rx.sub(" ", text)
+    core = " ".join(text.split()).casefold()
+    return core, aliases
+
+
+def _person_name_parts(
+    person: dict[str, Any] | None,
+) -> tuple[str, str, set[str]]:
+    """family core, given core, given aliases."""
+    if not person:
+        return "", "", set()
+    for item in person.get("names") or []:
+        if not isinstance(item, dict):
+            continue
+        family, _family_aliases = _parse_name_field(str(item.get("familyName") or ""))
+        given, given_aliases = _parse_name_field(str(item.get("givenName") or ""))
+        if family or given:
+            return family, given, given_aliases
+        display, display_aliases = _parse_name_field(str(item.get("displayName") or ""))
+        if display:
+            return "", display, display_aliases
+    return "", "", set()
+
+
+def _given_names_compatible(
+    left_core: str,
+    left_aliases: set[str],
+    right_core: str,
+    right_aliases: set[str],
+) -> bool:
+    if not left_core or not right_core:
+        return False
+    if left_core == right_core:
+        return True
+    left_tokens = {left_core, *left_aliases}
+    right_tokens = {right_core, *right_aliases}
+    return left_core in right_tokens or right_core in left_tokens
+
+
+def _person_name_key(person: dict[str, Any] | None) -> str:
+    """Stable given+family key. Household members sharing a phone stay distinct.
+
+    Nickname marks are ignored so Steve and Steve \"Stevie\" share a key.
+    James \"Jim\" vs Jim (James) is handled in contacts_identity_match.
+    """
+    family, given, _aliases = _person_name_parts(person)
+    if family or given:
+        return f"{family}|{given}"
+    return ""
+
+
 def _contact_match_keys(person: dict[str, Any] | None) -> set[str]:
     """Identity keys for matching a staged contact to one already in the group."""
     keys: set[str] = set()
@@ -711,6 +787,9 @@ def _contact_match_keys(person: dict[str, Any] | None) -> set[str]:
         digits = "".join(ch for ch in str((item or {}).get("value") or "") if ch.isdigit())
         if len(digits) >= 7:
             keys.add(f"phone:{digits[-10:]}")
+    name_key = _person_name_key(person)
+    if name_key:
+        keys.add(f"name:{name_key}")
     for item in person.get("names") or []:
         name = str((item or {}).get("displayName") or "").strip().lower()
         if not name:
@@ -720,6 +799,28 @@ def _contact_match_keys(person: dict[str, Any] | None) -> set[str]:
         if name:
             keys.add(f"name:{name}")
     return keys
+
+
+def contacts_identity_match(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
+    """Same person only when names match and, if phones/emails exist, one of those matches too.
+
+    A shared household phone is not enough. Charlene and Richard on 504-454-0921
+    must stay two people. Quoted or parenthetical nicknames are the same person:
+    Steve and Steve \"Stevie\", James \"Jim\" and Jim (James).
+    """
+    left_family, left_given, left_aliases = _person_name_parts(left)
+    right_family, right_given, right_aliases = _person_name_parts(right)
+    if left_family != right_family:
+        return False
+    if not _given_names_compatible(left_given, left_aliases, right_given, right_aliases):
+        return False
+    left_keys = _contact_match_keys(left)
+    right_keys = _contact_match_keys(right)
+    left_strong = {key for key in left_keys if key.startswith(("email:", "phone:"))}
+    right_strong = {key for key in right_keys if key.startswith(("email:", "phone:"))}
+    if left_strong or right_strong:
+        return bool(left_strong & right_strong)
+    return True
 
 
 def adopt_untracked_group_members(
@@ -792,21 +893,16 @@ def adopt_untracked_group_members(
     except Exception:
         return 0
 
-    available: dict[str, str] = {}
-    for rid, person in people.items():
-        for key in _contact_match_keys(person):
-            available.setdefault(key, rid)
-
     adopted = 0
     claimed: set[str] = set()
     unmatched: list[dict[str, Any]] = []
     for _idx, member in unmapped:
-        match = ""
-        for key in _contact_match_keys(member):
-            rid = available.get(key)
-            if rid and rid not in claimed:
-                match = rid
-                break
+        matches = [
+            rid
+            for rid, person in people.items()
+            if rid not in claimed and contacts_identity_match(member, person)
+        ]
+        match = matches[0] if len(matches) == 1 else ""
         if not match:
             unmatched.append(member)
             continue

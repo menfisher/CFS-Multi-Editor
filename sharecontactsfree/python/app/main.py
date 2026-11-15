@@ -403,6 +403,20 @@ async def cfs_sync_contact_changes(request: Request):
     return JSONResponse({"ok": True, "result": result})
 
 
+@app.post("/api/cfs/roster-status")
+async def cfs_roster_status(request: Request):
+    """Called by CFS after Upload or sign-in. Read-only mapping counts, no Retry/Sync."""
+    api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
+    if not CFS_API_KEY or api_key != CFS_API_KEY:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    owner_email = str(body.get("owner_email") or "").strip().lower()
+    if not owner_email:
+        raise HTTPException(400, "owner_email required")
+    result = await asyncio.to_thread(app_data_svc.roster_status_rpc, owner_email)
+    return JSONResponse({"ok": True, "result": result})
+
+
 @app.post("/api/cfs/rename-shared-group")
 async def cfs_rename_shared_group(request: Request):
     """Called by CFS after the all-contacts shared group name changes."""

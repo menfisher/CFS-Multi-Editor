@@ -10,6 +10,7 @@ from unittest.mock import patch
 from app import db
 from app.services import contact_sync
 from app.services.contact_hash import compute_contact_hash, compute_photo_hash
+from app.services.recipient_import import _person_name_key, contacts_identity_match
 
 
 OWNER = "owner@example.com"
@@ -215,6 +216,42 @@ class RelinkPruneTests(unittest.TestCase):
         self.assertEqual(len(new_mappings), 1)
         self.assertEqual(new_mappings[0]["recipient_person_id"], RECIPIENT_PERSON)
 
+    def test_household_phone_different_names_does_not_relink(self) -> None:
+        member_data = _person(NEW_PERSON, "Charlene", "Clemens")
+        with (
+            patch("app.services.contact_sync.owner_credentials", return_value=FakeCreds()),
+            patch(
+                "app.services.contact_sync.get_people_batch",
+                return_value={NEW_PERSON: member_data},
+            ),
+            patch(
+                "app.services.contact_sync.recipient_credentials",
+                return_value=FakeCreds(),
+            ),
+            patch(
+                "app.services.contact_sync._ensure_recipient_group",
+                return_value="contactGroups/recipient-group",
+            ),
+            patch(
+                "app.services.contact_sync.create_contact_in_group",
+                return_value="people/r-charlene",
+            ) as create_mock,
+            patch("app.services.contact_sync.ensure_assignment_contact_label"),
+            patch("app.services.contact_sync.ensure_contact_in_group"),
+            patch("app.services.contact_sync.set_contact_photo", return_value=True),
+            patch("app.services.contact_sync.delete_contact_photo", return_value=True),
+        ):
+            summary = contact_sync.sync_contact_changes(OWNER, [NEW_PERSON])
+
+        self.assertEqual(summary["created"], 1)
+        self.assertEqual(summary["relinked"], 0)
+        create_mock.assert_called_once()
+        self.assertEqual(len(db.find_mappings_for_owner_person(OWNER, OLD_PERSON)), 1)
+        self.assertEqual(
+            db.find_mappings_for_owner_person(OWNER, OLD_PERSON)[0]["recipient_person_id"],
+            RECIPIENT_PERSON,
+        )
+
     def test_same_name_different_phone_does_not_relink(self) -> None:
         member_data = _person(NEW_PERSON, "Cindy", "Douglas", phone="5559998888")
         with (
@@ -319,6 +356,96 @@ class RelinkPruneTests(unittest.TestCase):
         self.assertEqual(summary["updated"], 1)
         update_mock.assert_not_called()
         photo_mock.assert_called_once()
+
+    def test_quoted_nickname_same_person_relinks(self) -> None:
+        db.write_shared_contacts(
+            SHARE_ID,
+            OWNER,
+            "AlMsLa",
+            RESOURCE,
+            [_person(OLD_PERSON, "Steve", "Walden")],
+        )
+        member_data = _person(NEW_PERSON, 'Steve "Stevie"', "Walden")
+        with (
+            patch("app.services.contact_sync.owner_credentials", return_value=FakeCreds()),
+            patch(
+                "app.services.contact_sync.get_people_batch",
+                return_value={NEW_PERSON: member_data},
+            ),
+            patch(
+                "app.services.contact_sync.recipient_credentials",
+                return_value=FakeCreds(),
+            ),
+            patch(
+                "app.services.contact_sync.get_person_etags_batch",
+                return_value={RECIPIENT_PERSON: "etag-r"},
+            ),
+            patch("app.services.contact_sync.update_contact", return_value=True),
+            patch("app.services.contact_sync.create_contact_in_group") as create_mock,
+            patch("app.services.contact_sync.ensure_assignment_contact_label"),
+            patch("app.services.contact_sync.ensure_contact_in_group"),
+            patch("app.services.contact_sync.set_contact_photo", return_value=True),
+            patch("app.services.contact_sync.delete_contact_photo", return_value=True),
+        ):
+            summary = contact_sync.sync_contact_changes(OWNER, [NEW_PERSON])
+
+        self.assertEqual(summary["created"], 0)
+        self.assertEqual(summary["relinked"], 1)
+        create_mock.assert_not_called()
+        self.assertEqual(
+            db.find_mappings_for_owner_person(OWNER, NEW_PERSON)[0]["recipient_person_id"],
+            RECIPIENT_PERSON,
+        )
+
+
+class NicknameIdentityTests(unittest.TestCase):
+    def test_steve_and_quoted_stevie_match(self) -> None:
+        owner = _person("people/owner", "Steve", "Walden")
+        recipient = _person("people/recip", 'Steve "Stevie"', "Walden")
+        self.assertEqual(_person_name_key(owner), "walden|steve")
+        self.assertEqual(_person_name_key(recipient), "walden|steve")
+        self.assertTrue(contacts_identity_match(owner, recipient))
+
+    def test_quoted_and_parenthetical_nicknames_match(self) -> None:
+        legal = _person("people/a", 'James "Jim"', "Thompson")
+        nickname = _person("people/b", "Jim (James)", "Thompson")
+        self.assertTrue(contacts_identity_match(legal, nickname))
+
+    def test_single_quoted_nickname_matches_legal_name(self) -> None:
+        legal = _person("people/a", "Claire", "Alink")
+        nicknamed = _person("people/b", "Claire 'Squeak'", "Alink")
+        self.assertTrue(contacts_identity_match(legal, nicknamed))
+
+    def test_parenthetical_given_matches_legal_name(self) -> None:
+        legal = _person("people/a", "Charlene", "Clemens")
+        nicknamed = _person("people/b", "Charlene (Clara)", "Clemens")
+        self.assertTrue(contacts_identity_match(legal, nicknamed))
+
+    def test_nickname_only_card_matches_legal_plus_nickname(self) -> None:
+        legal = _person("people/a", 'Angela "Angie"', "Carlisle")
+        nickname = _person("people/b", "Angie", "Carlisle")
+        self.assertTrue(contacts_identity_match(legal, nickname))
+
+    def test_maiden_family_paren_matches_current_family(self) -> None:
+        with_maiden = _person("people/a", "Anna", "Arnold (Bragg)")
+        current = _person("people/b", "Anna", "Arnold")
+        self.assertTrue(contacts_identity_match(with_maiden, current))
+
+    def test_different_given_names_still_distinct(self) -> None:
+        steve = _person("people/a", "Steve", "Walden")
+        stevie = _person("people/b", "Stevie", "Walden")
+        self.assertFalse(contacts_identity_match(steve, stevie))
+
+    def test_ampersand_household_name_is_not_a_nickname(self) -> None:
+        combined = _person("people/a", "Victor & Elaine", "Hoover")
+        victor = _person("people/b", "Victor", "Hoover")
+        elaine = _person("people/c", "Elaine", "Hoover")
+        self.assertFalse(contacts_identity_match(combined, victor))
+        self.assertFalse(contacts_identity_match(combined, elaine))
+
+    def test_apostrophe_in_given_name_is_kept(self) -> None:
+        person = _person("people/a", "D'Wayne", "Hebert")
+        self.assertEqual(_person_name_key(person), "hebert|d'wayne")
 
 
 if __name__ == "__main__":

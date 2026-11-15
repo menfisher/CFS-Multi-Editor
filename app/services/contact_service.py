@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 from app.database import fetch_all, fetch_one, get_connection
 from app.services.address_format import enrich_address_parts
 from app.services.google_sync_service import (
+    create_google_contact_and_notify_share,
+    delete_google_contact_and_notify_share,
     get_current_editor_initials,
     mark_contacts_manifest_for_drive_export,
     mark_contact_for_drive_export,
@@ -1466,6 +1468,13 @@ def permanently_delete_contact(contact_id: int) -> bool:
         conn.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
         conn.commit()
     mark_contacts_manifest_for_drive_export()
+    if google_contact_id:
+        try:
+            delete_google_contact_and_notify_share(google_contact_id)
+        except Exception as exc:
+            _log_contact_service(
+                f"Share prune after permanent delete failed for {google_contact_id}: {exc}"
+            )
     return True
 
 
@@ -2784,6 +2793,12 @@ def create_contact(payload: dict) -> int:
         },
     )
     mark_contact_for_drive_export(contact_id)
+    try:
+        create_google_contact_and_notify_share(contact_id)
+    except Exception as exc:
+        _log_contact_service(
+            f"Share create after new contact failed for {contact_id}: {exc}"
+        )
     return contact_id
 
 

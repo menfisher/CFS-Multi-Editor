@@ -89,3 +89,14 @@ def sync_share_app_contact_changes(owner_email: str, person_ids: list[str]) -> d
         "/api/cfs/sync-contact-changes",
         {"owner_email": owner, "person_ids": normalized_ids},
     )
+
+
+def fetch_share_roster_status(owner_email: str) -> dict | None:
+    """Read-only Share mapping counts. Does not start Retry/Sync."""
+    owner = str(owner_email or "").strip().lower()
+    if not owner:
+        return {"ok": False, "reason": "missing_owner"}
+    try:
+        return _post_share_app_json("/api/cfs/roster-status", {"owner_email": owner})
+    except RuntimeError as exc:
+        return {"ok": False, "reason": str(exc)}

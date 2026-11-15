@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.253",
+      "version": "1.254",
       "date_display": "11/14/2026",
+      "description": "CFS adds and permanent deletes push to Share right away. The contacts list alerts if a recipient list does not match. Share treats nickname forms as the same person."
+    },
+    {
+      "date_display": "11/14/2026",
+      "version": "1.253",
       "description": "Drive Upload rebuilds the shared contact list from CFS instead of stitching leftover IDs. Sign-in keeps CFS contacts when Drive has a different ID set."
     },
     {

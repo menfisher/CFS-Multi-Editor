@@ -1605,6 +1605,34 @@ def sync_contact_changes_rpc(
     return {"ok": True, "queued": len(ids), "job_id": job_id}
 
 
+def roster_status_rpc(owner_email: str) -> dict[str, Any]:
+    """Compare Share mappings to connected recipients. Read-only; no Retry/Sync."""
+    owner = db.normalize_email(owner_email)
+    app_data = db.get_app_data(owner) or {}
+    invited: set[str] = set()
+    for group in (app_data.get("groups") or {}).values():
+        if not isinstance(group, dict):
+            continue
+        for email in group.get("shared") or []:
+            normalized = db.normalize_email(str(email or ""))
+            if normalized:
+                invited.add(normalized)
+    connected = set(db.list_recipient_emails())
+    mapped = db.list_mapped_owner_person_ids_by_recipient(owner)
+    recipients: list[dict[str, Any]] = []
+    emails = sorted((invited & connected) | set(mapped))
+    for email in emails:
+        ids = list(mapped.get(email) or [])
+        recipients.append(
+            {
+                "email": email,
+                "mapped_count": len(ids),
+                "owner_person_ids": ids,
+            }
+        )
+    return {"ok": True, "recipients": recipients}
+
+
 def _recipient_group_resource(group: dict[str, Any]) -> str:
     return _contact_group_resource(group.get("created") or group.get("googleGroupId"))
 

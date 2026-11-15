@@ -1964,6 +1964,7 @@ def get_google_sync_summary() -> dict:
     ):
         state["needs_upload_reminder"] = 1
     pending_queue = _list_pending_queue_entries()
+    roster_check = _load_roster_check_state(state)
     return {
         "account": {
             "email": str(account.get("account_email") or ""),
@@ -2036,6 +2037,9 @@ def get_google_sync_summary() -> dict:
                 str(state.get("share_sync_last_message") or ""),
                 str(account.get("email") or ""),
             ),
+            "roster_mismatch": bool(roster_check.get("mismatch")),
+            "roster_alert_message": str(roster_check.get("message") or ""),
+            "roster_alert_lines": list(roster_check.get("lines") or []),
             "import_warning_acknowledged_at": str(state.get("import_warning_acknowledged_at") or ""),
             "needs_upload_reminder": bool(state.get("needs_upload_reminder") or 0),
             "multi_editor_enabled": bool(state.get("multi_editor_enabled") or 0),
@@ -2446,6 +2450,17 @@ def _apply_remote_pdf_share_settings(settings: dict) -> None:
         folder_id=folder_id,
         folder_name=folder_name,
     )
+
+
+def _load_roster_check_state(state: dict) -> dict:
+    raw = str(state.get("roster_check_json") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _share_sync_last_message_for_account(message: str, account_email: str) -> str:
@@ -5843,6 +5858,103 @@ def _schedule_share_app_contact_sync(account_email: str, person_ids: list[str]) 
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _schedule_share_roster_check() -> None:
+    def _run() -> None:
+        from app.services.roster_check_service import refresh_share_roster_check
+
+        try:
+            refresh_share_roster_check()
+        except Exception:
+            _LOGGER.exception("Share roster check failed")
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def delete_google_contact_and_notify_share(google_contact_id: str) -> None:
+    """Delete one owner People card now, then prune that person on Share recipients."""
+    person_id = _clean(google_contact_id)
+    if not person_id.startswith("people/"):
+        return
+
+    def _run() -> None:
+        try:
+            access_token, account_email = _get_valid_access_token()
+        except Exception:
+            return
+        try:
+            _api_json_request(
+                f"{GOOGLE_PEOPLE_BASE_URL}/{person_id}:deleteContact",
+                access_token,
+                method="DELETE",
+            )
+        except HTTPError as exc:
+            if exc.code != 404:
+                _LOGGER.warning("Immediate Google delete failed for %s: %s", person_id, exc)
+                return
+        except Exception:
+            _LOGGER.exception("Immediate Google delete failed for %s", person_id)
+            return
+        if account_email:
+            _schedule_share_app_contact_sync(account_email, [person_id])
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def create_google_contact_and_notify_share(contact_id: int) -> None:
+    """Create the owner Google card for a new CFS contact, then push Share to create copies."""
+
+    def _run() -> None:
+        try:
+            access_token, account_email = _get_valid_access_token()
+        except Exception:
+            return
+        with get_connection() as conn:
+            if not _google_sync_is_enabled_for_writes(conn):
+                return
+            row = conn.execute(
+                """
+                SELECT *
+                FROM google_sync_queue
+                WHERE status = 'pending' AND contact_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (int(contact_id),),
+            ).fetchone()
+            if not row:
+                return
+            queue_entry = dict(row)
+        person_id = ""
+        try:
+            resource_to_name, name_to_resource = _contact_groups_lookup(access_token)
+            with get_connection() as conn:
+                _process_upsert_queue_entry(
+                    conn,
+                    access_token,
+                    queue_entry,
+                    resource_to_name,
+                    name_to_resource,
+                )
+                conn.execute(
+                    "DELETE FROM google_sync_queue WHERE id = ?",
+                    (int(queue_entry["id"]),),
+                )
+                created = conn.execute(
+                    "SELECT google_contact_id FROM contacts WHERE id = ?",
+                    (int(contact_id),),
+                ).fetchone()
+                person_id = _clean(created["google_contact_id"] if created else "")
+                _refresh_pending_upload_count(conn)
+                conn.commit()
+        except Exception:
+            _LOGGER.exception("Immediate Google create failed for contact %s", contact_id)
+            return
+        if person_id and account_email:
+            _schedule_share_app_contact_sync(account_email, [person_id])
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _manifest_contact_ids(manifest: dict) -> set[int]:
     ids: set[int] = set()
     for item in manifest.get("contacts") or []:
@@ -8603,6 +8715,7 @@ def _run_signin_sync_job(*, skip_settings: bool = False, storage: dict | None = 
             _set_signin_sync_state(conn, in_progress=False, phase="", error="")
             conn.commit()
         unlocked = True
+        _schedule_share_roster_check()
         _LOGGER.info(
             "Sign-in sync unlocked editing after %.2fs",
             time.perf_counter() - started_at,
@@ -12674,6 +12787,8 @@ def upload_google_contacts(
                         resource_to_name,
                         name_to_resource,
                     )
+                    if google_contact_id:
+                        uploaded_google_contact_ids.append(google_contact_id)
                     with get_connection() as conn:
                         _delete_queue_entry(conn, int(queue_entry["id"]))
                         _refresh_pending_upload_count(conn)
@@ -12924,6 +13039,8 @@ def upload_pending_changes(
         account_email = str(deferred_share_sync.get("account_email") or "").strip()
         if person_ids and account_email and not skip_share_sync:
             _schedule_share_app_contact_sync(account_email, list(person_ids))
+        if not skip_share_sync:
+            _schedule_share_roster_check()
 
 
 def _upload_pending_changes_body(

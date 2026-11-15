@@ -892,6 +892,32 @@ def delete_sync_mapping_rows(
         _commit(conn)
 
 
+def list_mapped_owner_person_ids_by_recipient(owner: str) -> dict[str, list[str]]:
+    owner_key = normalize_email(owner)
+    grouped: dict[str, list[str]] = {}
+    seen: dict[str, set[str]] = {}
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT recipient_email, owner_person_id
+            FROM sync_mappings
+            WHERE owner = ?
+              AND recipient_person_id IS NOT NULL AND recipient_person_id != ''
+            """,
+            (owner_key,),
+        ).fetchall()
+    for row in rows:
+        email = normalize_email(str(row["recipient_email"]))
+        person_id = str(row["owner_person_id"] or "").strip()
+        if not email or not person_id:
+            continue
+        if person_id in seen.setdefault(email, set()):
+            continue
+        seen[email].add(person_id)
+        grouped.setdefault(email, []).append(person_id)
+    return grouped
+
+
 def find_mappings_for_owner_person(
     owner: str, owner_person_id: str
 ) -> list[dict[str, Any]]:

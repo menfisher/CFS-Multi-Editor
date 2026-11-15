@@ -24,7 +24,7 @@ from ..people_recipient import (
     update_contact,
 )
 from .contact_hash import compute_contact_hash, compute_photo_hash
-from .recipient_import import _contact_match_keys, _ensure_recipient_group
+from .recipient_import import contacts_identity_match, _ensure_recipient_group
 
 logger = logging.getLogger(__name__)
 
@@ -177,16 +177,8 @@ def _mapping_key(mapping: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def _contacts_identity_match(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
-    """True when two People payloads are the same person (phones/emails, else name)."""
-    left_keys = _contact_match_keys(left)
-    right_keys = _contact_match_keys(right)
-    left_strong = {key for key in left_keys if key.startswith(("email:", "phone:"))}
-    right_strong = {key for key in right_keys if key.startswith(("email:", "phone:"))}
-    if left_strong and right_strong:
-        return bool(left_strong & right_strong)
-    left_names = {key for key in left_keys if key.startswith("name:")}
-    right_names = {key for key in right_keys if key.startswith("name:")}
-    return bool(left_names & right_names)
+    """True when two People payloads are the same person (name plus phone/email)."""
+    return contacts_identity_match(left, right)
 
 
 def _unique_identity_staged_id(

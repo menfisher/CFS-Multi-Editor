@@ -192,6 +192,14 @@
       </section>
     {% endif %}
 
+    {% if google_sync is defined and google_sync.state.roster_mismatch and google_sync.state.roster_alert_lines %}
+      <section class="panel google-sync-banner google-sync-banner-warn" id="contacts-roster-mismatch">
+        {% for line in google_sync.state.roster_alert_lines %}
+          <div>{{ line }}</div>
+        {% endfor %}
+      </section>
+    {% endif %}
+
     <section class="panel">
       <form method="post" action="/contacts/delete-selected" id="contacts-bulk-delete-form" hidden>
         <input type="hidden" name="return_to" value="{{ current_list_url }}">
