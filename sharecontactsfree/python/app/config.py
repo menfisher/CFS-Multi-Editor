@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import os
 from pathlib import Path
 
@@ -29,6 +30,25 @@ FRONTEND_DIR = _resolve_frontend_dir()
 APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "dev-only-change-me")
 # CFS desktop calls POST /api/cfs/sync-contact-changes with header X-CFS-API-Key.
 CFS_API_KEY = os.getenv("CFS_API_KEY", APP_SECRET_KEY).strip()
+# Key that ships to every Editor through the shared Drive settings. It can call
+# the /api/cfs/* routes but never signs browser bridge tokens, so a leaked copy
+# cannot sign anyone in. CFS_API_KEY stays server-side (ops, bridge signing).
+CFS_SHARED_API_KEY = os.getenv("CFS_SHARED_API_KEY", "").strip()
+
+
+def cfs_api_key_valid(provided: str, *, allow_shared: bool = True) -> bool:
+    """Constant-time check of the X-CFS-API-Key header."""
+    candidate = str(provided or "").strip().encode("utf-8")
+    if not candidate:
+        return False
+    accepted = [CFS_API_KEY]
+    if allow_shared:
+        accepted.append(CFS_SHARED_API_KEY)
+    return any(
+        key and hmac.compare_digest(candidate, key.encode("utf-8")) for key in accepted
+    )
+
+
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 
 # URL recipients see in invite emails — must be HTTPS in production (Cloud Run).

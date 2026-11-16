@@ -2040,6 +2040,10 @@ def get_google_sync_summary() -> dict:
             "roster_mismatch": bool(roster_check.get("mismatch")),
             "roster_alert_message": str(roster_check.get("message") or ""),
             "roster_alert_lines": list(roster_check.get("lines") or []),
+            "roster_issues": list(roster_check.get("issues") or []),
+            "roster_fixable": bool(roster_check.get("fixable")),
+            "roster_google_extra": list(roster_check.get("google_extra_people") or []),
+            "roster_checked_at": str(roster_check.get("checked_at") or ""),
             "import_warning_acknowledged_at": str(state.get("import_warning_acknowledged_at") or ""),
             "needs_upload_reminder": bool(state.get("needs_upload_reminder") or 0),
             "multi_editor_enabled": bool(state.get("multi_editor_enabled") or 0),
@@ -2428,7 +2432,8 @@ def _apply_remote_share_connection_settings(settings: dict) -> None:
     remote_share_web_api_key = _clean(settings.get("share_web_api_key"))
     if remote_public_web_url and not get_public_web_url():
         save_public_web_url(remote_public_web_url)
-    if remote_share_web_api_key and not get_share_web_api_key():
+    # The shared Drive copy wins, so every Editor ends up on the same Editor-safe key.
+    if remote_share_web_api_key and remote_share_web_api_key != get_share_web_api_key():
         save_share_web_api_key(remote_share_web_api_key)
 
 

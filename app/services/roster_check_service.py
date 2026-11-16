@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from urllib.parse import urlencode
 
 from app.database import get_connection
@@ -15,10 +16,11 @@ from app.services.google_sync_service import (
     _now_text,
     ensure_google_sync_records,
 )
-from app.services.share_sync_service import fetch_share_roster_status
+from app.services.share_sync_service import check_share_recipient_cards, fetch_share_roster_status
 
 
 ROSTER_NAME_SAMPLE = 12
+DEEP_CHECK_MAX_AGE_SECONDS = 12 * 3600
 
 
 def _person_label(family: str, given: str, fallback: str = "") -> str:
@@ -48,6 +50,7 @@ def build_roster_report(
     drive_ids: set[int] | None,
     drive_labels: dict[int, str],
     recipient_maps: dict[str, set[str]] | None,
+    share_cards: dict | None = None,
 ) -> dict:
     cfs_by_person = {
         str(item.get("google_contact_id") or "").strip(): item
@@ -60,6 +63,9 @@ def build_roster_report(
 
     google_missing: list[str] = []
     google_extra: list[str] = []
+    google_missing_ids: list[int] = []
+    google_missing_person_ids: list[str] = []
+    google_extra_people: list[dict] = []
     google_count = None
     if google_people is not None:
         google_by_id = {
@@ -76,9 +82,19 @@ def build_roster_report(
             str(google_by_id[person_id].get("name") or person_id)
             for person_id in sorted(set(google_by_id) - cfs_person_ids)
         ]
+        google_missing_person_ids = sorted(cfs_person_ids - set(google_by_id))
+        google_missing_ids = [
+            int(cfs_by_person[person_id].get("id") or 0) for person_id in google_missing_person_ids
+        ]
+        google_extra_people = [
+            {"id": person_id, "name": str(google_by_id[person_id].get("name") or person_id)}
+            for person_id in sorted(set(google_by_id) - cfs_person_ids)
+        ]
 
     drive_missing: list[str] = []
     drive_extra: list[str] = []
+    drive_missing_ids: list[int] = []
+    drive_extra_ids: list[int] = []
     drive_count = None
     if drive_ids is not None:
         drive_count = len(drive_ids)
@@ -90,6 +106,8 @@ def build_roster_report(
             str(drive_labels.get(contact_id) or f"contact {contact_id}")
             for contact_id in sorted(drive_ids - cfs_local_ids)
         ]
+        drive_missing_ids = sorted(cfs_local_ids - drive_ids)
+        drive_extra_ids = sorted(drive_ids - cfs_local_ids)
 
     recipients: list[dict] = []
     if recipient_maps is not None:
@@ -106,11 +124,20 @@ def build_roster_report(
                     "count": len(mapped),
                     "missing": missing,
                     "extra_count": extra_count,
+                    "missing_person_ids": sorted(cfs_person_ids - mapped),
+                    "extra_person_ids": sorted(mapped - cfs_person_ids),
                 }
             )
 
+    share_cards = share_cards if isinstance(share_cards, dict) else None
+    card_issue_count = sum(
+        int(item.get("changes") or 0)
+        for item in ((share_cards or {}).get("recipients") or {}).values()
+        if isinstance(item, dict)
+    )
     mismatch = bool(
-        google_missing
+        card_issue_count
+        or google_missing
         or google_extra
         or drive_missing
         or drive_extra
@@ -129,9 +156,26 @@ def build_roster_report(
         recipients=recipients,
         mismatch=mismatch,
     )
+    issues = build_roster_issues(
+        google_missing=google_missing,
+        google_extra=google_extra,
+        drive_missing=drive_missing,
+        drive_extra=drive_extra,
+        recipients=recipients,
+        share_cards=share_cards,
+    )
     return {
         "checked_at": _now_text(),
         "mismatch": mismatch,
+        "issues": issues,
+        "fixable": any(item["fixable"] for item in issues),
+        "needs_choice": bool(google_extra_people),
+        "google_missing_ids": google_missing_ids,
+        "google_missing_person_ids": google_missing_person_ids,
+        "google_extra_people": google_extra_people,
+        "drive_missing_ids": drive_missing_ids,
+        "drive_extra_ids": drive_extra_ids,
+        "share_cards": share_cards,
         "cfs_count": len(cfs_people),
         "google_count": google_count,
         "drive_count": drive_count,
@@ -143,6 +187,154 @@ def build_roster_report(
         "lines": lines,
         "message": " ".join(lines),
     }
+
+
+def _plural(count: int, singular: str, plural: str | None = None) -> str:
+    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
+
+
+def condense_card_check(result: dict | None) -> dict:
+    """Shrink one Share card-check reply to counts and a few names."""
+    result = result if isinstance(result, dict) else {}
+    counts = {
+        "missing": 0,
+        "adopt": 0,
+        "linked_elsewhere": 0,
+        "wrong_card": 0,
+        "not_in_group": 0,
+        "duplicates": 0,
+        "foreign": 0,
+    }
+    names: dict[str, list[str]] = {key: [] for key in ("missing", "duplicates", "wrong_card", "foreign")}
+    problem_groups = 0
+    for group in result.get("groups") or []:
+        if not isinstance(group, dict):
+            continue
+        group_counts = group.get("counts") or {}
+        if any(int(group_counts.get(key) or 0) for key in counts):
+            problem_groups += 1
+        for key in counts:
+            counts[key] += int(group_counts.get(key) or 0)
+        for key in names:
+            for label in group.get(key) or []:
+                label = str(label).strip()
+                if label and label not in names[key]:
+                    names[key].append(label)
+    return {
+        "ok": bool(result.get("ok")),
+        "clean": bool(result.get("clean")),
+        "changes": int(result.get("changes") or 0),
+        "reason": str(result.get("reason") or ""),
+        "message": str(result.get("message") or ""),
+        "counts": counts,
+        "names": {key: value[:ROSTER_NAME_SAMPLE] for key, value in names.items()},
+        "problem_groups": problem_groups,
+    }
+
+
+def build_roster_issues(
+    *,
+    google_missing: list[str],
+    google_extra: list[str],
+    drive_missing: list[str],
+    drive_extra: list[str],
+    recipients: list[dict],
+    share_cards: dict | None,
+) -> list[dict]:
+    """Plain-English problems for the banner. fixable=False means the person must choose."""
+    issues: list[dict] = []
+    if drive_extra:
+        issues.append(
+            {
+                "kind": "drive_extra",
+                "fixable": True,
+                "text": (
+                    f"Google Drive still lists {_plural(len(drive_extra), 'contact')} that "
+                    f"{'is' if len(drive_extra) == 1 else 'are'} no longer in CFS: "
+                    f"{_sample_labels(drive_extra)}."
+                ),
+            }
+        )
+    if drive_missing:
+        issues.append(
+            {
+                "kind": "drive_missing",
+                "fixable": True,
+                "text": (
+                    f"Google Drive is missing {_plural(len(drive_missing), 'contact')} that "
+                    f"{'is' if len(drive_missing) == 1 else 'are'} in CFS: "
+                    f"{_sample_labels(drive_missing)}."
+                ),
+            }
+        )
+    if google_missing:
+        issues.append(
+            {
+                "kind": "google_missing",
+                "fixable": True,
+                "text": (
+                    f"{_plural(len(google_missing), 'contact')} in CFS "
+                    f"{'is' if len(google_missing) == 1 else 'are'} not in the owner's Google "
+                    f"account and will be added back: {_sample_labels(google_missing)}."
+                ),
+            }
+        )
+    if google_extra:
+        issues.append(
+            {
+                "kind": "google_extra",
+                "fixable": False,
+                "text": (
+                    f"The owner's Google account has {_plural(len(google_extra), 'contact')} "
+                    f"that {'is' if len(google_extra) == 1 else 'are'} not in CFS: "
+                    f"{_sample_labels(google_extra)}. Choose Import into CFS or Delete from Google below."
+                ),
+            }
+        )
+    cards = ((share_cards or {}).get("recipients") or {}) if isinstance(share_cards, dict) else {}
+    for item in recipients:
+        email = item["email"]
+        card = cards.get(email) if isinstance(cards.get(email), dict) else None
+        missing = len(item["missing"])
+        extra = int(item["extra_count"] or 0)
+        parts: list[str] = []
+        if missing:
+            parts.append(f"is missing {_plural(missing, 'contact')} ({_sample_labels(item['missing'], 6)})")
+        if extra:
+            parts.append(f"has {_plural(extra, 'old link')} to contacts no longer in CFS")
+        if card and card.get("changes"):
+            counts = card["counts"]
+            names = card["names"]
+            if counts["duplicates"]:
+                label = _sample_labels(names.get("duplicates") or [], 6)
+                parts.append(
+                    f"has {_plural(counts['duplicates'], 'duplicate card')}"
+                    + (f" ({label})" if label else "")
+                )
+            if counts["missing"] and not missing:
+                parts.append(f"is missing {_plural(counts['missing'], 'card')}")
+            stale = (
+                counts["adopt"]
+                + counts["linked_elsewhere"]
+                + counts["wrong_card"]
+                + counts["not_in_group"]
+            )
+            if stale:
+                parts.append(f"has {_plural(stale, 'card')} that Share has lost track of")
+            if counts["foreign"]:
+                parts.append(f"has {_plural(counts['foreign'], 'unrecognized card')} in the shared group")
+        if parts:
+            issues.append({"kind": "recipient", "email": email, "fixable": True, "text": f"{email} " + "; ".join(parts) + "."})
+        elif card and not card.get("ok") and card.get("reason") not in ("", None):
+            issues.append(
+                {
+                    "kind": "recipient_unchecked",
+                    "email": email,
+                    "fixable": False,
+                    "text": f"{email}: cards could not be checked ({card.get('message') or card.get('reason')}).",
+                }
+            )
+    return issues
 
 
 def _roster_alert_lines(
@@ -277,7 +469,59 @@ def _drive_roster_snapshot(access_token: str) -> tuple[set[int], dict[int, str]]
     return ids, labels
 
 
-def refresh_share_roster_check() -> dict:
+def _load_saved_report() -> dict:
+    ensure_google_sync_records()
+    with get_connection() as conn:
+        row = conn.execute("SELECT roster_check_json FROM google_sync_state WHERE id = 1").fetchone()
+    raw = str(row["roster_check_json"] if row else "" or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _save_report(report: dict) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE google_sync_state
+            SET roster_check_json = ?, updated_at = ?
+            WHERE id = 1
+            """,
+            (json.dumps(report, separators=(",", ":")), _now_text()),
+        )
+        conn.commit()
+
+
+def run_share_card_checks(owner_email: str, emails: list[str]) -> dict:
+    """Read-only deep check: the real cards in each recipient's shared groups."""
+    recipients: dict[str, dict] = {}
+    for email in emails:
+        try:
+            recipients[email] = condense_card_check(check_share_recipient_cards(owner_email, email))
+        except Exception as exc:  # noqa: BLE001 - one recipient must not stop the rest
+            recipients[email] = condense_card_check({"ok": False, "reason": "check_failed", "message": str(exc)[:120]})
+    return {"checked_at": _now_text(), "checked_epoch": time.time(), "recipients": recipients}
+
+
+def _deep_check_is_stale(share_cards: object) -> bool:
+    if not isinstance(share_cards, dict) or not share_cards.get("recipients"):
+        return True
+    try:
+        age = time.time() - float(share_cards.get("checked_epoch") or 0)
+    except (TypeError, ValueError):
+        return True
+    return age > DEEP_CHECK_MAX_AGE_SECONDS
+
+
+def refresh_share_roster_check(*, deep: bool | None = None) -> dict:
+    """Fast check first (saved right away), then the slower real-card check when due.
+
+    deep=True forces the card check, deep=False skips it, None runs it every 12 hours.
+    """
     ensure_google_sync_records()
     cfs_people = _local_cfs_people()
     google_people = None
@@ -317,21 +561,26 @@ def refresh_share_roster_check() -> dict:
                         for person_id in (item.get("owner_person_ids") or [])
                         if str(person_id).strip()
                     }
-    report = build_roster_report(
-        cfs_people=cfs_people,
-        google_people=google_people,
-        drive_ids=drive_ids,
-        drive_labels=drive_labels,
-        recipient_maps=recipient_maps,
+
+    previous_cards = _load_saved_report().get("share_cards")
+    run_deep = bool(account_email and recipient_maps) and (
+        _deep_check_is_stale(previous_cards) if deep is None else bool(deep)
     )
-    with get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE google_sync_state
-            SET roster_check_json = ?, updated_at = ?
-            WHERE id = 1
-            """,
-            (json.dumps(report, separators=(",", ":")), _now_text()),
+
+    def _build(cards: dict | None) -> dict:
+        return build_roster_report(
+            cfs_people=cfs_people,
+            google_people=google_people,
+            drive_ids=drive_ids,
+            drive_labels=drive_labels,
+            recipient_maps=recipient_maps,
+            share_cards=cards,
         )
-        conn.commit()
+
+    report = _build(previous_cards if isinstance(previous_cards, dict) else None)
+    _save_report(report)
+    if run_deep:
+        cards = run_share_card_checks(account_email, sorted(recipient_maps or {}))
+        report = _build(cards)
+        _save_report(report)
     return report

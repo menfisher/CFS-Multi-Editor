@@ -16,7 +16,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from . import db
 from .cfs_bridge import create_bridge_token, verify_bridge_token
-from .config import APP_BASE_URL, APP_SECRET_KEY, CFS_API_KEY, FRONTEND_DIR, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, UI_BUILD_TAG
+from .config import APP_BASE_URL, APP_SECRET_KEY, CFS_API_KEY, FRONTEND_DIR, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, UI_BUILD_TAG, cfs_api_key_valid
 from .google_auth import (
     OAUTH_BASE_SESSION_KEY,
     _fetch_userinfo,
@@ -30,6 +30,7 @@ from .google_auth import (
 )
 from .people_api import get_profile, is_rate_limit_error
 from .services import app_data as app_data_svc
+from .services import roster_group_check
 
 logger = logging.getLogger(__name__)
 
@@ -325,7 +326,7 @@ def index(request: Request, mode: str | None = None, email: str | None = None):
 async def cfs_provision_owner(request: Request):
     """Store owner OAuth tokens from CFS desktop and return a browser bridge token."""
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
     owner_email = str(body.get("owner_email") or "").strip().lower()
@@ -386,7 +387,7 @@ async def cfs_provision_owner(request: Request):
 async def cfs_sync_contact_changes(request: Request):
     """Called by CFS desktop after Upload to push changed contacts to share recipients."""
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
     owner_email = str(body.get("owner_email") or "").strip().lower()
@@ -407,7 +408,7 @@ async def cfs_sync_contact_changes(request: Request):
 async def cfs_roster_status(request: Request):
     """Called by CFS after Upload or sign-in. Read-only mapping counts, no Retry/Sync."""
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
     owner_email = str(body.get("owner_email") or "").strip().lower()
@@ -417,11 +418,47 @@ async def cfs_roster_status(request: Request):
     return JSONResponse({"ok": True, "result": result})
 
 
+async def _cfs_roster_group_call(request: Request, *, apply: bool) -> JSONResponse:
+    api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
+    if not cfs_api_key_valid(api_key):
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    owner_email = str(body.get("owner_email") or "").strip().lower()
+    recipient_email = str(body.get("recipient_email") or "").strip().lower()
+    if not owner_email or not recipient_email:
+        raise HTTPException(400, "owner_email and recipient_email required")
+    try:
+        max_changes = int(body.get("max_changes") or roster_group_check.DEFAULT_MAX_CHANGES)
+    except (TypeError, ValueError):
+        max_changes = roster_group_check.DEFAULT_MAX_CHANGES
+    max_changes = max(1, min(max_changes, roster_group_check.HARD_MAX_CHANGES))
+    result = await asyncio.to_thread(
+        roster_group_check.run_recipient_roster_check,
+        owner_email,
+        recipient_email,
+        apply=apply,
+        max_changes=max_changes,
+    )
+    return JSONResponse({"ok": bool(result.get("ok")), "result": result})
+
+
+@app.post("/api/cfs/roster-group-check")
+async def cfs_roster_group_check(request: Request):
+    """Read-only. Compares one recipient's real Google group cards with Share mappings."""
+    return await _cfs_roster_group_call(request, apply=False)
+
+
+@app.post("/api/cfs/roster-group-fix")
+async def cfs_roster_group_fix(request: Request):
+    """Fixes one recipient's group drift (relink, create, delete name-duplicates)."""
+    return await _cfs_roster_group_call(request, apply=True)
+
+
 @app.post("/api/cfs/rename-shared-group")
 async def cfs_rename_shared_group(request: Request):
     """Called by CFS after the all-contacts shared group name changes."""
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
     owner_email = str(body.get("owner_email") or "").strip().lower()
@@ -456,7 +493,7 @@ def _kick_push_queue_after_cfs_sync(owner_email: str, person_count: int) -> None
 @app.get("/api/cfs/card-repair-status")
 async def cfs_card_repair_status(request: Request):
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key):
         raise HTTPException(403, "Forbidden")
     from .services.card_repair import card_repair_summary_line, get_card_repair_status
 
@@ -469,7 +506,7 @@ async def cfs_card_repair_status(request: Request):
 @app.post("/api/cfs/card-repair")
 async def cfs_card_repair(request: Request):
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key):
         raise HTTPException(403, "Forbidden")
     body: dict[str, Any] = {}
     try:
@@ -497,7 +534,7 @@ async def cfs_kick(request: Request):
     jobs inside the request for up to KICK_DRAIN_SECONDS.
     """
     api_key = str(request.headers.get("X-CFS-API-Key") or "").strip()
-    if not CFS_API_KEY or api_key != CFS_API_KEY:
+    if not cfs_api_key_valid(api_key, allow_shared=False):
         raise HTTPException(403, "Forbidden")
     stats = await asyncio.to_thread(_kick_queue_for_scheduler)
     return JSONResponse({"ok": True, **stats})

@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -480,6 +481,41 @@ def contacts_backup_drive():
     except (HTTPError, URLError):
         return RedirectResponse(url="/contacts/?google_notice=contacts_backup_drive_failed", status_code=303)
     return RedirectResponse(url="/contacts/?google_notice=contacts_backup_drive_success", status_code=303)
+
+
+@router.post("/roster-fix/start")
+def contacts_roster_fix_start():
+    from app.services.roster_fix_service import start_roster_fix
+
+    result = start_roster_fix()
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409)
+
+
+@router.get("/roster-fix/status")
+def contacts_roster_fix_status():
+    from app.services.roster_fix_service import get_roster_fix_status
+
+    return JSONResponse(get_roster_fix_status())
+
+
+@router.post("/roster-fix/google-extra")
+async def contacts_roster_fix_google_extra(request: Request):
+    from app.services.roster_fix_service import delete_google_extras, import_google_extras
+
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse({"ok": False, "message": "Request was not valid."}, status_code=400)
+    action = str(payload.get("action") or "").strip().lower()
+    person_ids = [str(item) for item in payload.get("person_ids") or [] if str(item).strip()]
+    if action not in {"import", "delete"} or not person_ids:
+        return JSONResponse({"ok": False, "message": "Choose Import or Delete for a listed contact."}, status_code=400)
+    handler = import_google_extras if action == "import" else delete_google_extras
+    try:
+        result = await run_in_threadpool(handler, person_ids)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "message": f"Google did not accept that: {str(exc)[:120]}"}, status_code=502)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409)
 
 
 @router.post("/message/send")

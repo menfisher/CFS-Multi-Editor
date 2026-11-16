@@ -801,6 +801,19 @@ def _contact_match_keys(person: dict[str, Any] | None) -> set[str]:
     return keys
 
 
+def contacts_name_match(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
+    """Same family name and a compatible given name, nicknames included.
+
+    Steve and Steve \"Stevie\", James \"Jim\" and Jim (James) match.
+    Victor and Victor & Elaine, or Brenda and Bob, do not.
+    """
+    left_family, left_given, left_aliases = _person_name_parts(left)
+    right_family, right_given, right_aliases = _person_name_parts(right)
+    if left_family != right_family:
+        return False
+    return _given_names_compatible(left_given, left_aliases, right_given, right_aliases)
+
+
 def contacts_identity_match(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
     """Same person only when names match and, if phones/emails exist, one of those matches too.
 
@@ -808,11 +821,7 @@ def contacts_identity_match(left: dict[str, Any] | None, right: dict[str, Any] |
     must stay two people. Quoted or parenthetical nicknames are the same person:
     Steve and Steve \"Stevie\", James \"Jim\" and Jim (James).
     """
-    left_family, left_given, left_aliases = _person_name_parts(left)
-    right_family, right_given, right_aliases = _person_name_parts(right)
-    if left_family != right_family:
-        return False
-    if not _given_names_compatible(left_given, left_aliases, right_given, right_aliases):
+    if not contacts_name_match(left, right):
         return False
     left_keys = _contact_match_keys(left)
     right_keys = _contact_match_keys(right)

@@ -1,0 +1,240 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from app.database import initialize_database, set_request_db_path
+from app.services import roster_fix_service as fix
+from app.services.roster_check_service import build_roster_report, condense_card_check
+
+
+def _card_reply(**counts):
+    base = {"missing": 0, "adopt": 0, "linked_elsewhere": 0, "wrong_card": 0, "not_in_group": 0, "duplicates": 0, "foreign": 0}
+    base.update(counts)
+    changes = sum(base.values())
+    return {
+        "ok": True,
+        "clean": changes == 0,
+        "changes": changes,
+        "groups": [{"group": "AlMsLa", "counts": base, "duplicates": ["Doe, Jane"] if base["duplicates"] else []}],
+    }
+
+
+class RosterReportTests(unittest.TestCase):
+    def _report(self, cards=None, google=None, drive=None, maps=None):
+        return build_roster_report(
+            cfs_people=[
+                {"id": 1, "google_contact_id": "people/c1", "name": "Burns, Chad"},
+                {"id": 2, "google_contact_id": "people/c2", "name": "Miller, Betty"},
+            ],
+            google_people=google if google is not None else [
+                {"id": "people/c1", "name": "Burns, Chad"},
+                {"id": "people/c2", "name": "Miller, Betty"},
+            ],
+            drive_ids=drive if drive is not None else {1, 2},
+            drive_labels={},
+            recipient_maps=maps if maps is not None else {"a@gmail.com": {"people/c1", "people/c2"}},
+            share_cards=cards,
+        )
+
+    def test_clean_report_has_no_issues(self) -> None:
+        report = self._report()
+        self.assertFalse(report["mismatch"])
+        self.assertEqual(report["issues"], [])
+
+    def test_ids_and_extras_are_reported(self) -> None:
+        report = self._report(
+            google=[{"id": "people/c1", "name": "Burns, Chad"}, {"id": "people/cX", "name": "Stray, Sam"}],
+            drive={1, 9},
+            maps={"a@gmail.com": {"people/c1", "people/old"}},
+        )
+        self.assertEqual(report["google_missing_ids"], [2])
+        self.assertEqual(report["google_extra_people"], [{"id": "people/cX", "name": "Stray, Sam"}])
+        self.assertEqual(report["drive_missing_ids"], [2])
+        self.assertEqual(report["drive_extra_ids"], [9])
+        recipient = report["recipients"][0]
+        self.assertEqual(recipient["missing_person_ids"], ["people/c2"])
+        self.assertEqual(recipient["extra_person_ids"], ["people/old"])
+        kinds = {item["kind"] for item in report["issues"]}
+        self.assertTrue({"drive_extra", "drive_missing", "google_missing", "google_extra", "recipient"} <= kinds)
+        google_extra = [item for item in report["issues"] if item["kind"] == "google_extra"][0]
+        self.assertFalse(google_extra["fixable"])
+        self.assertTrue(report["fixable"])
+
+    def test_deep_card_problem_makes_mismatch(self) -> None:
+        cards = {"recipients": {"a@gmail.com": condense_card_check(_card_reply(duplicates=2))}}
+        report = self._report(cards=cards)
+        self.assertTrue(report["mismatch"])
+        text = " ".join(item["text"] for item in report["issues"])
+        self.assertIn("duplicate", text)
+
+    def test_condense_card_check_counts(self) -> None:
+        condensed = condense_card_check(_card_reply(adopt=1, foreign=2))
+        self.assertEqual(condensed["counts"]["adopt"], 1)
+        self.assertEqual(condensed["counts"]["foreign"], 2)
+        self.assertEqual(condensed["changes"], 3)
+        self.assertFalse(condensed["clean"])
+
+
+class RosterFixRunnerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tempdir = tempfile.TemporaryDirectory()
+        set_request_db_path(Path(self._tempdir.name) / "app.sqlite3")
+        initialize_database()
+        fix._set_state(running=False, step="", log=[], ok=None, message="", started_at=0.0, finished_at=0.0)
+
+    def tearDown(self) -> None:
+        set_request_db_path(None)
+        self._tempdir.cleanup()
+
+    def test_start_refused_without_editor_lock(self) -> None:
+        with patch.object(fix, "is_editing_allowed", return_value=False), patch.object(fix.threading, "Thread") as thread:
+            result = fix.start_roster_fix()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "not_editor")
+        thread.assert_not_called()
+
+    def test_start_refused_without_share_key(self) -> None:
+        summary = {
+            "account": {"status": "connected", "drive_scope_ready": True},
+            "state": {},
+        }
+        with patch.object(fix, "is_editing_allowed", return_value=True), patch.object(
+            fix, "get_google_sync_summary", return_value=summary
+        ), patch.object(fix, "get_share_web_api_key", return_value=""):
+            result = fix.preflight()
+        self.assertEqual(result["reason"], "share_key_missing")
+
+    def test_start_runs_once(self) -> None:
+        summary = {"account": {"status": "connected", "drive_scope_ready": True}, "state": {}}
+        with patch.object(fix, "is_editing_allowed", return_value=True), patch.object(
+            fix, "get_google_sync_summary", return_value=summary
+        ), patch.object(fix, "get_share_web_api_key", return_value="k"), patch.object(fix.threading, "Thread") as thread:
+            first = fix.start_roster_fix()
+            second = fix.start_roster_fix()
+        self.assertTrue(first["ok"])
+        self.assertEqual(second["reason"], "already_running")
+        thread.return_value.start.assert_called_once()
+
+    def test_fix_recipient_repeats_until_clean(self) -> None:
+        replies = [
+            {"ok": True, "partial": True, "groups": [{"applied": {"created": 3, "partial": True, "errors": []}}]},
+            {"ok": True, "clean": True, "groups": [{"applied": {"created": 2, "deleted": 1, "partial": False, "errors": []}}]},
+        ]
+        with patch.object(fix, "fix_share_recipient_cards", side_effect=replies) as call, patch.object(fix, "_sleep"):
+            totals, problem = fix._fix_recipient("owner@gmail.com", "a@gmail.com")
+        self.assertEqual(call.call_count, 2)
+        self.assertEqual(problem, "")
+        self.assertEqual(totals, {"created": 5, "deleted": 1})
+
+    def test_fix_recipient_waits_when_share_queue_busy(self) -> None:
+        replies = [{"ok": False, "reason": "push_queue_busy"}, {"ok": True, "clean": True, "groups": []}]
+        with patch.object(fix, "fix_share_recipient_cards", side_effect=replies) as call, patch.object(fix, "_sleep") as sleeper:
+            _totals, problem = fix._fix_recipient("owner@gmail.com", "a@gmail.com")
+        self.assertEqual(problem, "")
+        self.assertEqual(call.call_count, 2)
+        sleeper.assert_called_once()
+
+    def test_fix_recipient_reports_refusal(self) -> None:
+        reply = {
+            "ok": False,
+            "groups": [{"ok": False, "reason": "too_many_changes", "message": "Too many changes at once"}],
+        }
+        with patch.object(fix, "fix_share_recipient_cards", return_value=reply) as call, patch.object(fix, "_sleep"):
+            _totals, problem = fix._fix_recipient("owner@gmail.com", "a@gmail.com")
+        self.assertEqual(problem, "Too many changes at once")
+        self.assertEqual(call.call_count, 1)
+
+    def test_fix_recipient_gives_up_when_not_connected(self) -> None:
+        reply = {"ok": False, "reason": "recipient_not_connected", "message": "Not connected"}
+        with patch.object(fix, "fix_share_recipient_cards", return_value=reply) as call:
+            _totals, problem = fix._fix_recipient("owner@gmail.com", "a@gmail.com")
+        self.assertEqual(problem, "Not connected")
+        self.assertEqual(call.call_count, 1)
+
+    def test_targets_only_recipients_with_problems(self) -> None:
+        clean = condense_card_check(_card_reply())
+        dirty = condense_card_check(_card_reply(duplicates=1))
+        report = {
+            "recipients": [
+                {"email": "clean@gmail.com", "missing": [], "extra_count": 0},
+                {"email": "dupes@gmail.com", "missing": [], "extra_count": 0},
+                {"email": "mapping@gmail.com", "missing": ["Doe, Jane"], "extra_count": 0},
+                {"email": "unchecked@gmail.com", "missing": [], "extra_count": 0},
+            ],
+            "share_cards": {
+                "recipients": {
+                    "clean@gmail.com": clean,
+                    "dupes@gmail.com": dirty,
+                    "mapping@gmail.com": clean,
+                }
+            },
+        }
+        self.assertEqual(
+            fix._recipient_targets(report),
+            ["dupes@gmail.com", "mapping@gmail.com", "unchecked@gmail.com"],
+        )
+
+    def test_drive_fix_marks_missing_and_exports(self) -> None:
+        report = {"drive_missing_ids": [4, 5], "drive_extra_ids": [9]}
+        with patch.object(fix, "mark_contact_for_drive_export") as mark, patch.object(
+            fix, "mark_contacts_manifest_for_drive_export"
+        ) as manifest, patch.object(fix, "export_shared_contacts_to_google_drive") as export:
+            lines = fix._fix_drive(report)
+        self.assertEqual([call.args[0] for call in mark.call_args_list], [4, 5])
+        manifest.assert_called_once()
+        export.assert_called_once()
+        self.assertEqual(len(lines), 2)
+
+    def test_drive_fix_does_nothing_when_matching(self) -> None:
+        with patch.object(fix, "export_shared_contacts_to_google_drive") as export:
+            self.assertEqual(fix._fix_drive({"drive_missing_ids": [], "drive_extra_ids": []}), [])
+        export.assert_not_called()
+
+    def test_google_missing_skipped_when_other_uploads_pending(self) -> None:
+        from app.services.contact_service import create_contact
+
+        with patch("app.services.contact_service.create_google_contact_and_notify_share"):
+            create_contact({"family_name": "Blank", "given_name": "Card", "fields_text": "AL Central", "meetings_text": "X"})
+        with patch.object(fix, "upload_google_contacts") as upload:
+            lines = fix._fix_google_missing({"google_missing_ids": [1]})
+        self.assertEqual(lines, [])
+        upload.assert_not_called()
+
+    def test_share_mapping_sync_sends_missing_and_stale_ids_once(self) -> None:
+        report = {
+            "recipients": [
+                {"missing_person_ids": ["people/a"], "extra_person_ids": ["people/old"]},
+                {"missing_person_ids": ["people/a"], "extra_person_ids": []},
+            ]
+        }
+        with patch.object(fix, "sync_share_app_contact_changes", return_value={"ok": True}) as sync:
+            lines = fix._fix_share_mappings(report, "owner@gmail.com")
+        sync.assert_called_once_with("owner@gmail.com", ["people/a", "people/old"])
+        self.assertEqual(len(lines), 1)
+
+    def test_google_extra_actions_need_editor_lock(self) -> None:
+        with patch.object(fix, "is_editing_allowed", return_value=False):
+            self.assertEqual(fix.import_google_extras(["people/x"])["reason"], "not_editor")
+            self.assertEqual(fix.delete_google_extras(["people/x"])["reason"], "not_editor")
+
+    def test_google_extra_actions_only_for_listed_people(self) -> None:
+        with patch.object(fix, "is_editing_allowed", return_value=True), patch.object(
+            fix, "_load_saved_report", return_value={"google_extra_people": [{"id": "people/x", "name": "Stray, Sam"}]}
+        ), patch.object(fix, "_get_valid_access_token", return_value=("tok", "owner@gmail.com")), patch.object(
+            fix, "_api_json_request", return_value={}
+        ) as api, patch.object(fix, "_schedule_share_app_contact_sync") as share, patch.object(
+            fix, "_refresh_banner_later"
+        ), patch.object(fix, "_log_to_edit_list"):
+            refused = fix.delete_google_extras(["people/not-listed"])
+            done = fix.delete_google_extras(["people/x", "people/not-listed"])
+        self.assertEqual(refused["reason"], "not_listed")
+        self.assertTrue(done["ok"])
+        self.assertEqual(done["deleted"], 1)
+        api.assert_called_once()
+        self.assertIn("people/x:deleteContact", api.call_args.args[0])
+        share.assert_called_once_with("owner@gmail.com", ["people/x"])
+
+
+if __name__ == "__main__":
+    unittest.main()

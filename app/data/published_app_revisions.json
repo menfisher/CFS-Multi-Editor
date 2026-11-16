@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.254",
+      "version": "1.255",
+      "date_display": "11/16/2026",
+      "description": "A Fix automatically button on the contacts list repairs Drive, owner Google, and recipient Share cards when the contact lists do not match. Owner-Google extras can be imported into CFS or deleted. Duplicate Share cards are caught and cleaned up. Editors share one Share key through Drive."
+    },
+    {
       "date_display": "11/14/2026",
+      "version": "1.254",
       "description": "CFS adds and permanent deletes push to Share right away. The contacts list alerts if a recipient list does not match. Share treats nickname forms as the same person."
     },
     {

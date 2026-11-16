@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,6 +32,33 @@ logger = logging.getLogger(__name__)
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _fetch_etag_or_gone(creds, recipient_person_id: str) -> tuple[str, bool]:
+    """(etag, gone). gone is True only when Google answers 404/410.
+
+    A rate limit or network hiccup is neither: the card may still exist, so the
+    caller must not clear the mapping and create a second copy.
+    """
+    rid = normalize_person_resource_name(recipient_person_id)
+    if not rid:
+        return "", True
+    for attempt in range(3):
+        try:
+            data = (
+                people_service(creds)
+                .people()
+                .get(resourceName=rid, personFields="metadata")
+                .execute()
+            )
+            return str(data.get("etag") or ""), False
+        except Exception as exc:  # noqa: BLE001
+            status = getattr(getattr(exc, "resp", None), "status", None)
+            if status in (404, 410):
+                return "", True
+            if attempt < 2:
+                time.sleep(15.0 * (attempt + 1))
+    return "", False
 
 
 def _normalize_person_ids(person_ids: list[str]) -> list[str]:
@@ -554,6 +582,11 @@ def _apply_mapping_update(
         etag = str(recipient_person.get("etag") or "")
         if not etag:
             etag = get_person_etags_batch(creds, [rid]).get(rid)
+        if not etag:
+            etag, card_gone = _fetch_etag_or_gone(creds, rid)
+            if not etag and not card_gone:
+                # Rate limited or offline. Do not clear the mapping and create a copy.
+                return {"status": "error", "reason": "etag_unavailable", "mapping_id": mapping.get("id")}
         if not etag:
             share_id = str(mapping.get("share_id") or "")
             group_resource_name = str(mapping.get("group_resource_name") or "")

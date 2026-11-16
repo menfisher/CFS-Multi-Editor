@@ -2289,6 +2289,31 @@ h3 {
   color: #6a3811;
 }
 
+.roster-issue-list {
+  margin: 6px 0 8px 18px;
+  padding: 0;
+}
+
+.roster-extra-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.roster-fix-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.roster-checked-at {
+  margin-top: 6px;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
 .import-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

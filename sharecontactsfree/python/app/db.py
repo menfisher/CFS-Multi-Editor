@@ -297,6 +297,20 @@ def count_unique_mapped_recipient_contacts(recipient_email: str | None = None) -
     return int(row["count"] or 0) if row else 0
 
 
+def count_active_push_jobs_for_owner(owner: str) -> int:
+    """Queued or running push jobs for one owner (any recipient)."""
+    owner_key = normalize_email(owner)
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS count FROM share_push_jobs
+            WHERE owner = ? AND status IN ('queued', 'running')
+            """,
+            (owner_key,),
+        ).fetchone()
+    return int(row["count"] or 0) if row else 0
+
+
 def has_active_job_type(job_type: str) -> bool:
     with connect() as conn:
         row = conn.execute(

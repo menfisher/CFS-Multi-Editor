@@ -192,12 +192,110 @@
       </section>
     {% endif %}
 
-    {% if google_sync is defined and google_sync.state.roster_mismatch and google_sync.state.roster_alert_lines %}
+    {% if google_sync is defined and google_sync.state.roster_mismatch and (google_sync.state.roster_issues or google_sync.state.roster_alert_lines) %}
+      {% set roster_can_fix = (not google_sync.state.multi_editor_enabled or google_sync.state.editor_mode == "edit") and google_sync.account.status == "connected" %}
       <section class="panel google-sync-banner google-sync-banner-warn" id="contacts-roster-mismatch">
-        {% for line in google_sync.state.roster_alert_lines %}
-          <div>{{ line }}</div>
-        {% endfor %}
+        {% if google_sync.state.roster_issues %}
+          <div><strong>The contact lists do not all match.</strong></div>
+          <ul class="roster-issue-list">
+            {% for issue in google_sync.state.roster_issues %}
+              <li>{{ issue.text }}</li>
+            {% endfor %}
+          </ul>
+          {% if google_sync.state.roster_google_extra %}
+            <div class="roster-extra-list">
+              {% for person in google_sync.state.roster_google_extra %}
+                <div class="roster-extra-row" data-roster-extra data-person-id="{{ person.id }}">
+                  <span>{{ person.name }}</span>
+                  {% if roster_can_fix %}
+                    <button type="button" class="button" data-roster-extra-action="import">Import into CFS</button>
+                    <button type="button" class="button compact-button-danger" data-roster-extra-action="delete" data-roster-name="{{ person.name }}">Delete from Google</button>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="roster-fix-controls">
+            {% if google_sync.state.roster_fixable and roster_can_fix %}
+              <button type="button" class="button" id="roster-fix-button">Fix automatically</button>
+            {% elif google_sync.state.roster_fixable %}
+              <span>Only the Editor who holds the Editor lock can run the automatic fix.</span>
+            {% endif %}
+            <span id="roster-fix-status" aria-live="polite"></span>
+          </div>
+          {% if google_sync.state.roster_checked_at %}
+            <div class="roster-checked-at">Last checked {{ google_sync.state.roster_checked_at }}</div>
+          {% endif %}
+        {% else %}
+          {% for line in google_sync.state.roster_alert_lines %}
+            <div>{{ line }}</div>
+          {% endfor %}
+        {% endif %}
       </section>
+      <script>
+        (function () {
+          var button = document.getElementById("roster-fix-button");
+          var statusEl = document.getElementById("roster-fix-status");
+          var timer = null;
+          function setStatus(text) { if (statusEl) { statusEl.textContent = text; } }
+          function poll() {
+            fetch("/contacts/roster-fix/status", { headers: { Accept: "application/json" } })
+              .then(function (r) { return r.json(); })
+              .then(function (s) {
+                if (s.running) {
+                  if (button) { button.disabled = true; }
+                  setStatus((s.step || "Working") + "... this can take several minutes. You can keep working.");
+                  timer = setTimeout(poll, 4000);
+                } else {
+                  if (button) { button.disabled = false; }
+                  if (s.finished_at) {
+                    setStatus(s.message || "Finished.");
+                    if (s.ok) { setTimeout(function () { window.location.reload(); }, 1500); }
+                  }
+                }
+              })
+              .catch(function () { timer = setTimeout(poll, 8000); });
+          }
+          if (button) {
+            button.addEventListener("click", function () {
+              button.disabled = true;
+              setStatus("Starting...");
+              fetch("/contacts/roster-fix/start", { method: "POST", headers: { Accept: "application/json" } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  if (!data.ok && data.reason !== "already_running") {
+                    button.disabled = false;
+                    setStatus(data.message || "The fix could not start.");
+                    return;
+                  }
+                  poll();
+                })
+                .catch(function () { button.disabled = false; setStatus("The fix could not start."); });
+            });
+            poll();
+          }
+          document.querySelectorAll("[data-roster-extra-action]").forEach(function (extraButton) {
+            extraButton.addEventListener("click", function () {
+              var row = extraButton.closest("[data-roster-extra]");
+              var action = extraButton.getAttribute("data-roster-extra-action");
+              var name = row.querySelector("span").textContent;
+              if (action === "delete" && !window.confirm("Delete " + name + " from the owner's Google account? This cannot be undone from CFS.")) { return; }
+              row.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+              fetch("/contacts/roster-fix/google-extra", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({ action: action, person_ids: [row.getAttribute("data-person-id")] })
+              })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  if (data.ok) { row.remove(); setStatus(action === "import" ? "Imported " + name + "." : "Deleted " + name + " from Google."); }
+                  else { row.querySelectorAll("button").forEach(function (b) { b.disabled = false; }); setStatus(data.message || "That did not work."); }
+                })
+                .catch(function () { row.querySelectorAll("button").forEach(function (b) { b.disabled = false; }); setStatus("That did not work."); });
+            });
+          });
+        })();
+      </script>
     {% endif %}
 
     <section class="panel">
