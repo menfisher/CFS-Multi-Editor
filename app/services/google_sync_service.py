@@ -10479,6 +10479,22 @@ def _mtg_home_elder_flag_from_user_defined(user_defined) -> str:
     return _user_defined_field_value(user_defined, _is_mtg_home_elder_field)
 
 
+def _protect_google_mtg_home_elder_flag(update_payload: dict, current_person: dict) -> str:
+    """Keep Google's 1/2 code in an outgoing update when CFS has none.
+
+    Returns the code that was kept (empty when nothing needed protecting).
+    """
+    user_defined = list(update_payload.get("userDefined") or [])
+    if _mtg_home_elder_flag_from_user_defined(user_defined):
+        return ""
+    google_flag = _mtg_home_elder_flag_from_user_defined((current_person or {}).get("userDefined"))
+    if google_flag not in {"1", "2"}:
+        return ""
+    user_defined.append({"key": CFS_MTG_HOME_ELDER_FIELD, "value": google_flag})
+    update_payload["userDefined"] = user_defined
+    return google_flag
+
+
 def _meets_in_state_from_user_defined(user_defined) -> str:
     return _user_defined_field_value(user_defined, _is_meets_in_state_field)
 
@@ -11453,6 +11469,16 @@ def _process_upsert_queue_entry(
         raise RuntimeError("Google contact metadata is missing the CONTACT source required for update.")
 
     update_payload = dict(person_payload)
+    # Never blank a meeting-home/elder code that Google still has. Upload replaces
+    # the whole userDefined list, so a contact with an empty local flag would
+    # silently erase the only surviving copy. Keep Google's code and bring it
+    # back into CFS instead.
+    protected_flag = _protect_google_mtg_home_elder_flag(update_payload, current_person)
+    if protected_flag:
+        conn.execute(
+            "UPDATE contacts SET mtg_home_elder_flag = ? WHERE id = ? AND COALESCE(mtg_home_elder_flag, '') = ''",
+            (protected_flag, contact_id),
+        )
     update_payload["resourceName"] = google_contact_id
     update_payload["etag"] = _clean(current_person.get("etag"))
     update_payload["metadata"] = {"sources": [source_payload]}

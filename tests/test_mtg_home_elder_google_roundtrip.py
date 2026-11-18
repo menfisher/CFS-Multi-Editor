@@ -7,6 +7,7 @@ from app.services.google_sync_service import (
     _google_person_import_fields,
     _insert_contact_from_google_person,
     _mtg_home_elder_flag_from_user_defined,
+    _protect_google_mtg_home_elder_flag,
     _update_contact_from_google_person,
 )
 
@@ -70,6 +71,36 @@ class MtgHomeElderGoogleRoundtripTests(unittest.TestCase):
         )
         self.assertIsNotNone(fields)
         self.assertEqual(fields["mtg_home_elder_flag"], "2")
+
+
+class MtgHomeElderUploadProtectionTests(unittest.TestCase):
+    def test_upload_keeps_google_code_when_cfs_has_none(self) -> None:
+        payload = _contact_person_payload({"family_name": "Bearden", "given_name": "Galen"})
+        kept = _protect_google_mtg_home_elder_flag(
+            payload,
+            {"userDefined": [{"key": CFS_MTG_HOME_ELDER_FIELD, "value": "2"}]},
+        )
+        self.assertEqual(kept, "2")
+        self.assertIn({"key": CFS_MTG_HOME_ELDER_FIELD, "value": "2"}, payload["userDefined"])
+
+    def test_upload_does_not_override_a_cfs_code(self) -> None:
+        payload = _contact_person_payload(
+            {"family_name": "Bearden", "given_name": "Galen", "mtg_home_elder_flag": "1"}
+        )
+        kept = _protect_google_mtg_home_elder_flag(
+            payload,
+            {"userDefined": [{"key": CFS_MTG_HOME_ELDER_FIELD, "value": "2"}]},
+        )
+        self.assertEqual(kept, "")
+        self.assertEqual(
+            [i for i in payload["userDefined"] if i["key"] == CFS_MTG_HOME_ELDER_FIELD],
+            [{"key": CFS_MTG_HOME_ELDER_FIELD, "value": "1"}],
+        )
+
+    def test_upload_ignores_google_without_a_code(self) -> None:
+        payload = _contact_person_payload({"family_name": "Bearden", "given_name": "Galen"})
+        self.assertEqual(_protect_google_mtg_home_elder_flag(payload, {}), "")
+        self.assertNotIn("userDefined", payload)
 
 
 class MtgHomeElderGooglePersistTests(unittest.TestCase):
