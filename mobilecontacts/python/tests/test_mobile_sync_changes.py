@@ -73,7 +73,8 @@ class MobileSyncChangesTests(unittest.TestCase):
             "drive_field_updates": 0,
         },
     )
-    def test_sync_uses_two_way_mobile_path(self, sync_mock) -> None:
+    @patch("mobile.sync_adapter.ensure_shared_group_label")
+    def test_sync_uses_two_way_mobile_path(self, _label_mock, sync_mock) -> None:
         result = sync_contact_changes(upload=True)
         sync_mock.assert_called_once_with()
         self.assertEqual(result["contact_upload_count"], 1)

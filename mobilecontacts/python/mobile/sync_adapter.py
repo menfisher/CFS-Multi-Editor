@@ -8,6 +8,7 @@ from app.services.google_sync_service import (
     describe_google_http_error,
     export_mobile_pending_shared_contacts_to_google_drive,
     get_google_sync_summary,
+    import_book_layouts_from_google_drive,
     import_field_list_from_google_drive,
     import_google_contacts,
     import_google_contacts_chunk,
@@ -117,8 +118,32 @@ def import_all_contacts() -> int:
     return import_sign_in_contacts(include_app_fields=True)
 
 
+LEGACY_SHARED_GROUP_NAME = "TriState Separates (Shared)"
+
+
+def ensure_shared_group_label() -> None:
+    """Load the shared group name from Drive before any contact upload.
+
+    The phone keeps its own copy of the book layouts, which starts out with the
+    old default name. An upload rewrites every contact's Google groups from that
+    name, so uploading with the old default moves contacts out of the real shared
+    group. If Drive cannot be read and the name is still the old default, stop
+    instead of uploading.
+    """
+    from app.services.preset_service import get_shared_contacts_group_name
+
+    try:
+        import_book_layouts_from_google_drive(export_if_missing=False)
+    except Exception as exc:
+        if get_shared_contacts_group_name() == LEGACY_SHARED_GROUP_NAME:
+            raise RuntimeError(
+                "Could not load the shared group name from Drive. Try Sync again in a minute."
+            ) from exc
+
+
 def sync_contact_changes(*, upload: bool = True) -> dict:
     if upload:
+        ensure_shared_group_label()
         return sync_mobile_editor_contact_changes()
     force_full_fetch = not _has_google_contacts_sync_token()
     download_result = sync_google_contact_changes(force_full_fetch=force_full_fetch)
@@ -253,4 +278,5 @@ def mobile_sync_message(result: dict) -> str:
 
 
 def upload_contacts_only() -> dict:
+    ensure_shared_group_label()
     return upload_google_contacts_only()
