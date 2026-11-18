@@ -198,6 +198,15 @@ def _ensure_contact_photo_sync_columns(conn: sqlite3.Connection) -> None:
             ADD COLUMN meets_in_state TEXT NOT NULL DEFAULT ''
             """
         )
+    if "mtg_home_elder_cleared_at" not in columns:
+        # Set when an editor deliberately clears the 1/2 code, so an empty code can be
+        # told apart from a lost one and the clear can travel to Drive/Google/mobile.
+        conn.execute(
+            """
+            ALTER TABLE contacts
+            ADD COLUMN mtg_home_elder_cleared_at TEXT NOT NULL DEFAULT ''
+            """
+        )
 
 
 def _ensure_book_layout_preset_columns(conn: sqlite3.Connection) -> None:

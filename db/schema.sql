@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   notes TEXT,
   mtg_home_elder_flag TEXT,
   meets_in_state TEXT NOT NULL DEFAULT '',
+  mtg_home_elder_cleared_at TEXT NOT NULL DEFAULT '',
   do_not_print INTEGER NOT NULL DEFAULT 0
 );
 

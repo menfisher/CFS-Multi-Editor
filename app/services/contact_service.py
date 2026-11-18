@@ -2102,6 +2102,20 @@ def get_latest_contact_edit_log_entries(contact_id: int) -> list[dict]:
     ]
 
 
+def _next_mtg_home_elder_cleared_at(contact_id: int, previous_flag: object, next_flag: object) -> str:
+    """Tombstone for a deliberately cleared 1/2 code.
+
+    An empty code is ambiguous (lost vs. cleared). The timestamp marks a real clear so
+    Drive, Google and mobile apply it instead of restoring the old code.
+    """
+    if _clean_text(next_flag):
+        return ""
+    if _clean_text(previous_flag):
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    row = fetch_one("SELECT mtg_home_elder_cleared_at FROM contacts WHERE id = ?", (contact_id,))
+    return _clean_text(row["mtg_home_elder_cleared_at"]) if row else ""
+
+
 def update_contact(contact_id: int, payload: dict, *, queue_google_sync: bool = True) -> bool:
     existing_contact = get_contact_detail(contact_id)
     if not existing_contact:
@@ -2122,13 +2136,23 @@ def update_contact(contact_id: int, payload: dict, *, queue_google_sync: bool = 
         "photo": _clean_text(payload.get("photo")),
         "birthday": _clean_text(payload.get("birthday")),
         "notes": _clean_text(payload.get("notes")),
-        "mtg_home_elder_flag": _clean_text(payload.get("mtg_home_elder_flag")),
+        # A payload without the key must never blank the code; only an explicit empty value clears it.
+        "mtg_home_elder_flag": (
+            _clean_text(payload.get("mtg_home_elder_flag"))
+            if "mtg_home_elder_flag" in payload
+            else _clean_text(existing_contact.get("mtg_home_elder_flag"))
+        ),
         "meets_in_state": (
             _clean_text(payload.get("meets_in_state"))
             if "meets_in_state" in payload
             else _clean_text(existing_contact.get("meets_in_state"))
         ),
     }
+    core_fields["mtg_home_elder_cleared_at"] = _next_mtg_home_elder_cleared_at(
+        contact_id,
+        existing_contact.get("mtg_home_elder_flag"),
+        core_fields["mtg_home_elder_flag"],
+    )
     core_fields["group_membership"] = build_contact_group_membership(core_fields["fields_text"], core_fields["meetings_text"])
     photo_sync_fields = _next_photo_sync_fields(existing_contact, core_fields["photo"])
     shared_drive_sync_fields = _next_shared_drive_sync_fields(existing_contact)
@@ -2215,6 +2239,7 @@ def update_contact(contact_id: int, payload: dict, *, queue_google_sync: bool = 
               birthday = ?,
               notes = ?,
               mtg_home_elder_flag = ?,
+              mtg_home_elder_cleared_at = ?,
               meets_in_state = ?
             WHERE id = ?
             """,
@@ -2240,6 +2265,7 @@ def update_contact(contact_id: int, payload: dict, *, queue_google_sync: bool = 
                 core_fields["birthday"],
                 core_fields["notes"],
                 core_fields["mtg_home_elder_flag"],
+                core_fields["mtg_home_elder_cleared_at"],
                 core_fields["meets_in_state"],
                 contact_id,
             ),

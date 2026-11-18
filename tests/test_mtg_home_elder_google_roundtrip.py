@@ -8,6 +8,9 @@ from app.services.google_sync_service import (
     _insert_contact_from_google_person,
     _mtg_home_elder_flag_from_user_defined,
     _protect_google_mtg_home_elder_flag,
+    _resolve_mtg_home_elder_from_drive,
+    _shared_contact_app_fields_stale,
+    _shared_contact_local_app_fields_should_push,
     _update_contact_from_google_person,
 )
 
@@ -103,6 +106,56 @@ class MtgHomeElderUploadProtectionTests(unittest.TestCase):
         self.assertNotIn("userDefined", payload)
 
 
+class MtgHomeElderDriveClearTests(unittest.TestCase):
+    def test_blank_drive_code_without_marker_keeps_local_code(self) -> None:
+        self.assertEqual(
+            _resolve_mtg_home_elder_from_drive(
+                {"mtg_home_elder_flag": "1"},
+                {"mtg_home_elder_flag": "", "mtg_home_elder_cleared_at": ""},
+            ),
+            ("1", ""),
+        )
+
+    def test_blank_drive_code_with_marker_clears_local_code(self) -> None:
+        self.assertEqual(
+            _resolve_mtg_home_elder_from_drive(
+                {"mtg_home_elder_flag": "1"},
+                {"mtg_home_elder_flag": "", "mtg_home_elder_cleared_at": "2026-11-18T10:00:00+00:00"},
+            ),
+            ("", "2026-11-18T10:00:00+00:00"),
+        )
+
+    def test_filled_drive_code_wins_and_drops_the_marker(self) -> None:
+        self.assertEqual(
+            _resolve_mtg_home_elder_from_drive(
+                {"mtg_home_elder_flag": "", "mtg_home_elder_cleared_at": "x"},
+                {"mtg_home_elder_flag": "2"},
+            ),
+            ("2", ""),
+        )
+
+    def test_local_clear_is_pushed_to_drive_and_stale_check_sees_remote_clear(self) -> None:
+        self.assertTrue(
+            _shared_contact_local_app_fields_should_push(
+                {"mtg_home_elder_flag": "", "mtg_home_elder_cleared_at": "x"},
+                {"mtg_home_elder_flag": "1"},
+            )
+        )
+        self.assertFalse(
+            _shared_contact_local_app_fields_should_push(
+                {"mtg_home_elder_flag": "", "mtg_home_elder_cleared_at": ""},
+                {"mtg_home_elder_flag": "1"},
+            )
+        )
+        self.assertTrue(
+            _shared_contact_app_fields_stale(
+                {"mtg_home_elder_flag": "1", "shared_drive_revision": 5},
+                {"mtg_home_elder_flag": "", "mtg_home_elder_cleared_at": "x"},
+                5,
+            )
+        )
+
+
 class MtgHomeElderGooglePersistTests(unittest.TestCase):
     def setUp(self) -> None:
         self.conn = sqlite3.connect(":memory:")
@@ -126,6 +179,7 @@ class MtgHomeElderGooglePersistTests(unittest.TestCase):
               birthday TEXT NOT NULL DEFAULT '',
               notes TEXT NOT NULL DEFAULT '',
               mtg_home_elder_flag TEXT NOT NULL DEFAULT '',
+              mtg_home_elder_cleared_at TEXT NOT NULL DEFAULT '',
               meets_in_state TEXT NOT NULL DEFAULT '',
               do_not_print INTEGER NOT NULL DEFAULT 0
             );
@@ -225,6 +279,19 @@ class MtgHomeElderGooglePersistTests(unittest.TestCase):
             "SELECT mtg_home_elder_flag FROM contacts WHERE id = 1"
         ).fetchone()
         self.assertEqual(row["mtg_home_elder_flag"], "2")
+
+    def test_update_does_not_restore_a_code_that_was_deliberately_cleared(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO contacts (id, family_name, given_name, mtg_home_elder_flag, mtg_home_elder_cleared_at)
+            VALUES (1, 'Bearden', 'Galen', '', '2026-11-18T10:00:00+00:00')
+            """
+        )
+        _update_contact_from_google_person(self.conn, 1, self._fields(flag="2"))
+        row = self.conn.execute(
+            "SELECT mtg_home_elder_flag FROM contacts WHERE id = 1"
+        ).fetchone()
+        self.assertEqual(row["mtg_home_elder_flag"], "")
 
     def test_update_fills_empty_local_from_google_elder_2(self) -> None:
         self.conn.execute(

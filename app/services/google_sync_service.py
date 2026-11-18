@@ -4779,6 +4779,9 @@ def _shared_contact_comparable_payload(
                 field: field_value
                 for field, field_value in value.items()
                 if field not in _SHARED_CONTACT_COMPARE_IGNORE_CONTACT_FIELDS
+                # An empty clear marker equals "no marker", so records written before the
+                # column existed do not look changed and trigger a mass re-export.
+                and not (field == "mtg_home_elder_cleared_at" and not _clean(field_value))
             }
         return value
 
@@ -4883,6 +4886,7 @@ def _shared_contact_drive_export_needed(
 _SHARED_CONTACT_APP_ONLY_CONTACT_FIELDS = frozenset(
     {
         "mtg_home_elder_flag",
+        "mtg_home_elder_cleared_at",
         "meets_in_state",
         "birthday",
         "notes",
@@ -5233,7 +5237,11 @@ def _write_contacts_full_snapshot_to_google_drive(access_token: str, storage: di
 def _insert_row_dict(conn, table_name: str, row: dict) -> None:
     if not isinstance(row, dict) or not row:
         return
-    columns = list(row.keys())
+    known_columns = {info[1] for info in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+    # Skip columns this version lacks (records written by a newer editor).
+    columns = [column for column in row.keys() if not known_columns or column in known_columns]
+    if not columns:
+        return
     placeholders = ", ".join("?" for _ in columns)
     conn.execute(
         f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})",
@@ -5620,10 +5628,20 @@ def _merge_shared_contact_record_from_drive(conn, payload: dict) -> int:
                 normalized_contact_row["status"] = existing["status"]
         existing_mtg = _clean(existing.get("mtg_home_elder_flag"))
         incoming_mtg = _clean(normalized_contact_row.get("mtg_home_elder_flag"))
-        if existing_mtg and not incoming_mtg:
+        incoming_cleared = _clean(normalized_contact_row.get("mtg_home_elder_cleared_at"))
+        if existing_mtg and not incoming_mtg and not incoming_cleared:
+            # Blank without a tombstone means "unknown", so keep the local code.
             normalized_contact_row["mtg_home_elder_flag"] = existing_mtg
+        elif not incoming_mtg and not incoming_cleared:
+            normalized_contact_row["mtg_home_elder_cleared_at"] = _clean(existing.get("mtg_home_elder_cleared_at"))
 
-        columns = [column for column in normalized_contact_row.keys() if column != "id"]
+        # Ignore columns this version doesn't have (records written by a newer editor).
+        known_columns = {row[1] for row in conn.execute("PRAGMA table_info(contacts)").fetchall()}
+        columns = [
+            column
+            for column in normalized_contact_row.keys()
+            if column != "id" and column in known_columns
+        ]
         assignments = ", ".join(f"{column} = ?" for column in columns)
         conn.execute(
             f"UPDATE contacts SET {assignments} WHERE id = ?",
@@ -7097,6 +7115,22 @@ def _coalesce_mtg_home_elder_flag(local_value: object, remote_value: object) -> 
     return remote or _clean(local_value)
 
 
+def _resolve_mtg_home_elder_from_drive(local_row: dict, remote_row: dict) -> tuple[str, str]:
+    """Return (code, cleared_at) after applying a Drive record.
+
+    A filled remote code wins. A blank remote code with a clear timestamp is a deliberate
+    clear and wins too. A blank remote code with no timestamp is "unknown" (lost data), so
+    the local code is kept.
+    """
+    remote_flag = _clean(remote_row.get("mtg_home_elder_flag"))
+    remote_cleared = _clean(remote_row.get("mtg_home_elder_cleared_at"))
+    if remote_flag:
+        return remote_flag, ""
+    if remote_cleared:
+        return "", remote_cleared
+    return _clean(local_row.get("mtg_home_elder_flag")), _clean(local_row.get("mtg_home_elder_cleared_at"))
+
+
 def _apply_shared_contact_app_fields(
     local_row: dict,
     remote_row: dict,
@@ -7108,10 +7142,7 @@ def _apply_shared_contact_app_fields(
     local_google_contact_id = _clean(local_row.get("google_contact_id"))
     if google_contact_id and local_google_contact_id and google_contact_id != local_google_contact_id:
         return False
-    mtg_home_elder_flag = _coalesce_mtg_home_elder_flag(
-        local_row.get("mtg_home_elder_flag"),
-        remote_row.get("mtg_home_elder_flag"),
-    )
+    mtg_home_elder_flag, mtg_home_elder_cleared_at = _resolve_mtg_home_elder_from_drive(local_row, remote_row)
     meets_in_state = (
         _clean(remote_row.get("meets_in_state"))
         if "meets_in_state" in remote_row
@@ -7129,6 +7160,7 @@ def _apply_shared_contact_app_fields(
                 UPDATE contacts
                 SET
                   mtg_home_elder_flag = ?,
+                  mtg_home_elder_cleared_at = ?,
                   meets_in_state = ?,
                   birthday = ?,
                   shared_drive_revision = ?,
@@ -7139,6 +7171,7 @@ def _apply_shared_contact_app_fields(
                 """,
                 (
                     mtg_home_elder_flag,
+                    mtg_home_elder_cleared_at,
                     meets_in_state,
                     birthday,
                     remote_revision,
@@ -7154,12 +7187,20 @@ def _apply_shared_contact_app_fields(
                 UPDATE contacts
                 SET
                   mtg_home_elder_flag = ?,
+                  mtg_home_elder_cleared_at = ?,
                   meets_in_state = ?,
                   birthday = ?,
                   shared_drive_revision = ?
                 WHERE id = ?
                 """,
-                (mtg_home_elder_flag, meets_in_state, birthday, remote_revision, int(local_row["id"])),
+                (
+                    mtg_home_elder_flag,
+                    mtg_home_elder_cleared_at,
+                    meets_in_state,
+                    birthday,
+                    remote_revision,
+                    int(local_row["id"]),
+                ),
             )
         conn.commit()
     if apply_photo and access_token:
@@ -7177,6 +7218,12 @@ def _shared_contact_app_fields_stale(local_row: dict, remote_row: dict, remote_r
     remote_mtg = _clean(remote_row.get("mtg_home_elder_flag"))
     if remote_mtg and remote_mtg != local_mtg:
         return True
+    if (
+        not remote_mtg
+        and local_mtg
+        and _clean(remote_row.get("mtg_home_elder_cleared_at"))
+    ):
+        return True  # Another editor deliberately cleared the code.
     if "meets_in_state" in remote_row:
         local_state = _clean(local_row.get("meets_in_state"))
         remote_state = _clean(remote_row.get("meets_in_state"))
@@ -7197,6 +7244,8 @@ def _shared_contact_local_app_fields_should_push(local_contact: dict, remote_con
             continue
         if local_value or not remote_value:
             return True
+        if key == "mtg_home_elder_flag" and _clean(local_contact.get("mtg_home_elder_cleared_at")):
+            return True  # Deliberately cleared here; Drive still has the old code.
     return False
 
 
@@ -11469,11 +11518,13 @@ def _process_upsert_queue_entry(
         raise RuntimeError("Google contact metadata is missing the CONTACT source required for update.")
 
     update_payload = dict(person_payload)
-    # Never blank a meeting-home/elder code that Google still has. Upload replaces
-    # the whole userDefined list, so a contact with an empty local flag would
-    # silently erase the only surviving copy. Keep Google's code and bring it
-    # back into CFS instead.
-    protected_flag = _protect_google_mtg_home_elder_flag(update_payload, current_person)
+    # Upload replaces the whole userDefined list, so a contact whose local code is
+    # merely missing would silently erase the only surviving copy on Google. Keep
+    # Google's code and bring it back into CFS -- unless an editor deliberately
+    # cleared it in CFS, in which case CFS wins and the clear goes to Google.
+    protected_flag = ""
+    if not _clean(contact.get("mtg_home_elder_cleared_at")):
+        protected_flag = _protect_google_mtg_home_elder_flag(update_payload, current_person)
     if protected_flag:
         conn.execute(
             "UPDATE contacts SET mtg_home_elder_flag = ? WHERE id = ? AND COALESCE(mtg_home_elder_flag, '') = ''",
@@ -11847,7 +11898,8 @@ def _insert_contact_from_google_person(conn, fields: dict, *, status: str = "imp
 def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> None:
     existing = conn.execute(
         """
-        SELECT photo, photo_drive_file_id, mtg_home_elder_flag, meets_in_state, do_not_print, notes
+        SELECT photo, photo_drive_file_id, mtg_home_elder_flag, mtg_home_elder_cleared_at,
+               meets_in_state, do_not_print, notes
         FROM contacts
         WHERE id = ?
         """,
@@ -11861,6 +11913,9 @@ def _update_contact_from_google_person(conn, contact_id: int, fields: dict) -> N
     incoming_mtg = _clean(fields.get("mtg_home_elder_flag")) or _mtg_home_elder_flag_from_user_defined(
         fields.get("user_defined")
     )
+    if _clean(existing_row.get("mtg_home_elder_cleared_at")):
+        # Deliberately cleared in CFS: Google must not bring the old code back.
+        incoming_mtg = ""
     mtg_home_elder_flag = _clean(existing_row.get("mtg_home_elder_flag")) or incoming_mtg
     incoming_meets = _clean(fields.get("meets_in_state")) or _meets_in_state_from_user_defined(
         fields.get("user_defined")
