@@ -35,7 +35,7 @@
       {% else %}
       <p class="mobile-home-hint">Choose Editor or Pending Edits access, then connect Google.</p>
       {% endif %}
-      <form method="post" action="/auth/login" class="mobile-home-signin-form" id="mobile-home-signin-form">
+      <form method="post" action="/auth/login" class="mobile-home-signin-form" id="mobile-home-signin-form" novalidate>
         <label class="mobile-form-field">
           <span>Access role</span>
           <select name="access_role" id="mobile-access-role">
@@ -55,6 +55,7 @@
           <span>Editor password</span>
           <input type="password" name="editor_secret" autocomplete="current-password">
         </label>
+        <p class="mobile-error" id="mobile-signin-message" role="alert" hidden></p>
         <button type="submit" class="mobile-button mobile-home-google-button" id="mobile-signin-submit">Sign in with Google</button>
         <p class="mobile-home-hint">Sign in with al.ms.lacontacts@gmail.com if making edits to contacts in that account.</p>
       </form>
@@ -128,13 +129,57 @@
           submitButton.textContent = isEditor ? "Sign in with Google" : "Sign in";
         }
       };
-      signInForm?.addEventListener("submit", (event) => {
-        if (roleSelect?.value === "non_editor") {
+      const signInMessage = document.getElementById("mobile-signin-message");
+      const showSignInMessage = (text) => {
+        if (!signInMessage) {
           return;
         }
-        blockStandaloneSignIn(event);
+        signInMessage.textContent = text;
+        signInMessage.hidden = !text;
+      };
+      signInForm?.addEventListener("submit", (event) => {
+        // Native validation bubbles and alert() can be silent on some phones and
+        // in-app browsers, so say what is missing on the page itself.
+        const isEditor = roleSelect?.value === "editor";
+        const nameInput = signInForm.querySelector('input[name="access_name"]');
+        if (!nameInput || !nameInput.value.trim()) {
+          event.preventDefault();
+          showSignInMessage("Enter your initials.");
+          nameInput?.focus();
+          return;
+        }
+        if (isEditor && secretInput && !secretInput.value) {
+          event.preventDefault();
+          showSignInMessage("Enter the Editor password.");
+          secretInput.focus();
+          return;
+        }
+        if (!isEditor && driveInput && !driveInput.value.trim()) {
+          event.preventDefault();
+          showSignInMessage("Enter the Drive account email.");
+          driveInput.focus();
+          return;
+        }
+        showSignInMessage("");
+        if (!isEditor) {
+          if (submitButton) {
+            submitButton.textContent = "Signing in...";
+          }
+          return;
+        }
+        if (isStandalone) {
+          event.preventDefault();
+          showSignInMessage(
+            "Google blocks sign-in from the Home Screen app. Open mobile.contactsfreeshare.org in Safari or Chrome, then sign in there."
+          );
+          return;
+        }
+        if (submitButton) {
+          submitButton.textContent = "Opening Google...";
+        }
       });
       roleSelect?.addEventListener("change", syncRoleFields);
+      window.addEventListener("pageshow", syncRoleFields);
       syncRoleFields();
     });
   </script>

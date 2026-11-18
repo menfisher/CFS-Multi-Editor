@@ -31,6 +31,13 @@ class MobileHomeSignInTests(unittest.TestCase):
         self.assertIn("then enter your initials", page)
         self.assertIn("enter your initials", page)
 
+    def test_missing_fields_are_reported_on_the_page(self) -> None:
+        page = self._home(multi_editor=True)
+        self.assertIn("novalidate", page)
+        self.assertIn('id="mobile-signin-message"', page)
+        self.assertIn("Enter the Editor password.", page)
+        self.assertIn("Enter your initials.", page)
+
     def test_multi_editor_mode_asks_for_initials(self) -> None:
         page = self._home(multi_editor=True)
         self.assertNotIn("Single-Editor sign in", page)
