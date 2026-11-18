@@ -87,6 +87,24 @@ class RosterFixRunnerTests(unittest.TestCase):
         set_request_db_path(None)
         self._tempdir.cleanup()
 
+    def test_edit_list_entry_is_written_as_completed(self) -> None:
+        from app.database import fetch_all
+
+        with patch.object(fix, "get_current_editor_initials", return_value="Cv"):
+            fix._log_to_edit_list("Share roster fix", ["Google Drive: removed 2 contact(s)", "Result: everything matches"])
+        rows = [
+            dict(row)
+            for row in fetch_all(
+                "SELECT name_event, changes_text, completed_by, completed_at FROM changes_list_entries WHERE name_event = ?",
+                ("Share roster fix",),
+            )
+        ]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["completed_by"], "Cv")
+        self.assertTrue(rows[0]["completed_at"])
+        self.assertTrue(rows[0]["changes_text"].startswith("Cv - "))
+        self.assertIn("Result: everything matches", rows[0]["changes_text"])
+
     def test_start_refused_without_editor_lock(self) -> None:
         with patch.object(fix, "is_editing_allowed", return_value=False), patch.object(fix.threading, "Thread") as thread:
             result = fix.start_roster_fix()

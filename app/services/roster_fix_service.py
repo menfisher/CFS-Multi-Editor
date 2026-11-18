@@ -104,7 +104,11 @@ def _log_to_edit_list(title: str, lines: list[str]) -> None:
     if not cleaned:
         return
     try:
-        from app.services.changes_list_service import add_changes_entry, update_changes_entry
+        from app.services.changes_list_service import (
+            add_changes_entry,
+            complete_changes_entry,
+            update_changes_entry,
+        )
 
         initials = get_current_editor_initials()
         if not initials:
@@ -113,6 +117,9 @@ def _log_to_edit_list(title: str, lines: list[str]) -> None:
         entry_id = int(entry.get("id") or 0)
         if entry_id:
             update_changes_entry(entry_id, name_event=title, changes_text="\n".join(cleaned), initials=initials)
+            # These rows only record what the fix already did, so they go straight to
+            # Completed edit(s) (green) instead of waiting as Pending Edits.
+            complete_changes_entry(entry_id, initials=initials)
     except Exception:  # noqa: BLE001 - logging must never break the fix
         _LOGGER.exception("Could not write roster fix to the Edit List")
 
