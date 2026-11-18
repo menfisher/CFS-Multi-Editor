@@ -405,7 +405,7 @@ def _post_sign_in_redirect(is_non_editor: bool) -> str:
 
 MULTI_EDITOR_SIGN_IN_REQUIRED_MESSAGE = (
     "This account uses Multi-Editor mode. Choose Editor or Pending Edits below, "
-    "enter your name, and use Sign in with role."
+    "enter your initials, and use Sign in with role."
 )
 
 

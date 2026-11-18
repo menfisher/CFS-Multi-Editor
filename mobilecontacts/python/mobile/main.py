@@ -11,7 +11,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from mobile.config import APP_SECRET_KEY, APP_BASE_URL, STATIC_DIR
 from mobile.access_session import mobile_is_non_editor
-from mobile.routes.auth import router as auth_router
+from mobile.routes.auth import MULTI_EDITOR_SIGN_IN_REQUIRED_MESSAGE, router as auth_router
 from mobile.routes.contacts import router as contacts_router
 from mobile.routes.pending_edits import router as pending_edits_router
 from app.services.google_sync_service import is_multi_editor_enabled
@@ -125,11 +125,16 @@ def home(request: Request):
         if mobile_is_non_editor(request):
             return RedirectResponse(url="/m/pending-edits/", status_code=303)
         return RedirectResponse(url="/m/contacts/", status_code=303)
+    error = request.query_params.get("error", "")
+    # Before sign-in the phone cannot tell whose database to read, so a cold start
+    # looks like Single-Editor mode. After Google says the account is Multi-Editor,
+    # show only the role sign-in so Editors are not sent to the wrong button again.
+    multi_editor = is_multi_editor_enabled() or error == MULTI_EDITOR_SIGN_IN_REQUIRED_MESSAGE
     return templates.TemplateResponse(
         request=request,
         name="home.html",
         context={
-            "error": request.query_params.get("error", ""),
-            "multi_editor_enabled": is_multi_editor_enabled(),
+            "error": error,
+            "multi_editor_enabled": multi_editor,
         },
     )
