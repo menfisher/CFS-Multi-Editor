@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.255",
+      "version": "1.256",
+      "date_display": "11/18/2026",
+      "description": "Roster fix entries in the Edit List now show as completed (green) instead of pending. The roster fix button, Import and Delete prompts for owner Google extras, and duplicate Share card cleanup from 1.255 are unchanged."
+    },
+    {
       "date_display": "11/16/2026",
+      "version": "1.255",
       "description": "A Fix automatically button on the contacts list repairs Drive, owner Google, and recipient Share cards when the contact lists do not match. Owner-Google extras can be imported into CFS or deleted. Duplicate Share cards are caught and cleaned up. Editors share one Share key through Drive."
     },
     {
