@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.256",
+      "version": "1.257",
+      "date_display": "11/22/2026",
+      "description": "Safer syncing. Import from Google no longer deletes contacts when the Drive copy comes from a different contact numbering, clearing the Meeting home/Elder code in CFS now clears it everywhere while a blank code never erases Google's, and Upload keeps Google's code when CFS has none. Share fixes: no more duplicate cards after temporary Google errors, and the roster fix merges one person's cards split across groups."
+    },
+    {
       "date_display": "11/18/2026",
+      "version": "1.256",
       "description": "Roster fix entries in the Edit List now show as completed (green) instead of pending. The roster fix button, Import and Delete prompts for owner Google extras, and duplicate Share card cleanup from 1.255 are unchanged."
     },
     {
