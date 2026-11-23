@@ -906,6 +906,47 @@ def delete_sync_mapping_rows(
         _commit(conn)
 
 
+def find_mappings_for_recipient_card(
+    recipient_email: str, recipient_person_id: str
+) -> list[dict[str, Any]]:
+    """Every mapping row, in any group, that points at one recipient card."""
+    recipient_key = normalize_email(recipient_email)
+    rid = str(recipient_person_id or "").strip()
+    if not recipient_key or not rid:
+        return []
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM sync_mappings
+            WHERE recipient_email = ? AND recipient_person_id = ?
+            """,
+            (recipient_key, rid),
+        ).fetchall()
+    return [_mapping_from_row(row) for row in rows]
+
+
+def delete_sync_mappings_for_recipient_card(
+    recipient_email: str, recipient_person_id: str
+) -> int:
+    """Forget every mapping row that points at a recipient card that no longer exists.
+
+    A recipient card can be mapped from several groups. When the card is deleted,
+    leaving those rows behind makes Share believe the card is still there.
+    """
+    recipient_key = normalize_email(recipient_email)
+    rid = str(recipient_person_id or "").strip()
+    if not recipient_key or not rid:
+        return 0
+    with connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM sync_mappings WHERE recipient_email = ? AND recipient_person_id = ?",
+            (recipient_key, rid),
+        )
+        removed = int(cursor.rowcount or 0)
+        _commit(conn)
+    return removed
+
+
 def list_mapped_owner_person_ids_by_recipient(owner: str) -> dict[str, list[str]]:
     owner_key = normalize_email(owner)
     grouped: dict[str, list[str]] = {}

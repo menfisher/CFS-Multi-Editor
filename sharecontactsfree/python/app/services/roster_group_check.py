@@ -673,6 +673,8 @@ def _apply_plan(
         if _retry(lambda rid=rid: delete_contact(creds, rid)):
             applied["deleted"] += 1
             cards.forget(rid)
+            # Any group that still mapped this card would otherwise point at nothing.
+            db.delete_sync_mappings_for_recipient_card(recipient, rid)
         else:
             errors.append(f"could not delete duplicate card: {rid}")
     for rid in plan["foreign"]:

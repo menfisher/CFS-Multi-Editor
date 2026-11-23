@@ -20,6 +20,7 @@ from ..people_recipient import (
     get_person_etags_batch,
     has_custom_contact_photo,
     normalize_person_resource_name,
+    remove_contact_from_group,
     remove_stale_assignment_label,
     set_contact_photo,
     update_contact,
@@ -233,12 +234,64 @@ def _delete_recipient_person(recipient_email: str, recipient_person_id: str) -> 
     if not creds:
         return False
     try:
-        return bool(delete_contact(creds, rid))
+        deleted = bool(delete_contact(creds, rid))
     except Exception:
         logger.exception(
             "Failed deleting recipient contact %s for %s", rid, recipient_email
         )
         return False
+    if deleted:
+        _forget_deleted_card(recipient_email, rid)
+    return deleted
+
+
+def _forget_deleted_card(recipient_email: str, recipient_person_id: str) -> int:
+    """Drop every mapping row, in any group, that pointed at a card we just deleted.
+
+    One recipient card can be mapped from several groups. Without this, the other
+    groups keep pointing at a card that is gone and Share reports it as lost track of.
+    """
+    removed = db.delete_sync_mappings_for_recipient_card(recipient_email, recipient_person_id)
+    if removed:
+        logger.info(
+            "Dropped %s mapping row(s) for deleted recipient card %s (%s)",
+            removed,
+            recipient_person_id,
+            recipient_email,
+        )
+    return removed
+
+
+def _card_still_used_by_another_group(
+    recipient_email: str, recipient_person_id: str, share_id: str, group_resource_name: str
+) -> bool:
+    rid = normalize_person_resource_name(recipient_person_id)
+    if not rid:
+        return False
+    for row in db.find_mappings_for_recipient_card(recipient_email, rid):
+        if (
+            str(row.get("share_id") or "") == share_id
+            and str(row.get("group_resource_name") or "") == group_resource_name
+        ):
+            continue
+        return True
+    return False
+
+
+def _recipient_group_id_for(recipient_email: str, share_id: str, group_resource_name: str) -> str:
+    """The recipient's own Google label id for one shared group, or ''."""
+    from .recipient_import import _contact_group_resource
+
+    data = db.get_app_data(recipient_email) or {}
+    for group in data.get("sharedGroups") or []:
+        if not isinstance(group, dict):
+            continue
+        if (
+            str(group.get("shareId") or "") == share_id
+            and str(group.get("resourceName") or "") == group_resource_name
+        ):
+            return _contact_group_resource(group.get("created") or group.get("googleGroupId")) or ""
+    return ""
 
 
 def _prune_one_mapping(mapping: dict[str, Any], *, drop_staged: bool = False) -> dict[str, Any]:
@@ -402,8 +455,19 @@ def prune_orphan_recipient_contacts(
     for mapping in orphans:
         owner_person_id = str(mapping.get("owner_person_id") or "").strip()
         rid = normalize_person_resource_name(str(mapping.get("recipient_person_id") or ""))
+        shared_elsewhere = _card_still_used_by_another_group(
+            recipient_email, rid, share_id, group_resource_name
+        )
         try:
-            ok = delete_contact(creds, rid) if rid else True
+            if shared_elsewhere:
+                # Another group still maps this card, so deleting it would leave that
+                # group pointing at nothing. Only take it out of this group.
+                group_id = _recipient_group_id_for(recipient_email, share_id, group_resource_name)
+                ok = bool(group_id) and bool(remove_contact_from_group(creds, rid, group_id))
+            else:
+                ok = delete_contact(creds, rid) if rid else True
+                if ok and rid:
+                    _forget_deleted_card(recipient_email, rid)
         except Exception:
             logger.exception(
                 "Failed deleting orphan recipient contact %s for owner %s",
