@@ -6624,6 +6624,21 @@ def _drive_manifest_should_preserve_local_contacts(local_count: int, remote_coun
     return safe_local >= _LOCAL_CONTACT_PRUNE_GUARD_MIN_COUNT and safe_remote * 2 < safe_local
 
 
+def _drive_removals_look_unsafe(local_count: int, removed_count: int) -> bool:
+    """True when a Drive manifest would delete too much of the local contact set.
+
+    Contact ids are per-database numbers. When another app (the phone app, or a CFS
+    rebuilt from Google) publishes a manifest in a different id space that only partly
+    overlaps ours, almost every local contact looks "removed". Real removals by another
+    Editor are a handful of contacts, never a large share of the book.
+    """
+    safe_local = max(int(local_count or 0), 0)
+    safe_removed = max(int(removed_count or 0), 0)
+    if safe_removed < _LOCAL_CONTACT_PRUNE_GUARD_MIN_COUNT:
+        return False
+    return safe_removed * 5 > safe_local
+
+
 def _drive_manifest_has_foreign_id_space(local_ids, remote_ids) -> bool:
     """True when Drive contact IDs are a different set than this CFS database.
 
@@ -6752,6 +6767,15 @@ def import_shared_contacts_from_google_drive(
             "Keeping %s local contacts instead of adopting a much smaller Drive list (%s).",
             local_contact_count,
             len(remote_contacts),
+        )
+        removed_contact_ids = set()
+    elif _drive_removals_look_unsafe(local_contact_count, len(removed_contact_ids)):
+        _LOGGER.warning(
+            "Refusing to delete %s of %s local contacts because the Drive manifest does not "
+            "list them (the manifest is probably in a different contact-id space). "
+            "Keeping local contacts.",
+            len(removed_contact_ids),
+            local_contact_count,
         )
         removed_contact_ids = set()
 
