@@ -995,23 +995,56 @@ def delete_contact_photo(creds: Credentials, recipient_person_id: str) -> bool:
         return False
 
 
-def ensure_contact_in_group(
+GROUP_ADD_OK = "ok"
+GROUP_ADD_MISSING = "missing"  # Google says the card does not exist
+GROUP_ADD_ERROR = "error"  # rate limit, server error, network: card may well exist
+
+
+def _http_error_means_card_missing(exc: HttpError) -> bool:
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status in (404, 410):
+        return True
+    if status == 400:
+        text = str(exc).lower()
+        return "not found" in text or "requested entity was not found" in text
+    return False
+
+
+def add_contact_to_group_result(
     creds: Credentials,
     recipient_person_id: str,
     group_id: str,
-) -> bool:
+) -> str:
+    """Add a card to a group. Tells a missing card apart from a temporary failure.
+
+    A caller that is about to create a replacement card must only do so on
+    GROUP_ADD_MISSING. On GROUP_ADD_ERROR the card probably still exists, and
+    creating another one is how duplicates were made.
+    """
     normalized = normalize_person_resource_name(recipient_person_id)
     if not normalized or not group_id:
-        return False
+        return GROUP_ADD_MISSING if not normalized else GROUP_ADD_ERROR
     service = people_service(creds)
     try:
         service.contactGroups().members().modify(
             resourceName=group_id,
             body={"resourceNamesToAdd": [normalized]},
         ).execute()
-        return True
-    except HttpError:
-        return False
+        return GROUP_ADD_OK
+    except HttpError as exc:
+        return GROUP_ADD_MISSING if _http_error_means_card_missing(exc) else GROUP_ADD_ERROR
+    except Exception:  # noqa: BLE001 - network/transport blips are not "card missing"
+        return GROUP_ADD_ERROR
+
+
+def ensure_contact_in_group(
+    creds: Credentials,
+    recipient_person_id: str,
+    group_id: str,
+) -> bool:
+    return (
+        add_contact_to_group_result(creds, recipient_person_id, group_id) == GROUP_ADD_OK
+    )
 
 
 def remove_contact_from_group(

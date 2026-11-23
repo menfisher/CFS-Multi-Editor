@@ -296,8 +296,8 @@ class DuplicatePreventionTests(unittest.TestCase):
         photo_targets: dict[str, str] = {}
         with (
             patch(
-                "app.services.recipient_import.ensure_contact_in_group",
-                return_value=True,
+                "app.services.recipient_import.add_contact_to_group_result",
+                return_value="ok",
             ) as attach,
             patch(
                 "app.services.recipient_import.batch_create_contacts_in_group",

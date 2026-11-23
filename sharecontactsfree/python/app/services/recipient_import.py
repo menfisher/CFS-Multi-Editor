@@ -26,6 +26,9 @@ from ..config import (
     RECIPIENT_IMPORT_TIME_BUDGET_MS,
 )
 from ..people_recipient import (
+    GROUP_ADD_MISSING,
+    GROUP_ADD_OK,
+    add_contact_to_group_result,
     batch_create_contacts_in_group,
     batch_upload_contact_photos,
     build_shared_group_name,
@@ -609,22 +612,37 @@ def _save_sync_mapping_after_create(
     )
 
 
-def _existing_recipient_mapping(
+def _existing_recipient_mappings(
     group: dict[str, Any], owner_person_id: str
-) -> dict[str, Any] | None:
-    """Find the recipient contact already created for this owner person in another shared group."""
+) -> list[dict[str, Any]]:
+    """Every card already created for this owner person in another shared group."""
     owner = str(group.get("owner") or "")
     recipient_email = str(group.get("recipientEmail") or "")
     share_id = str(group.get("shareId") or "")
     if not owner or not recipient_email or not str(owner_person_id).startswith("people/"):
-        return None
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for sibling in db.find_sibling_mappings(owner, recipient_email, owner_person_id):
         if share_id and str(sibling.get("share_id") or "") == share_id:
             continue
         rid = normalize_person_resource_name(str(sibling.get("recipient_person_id") or ""))
-        if rid:
-            return sibling
-    return None
+        if rid and rid not in seen:
+            seen.add(rid)
+            out.append(sibling)
+    return out
+
+
+def _existing_recipient_mapping(
+    group: dict[str, Any], owner_person_id: str
+) -> dict[str, Any] | None:
+    """Find the recipient contact already created for this owner person in another shared group."""
+    siblings = _existing_recipient_mappings(group, owner_person_id)
+    return siblings[0] if siblings else None
+
+
+class AttachDeferred(Exception):
+    """Google could not confirm whether the person's card exists. Do not create a copy."""
 
 
 def _existing_recipient_person_id(group: dict[str, Any], owner_person_id: str) -> str:
@@ -684,19 +702,24 @@ def _attach_existing_recipient_to_group(
 ) -> str:
     """Add an existing AlMsLa (or other sibling) contact to this meeting group.
 
-    Returns the recipient person id on success, or "" if none exists / add failed.
+    Returns the recipient person id on success, or "" when no sibling card exists
+    (none mapped, or Google confirmed every mapped card is gone, so a new card is
+    right). Raises AttachDeferred when Google failed for another reason, such as a
+    rate limit: the card probably exists, and creating another one would duplicate it.
     """
     owner_person_id = str(member.get("resourceName") or "")
-    sibling = _existing_recipient_mapping(group, owner_person_id)
-    if not sibling:
-        return ""
-    rid = normalize_person_resource_name(str(sibling.get("recipient_person_id") or ""))
-    if not rid:
-        return ""
-    if not ensure_contact_in_group(creds, rid, group_id):
-        return ""
-    _save_sync_mapping_after_reuse(group, member, rid, sibling)
-    return rid
+    for sibling in _existing_recipient_mappings(group, owner_person_id):
+        rid = normalize_person_resource_name(str(sibling.get("recipient_person_id") or ""))
+        if not rid:
+            continue
+        result = add_contact_to_group_result(creds, rid, group_id)
+        if result == GROUP_ADD_OK:
+            _save_sync_mapping_after_reuse(group, member, rid, sibling)
+            return rid
+        if result == GROUP_ADD_MISSING:
+            continue
+        raise AttachDeferred(f"could not add {rid} to {group_id}")
+    return ""
 
 
 _DOUBLE_QUOTE_NICKNAME_RE = re.compile(r'["“”]([^"“”]+)["“”]')
@@ -1255,9 +1278,26 @@ def _import_contacts_batch(
         for idx, member in indexed_members:
             existing = ""
             if group_snapshot is not None:
-                existing = _attach_existing_recipient_to_group(
-                    creds, group_snapshot, group_id, member
-                )
+                try:
+                    existing = _attach_existing_recipient_to_group(
+                        creds, group_snapshot, group_id, member
+                    )
+                except AttachDeferred:
+                    # The card exists but Google failed: retry later, never create a copy.
+                    if _record_create_result(
+                        idx,
+                        None,
+                        member,
+                        retry_indexes=retry_indexes,
+                        retry_attempts=retry_attempts,
+                        skipped_indexes=skipped_indexes,
+                        photo_pending=photo_pending,
+                        photo_targets=photo_targets,
+                    ):
+                        chunk_failed += 1
+                        failed += 1
+                    attempts_used += 1
+                    continue
             if existing:
                 retry_attempts.pop(str(idx), None)
                 skipped_indexes[:] = [x for x in skipped_indexes if x != idx]

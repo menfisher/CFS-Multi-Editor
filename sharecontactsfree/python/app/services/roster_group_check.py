@@ -504,6 +504,126 @@ def _prune_orphan_rows(
     return len(dead)
 
 
+def plan_split_cards(
+    *,
+    rows: list[dict[str, Any]],
+    owner_people: dict[str, dict[str, Any]],
+    recipient_people: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Find one owner contact that has two or more live cards on the recipient.
+
+    Each group's own check passes when its mapping points at a real card, so two
+    groups pointing at two different cards for the same person look healthy. This
+    looks across groups. Pure planning, no network.
+
+    Returns one entry per owner contact: the card to keep and the cards to merge
+    into it. A card is only merged when it name-matches the owner contact and is
+    mapped from this owner contact alone.
+    """
+    by_owner: dict[str, list[dict[str, Any]]] = {}
+    owners_of_card: dict[str, set[str]] = {}
+    for row in rows:
+        owner_id = _norm(row.get("owner_person_id"))
+        rid = _norm(row.get("recipient_person_id"))
+        if not owner_id or not rid:
+            continue
+        by_owner.setdefault(owner_id, []).append(row)
+        owners_of_card.setdefault(rid, set()).add(owner_id)
+
+    plans: list[dict[str, Any]] = []
+    for owner_id in sorted(by_owner):
+        owner_person = owner_people.get(owner_id)
+        if owner_person is None:
+            continue
+        cards: dict[str, list[dict[str, Any]]] = {}
+        for row in by_owner[owner_id]:
+            rid = _norm(row.get("recipient_person_id"))
+            card = recipient_people.get(rid)
+            if card is None:
+                continue
+            if len(owners_of_card.get(rid, set())) > 1:
+                continue  # one card serving two people: not ours to merge
+            if not contacts_name_match(owner_person, card):
+                continue
+            cards.setdefault(rid, []).append(row)
+        if len(cards) < 2:
+            continue
+        # Keep the card used by the most groups, then the oldest mapping.
+        keeper = sorted(
+            cards, key=lambda rid: (-len(cards[rid]), min(int(r.get("id") or 0) for r in cards[rid]), rid)
+        )[0]
+        plans.append(
+            {
+                "owner_id": owner_id,
+                "keep": keeper,
+                "merge": {rid: cards[rid] for rid in cards if rid != keeper},
+            }
+        )
+    return plans
+
+
+def _merge_split_cards(
+    *,
+    owner: str,
+    recipient: str,
+    groups: list[dict[str, str]],
+    creds: Any,
+    plans: list[dict[str, Any]],
+    cards: _Cards,
+    deadline: float,
+    limit: int,
+) -> dict[str, Any]:
+    """Point every group at one card per person, then delete the extra cards.
+
+    Order matters: the kept card joins each group and the mapping moves first.
+    The extra card is only deleted once nothing depends on it, so a failure part
+    way through leaves a harmless duplicate rather than a missing contact.
+    """
+    group_ids = {(g["share_id"], g["resource_name"]): g["group_id"] for g in groups}
+    out: dict[str, Any] = {"merged": 0, "deleted_cards": 0, "errors": [], "partial": False}
+    errors: list[str] = out["errors"]
+    done = 0
+    for plan in plans:
+        for extra, extra_rows in plan["merge"].items():
+            if done >= limit or time.monotonic() > deadline:
+                out["partial"] = True
+                return out
+            keep = plan["keep"]
+            ok = True
+            for row in extra_rows:
+                key = (str(row.get("share_id") or ""), str(row.get("group_resource_name") or ""))
+                group_id = group_ids.get(key)
+                if group_id and not _retry(
+                    lambda gid=group_id: ensure_contact_in_group(creds, keep, gid)
+                ):
+                    errors.append(f"could not add kept card to a group: {plan['owner_id']}")
+                    ok = False
+                    break
+            if not ok:
+                continue
+            for row in extra_rows:
+                db.upsert_sync_mapping(
+                    share_id=str(row.get("share_id") or ""),
+                    owner=owner,
+                    group_resource_name=str(row.get("group_resource_name") or ""),
+                    recipient_email=recipient,
+                    owner_person_id=plan["owner_id"],
+                    recipient_person_id=keep,
+                    last_hash=str(row.get("last_hash") or ""),
+                    last_photo_hash=str(row.get("last_photo_hash") or ""),
+                    owner_etag=str(row.get("owner_etag") or ""),
+                    last_assignment_label=str(row.get("last_assignment_label") or ""),
+                )
+            if _retry(lambda extra=extra: delete_contact(creds, extra)):
+                cards.forget(extra)
+                out["deleted_cards"] += 1
+            else:
+                errors.append(f"could not delete extra card: {extra}")
+            out["merged"] += 1
+            done += 1
+    return out
+
+
 def _retry(action: Callable[[], bool], attempts: int = 3) -> bool:
     for attempt in range(attempts):
         if action():
@@ -748,16 +868,89 @@ def run_recipient_roster_check(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Orphan row cleanup failed for %s: %s", recipient, exc)
         orphan_rows = 0
+    partial = any(r.get("partial") for r in results)
+    split = _split_cards_report(
+        owner=owner,
+        recipient=recipient,
+        groups=groups,
+        creds=creds,
+        owner_creds=owner_creds,
+        cards=cards,
+        apply=apply and not partial,
+        deadline=deadline,
+        limit=max_changes,
+    )
     if apply:
         _owner_cache.pop(owner, None)
-    changes = sum(int(r.get("changes") or 0) for r in results)
-    partial = any(r.get("partial") for r in results)
+    partial = partial or bool(split.get("partial"))
+    changes = sum(int(r.get("changes") or 0) for r in results) + int(split["remaining"])
+    groups_ok = all(r.get("ok", True) for r in results) and not split.get("errors")
     return {
         **base,
-        "ok": all(r.get("ok", True) for r in results),
+        "ok": groups_ok,
         "groups": results,
+        "split_cards": split,
         "changes": changes,
         "partial": partial,
         "orphan_rows": orphan_rows,
-        "clean": changes == 0 and not partial and all(r.get("ok", True) for r in results),
+        "clean": changes == 0 and not partial and groups_ok,
     }
+
+
+def _split_cards_report(
+    *,
+    owner: str,
+    recipient: str,
+    groups: list[dict[str, str]],
+    creds: Any,
+    owner_creds: Any,
+    cards: _Cards,
+    apply: bool,
+    deadline: float,
+    limit: int,
+) -> dict[str, Any]:
+    """Cross-group duplicates: check mode counts them, fix mode merges them."""
+    report: dict[str, Any] = {
+        "owners": 0, "extra_cards": 0, "remaining": 0, "merged": 0,
+        "deleted_cards": 0, "errors": [], "partial": False, "sample": [],
+    }
+    try:
+        rows = _recipient_rows(owner, recipient)
+        distinct: dict[str, set[str]] = {}
+        for row in rows:
+            oid, rid = _norm(row.get("owner_person_id")), _norm(row.get("recipient_person_id"))
+            if oid and rid:
+                distinct.setdefault(oid, set()).add(rid)
+        suspects = {oid for oid, rids in distinct.items() if len(rids) > 1}
+        if not suspects:
+            return report
+        suspect_rows = [r for r in rows if _norm(r.get("owner_person_id")) in suspects]
+        cards.load({_norm(r.get("recipient_person_id")) for r in suspect_rows})
+        owner_people = _load_owner_people(owner, owner_creds, sorted(suspects))
+        plans = plan_split_cards(
+            rows=rows, owner_people=owner_people, recipient_people=cards.people
+        )
+    except Exception as exc:  # noqa: BLE001 - never fail the whole check on this
+        logger.warning("Split card scan failed for %s: %s", recipient, exc)
+        report["errors"].append(f"scan failed: {str(exc)[:120]}")
+        return report
+
+    report["owners"] = len(plans)
+    report["extra_cards"] = sum(len(p["merge"]) for p in plans)
+    report["remaining"] = report["extra_cards"]
+    report["sample"] = [
+        person_label(owner_people.get(p["owner_id"])) for p in plans[:MAX_LABELS]
+    ]
+    if apply and plans:
+        merged = _merge_split_cards(
+            owner=owner, recipient=recipient, groups=groups, creds=creds,
+            plans=plans, cards=cards, deadline=deadline, limit=limit,
+        )
+        report.update(
+            merged=merged["merged"],
+            deleted_cards=merged["deleted_cards"],
+            errors=merged["errors"],
+            partial=merged["partial"],
+            remaining=max(0, report["extra_cards"] - merged["merged"]),
+        )
+    return report
