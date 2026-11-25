@@ -4837,6 +4837,7 @@ main {{
   grid-template-columns: repeat(28, minmax(0, 1fr));
   gap: var(--meeting-grid-column-gap, 6px);
   width: 100%;
+  overflow: visible;
 }}
 .print-field-list-meeting-preview-flow-band {{
   display: grid;
@@ -4849,9 +4850,13 @@ main {{
 }}
 .print-field-list-meeting-preview-flow-column {{
   background: transparent;
+  overflow: visible;
 }}
 .print-field-list-meeting-preview-flow-text {{
-  white-space: pre-line;
+  white-space: pre;
+  overflow: visible;
+  overflow-wrap: normal;
+  word-break: normal;
 }}
 .print-field-list-meeting-preview-flow-text.align-center {{
   text-align: center;

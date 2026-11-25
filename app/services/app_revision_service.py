@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from urllib.error import HTTPError, URLError
-
 from app.config import PROJECT_ROOT
+from app.network_errors import NETWORK_REQUEST_ERRORS
 from app.database import fetch_all, get_connection
 from app.services.app_update_service import get_app_update_status
 from app.services.google_sync_service import (
@@ -196,7 +195,7 @@ def _format_manifest_release_date(release_date: str) -> str:
 def _manifest_revision() -> dict | None:
     try:
         update_status = get_app_update_status()
-    except (RuntimeError, HTTPError, URLError, OSError, ValueError):
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError, ValueError):
         return None
     if not bool(update_status.get("ok")):
         return None
@@ -300,7 +299,7 @@ def reconcile_app_revisions_storage(*, export_to_drive: bool = False) -> list[di
     if export_to_drive:
         try:
             export_app_revisions_to_google_drive(display_revisions)
-        except (RuntimeError, HTTPError, URLError):
+        except (*NETWORK_REQUEST_ERRORS, RuntimeError):
             pass
     return display_revisions
 
@@ -371,7 +370,7 @@ def sync_app_revisions_from_google_drive() -> list[dict]:
     if not _revision_rows_equal(latest_revisions, drive_revisions):
         try:
             export_app_revisions_to_google_drive(latest_revisions)
-        except (RuntimeError, HTTPError, URLError):
+        except (*NETWORK_REQUEST_ERRORS, RuntimeError):
             pass
     return latest_revisions
 
@@ -400,7 +399,7 @@ def save_app_revisions(revisions: list[dict]) -> list[dict]:
     if str(account.get("status") or "") == "connected" and bool(account.get("drive_scope_ready")):
         try:
             export_app_revisions_to_google_drive(latest_revisions)
-        except (RuntimeError, HTTPError, URLError):
+        except (*NETWORK_REQUEST_ERRORS, RuntimeError):
             pass
     return latest_revisions
 
@@ -430,6 +429,6 @@ def load_app_revisions_for_page(*, sync_drive: bool = False) -> list[dict]:
     if sync_drive:
         try:
             return sync_app_revisions_from_google_drive()
-        except (RuntimeError, HTTPError, URLError):
+        except (*NETWORK_REQUEST_ERRORS, RuntimeError):
             pass
     return reconcile_app_revisions_storage(export_to_drive=False)

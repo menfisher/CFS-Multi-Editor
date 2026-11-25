@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import traceback
+from datetime import datetime
 from pathlib import Path
 
+from app.network_errors import describe_request_error
+
 MAX_ERROR_LOG_LINES = 200
+ERROR_LOG_SEPARATOR = "=" * 72
 
 
 def _trim_log_if_needed(path: Path, *, max_lines: int = MAX_ERROR_LOG_LINES) -> None:
@@ -31,6 +36,19 @@ def append_log_line(path: Path, line: str) -> bool:
         return True
     except OSError:
         return False
+
+
+def format_error_log_block(*, method: str, url: str, exc: BaseException) -> str:
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    summary = describe_request_error(exc)
+    error_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    return (
+        f"{ERROR_LOG_SEPARATOR}\n"
+        f"[{timestamp}] {method} {url}\n"
+        f"Summary: {summary}\n"
+        f"{error_text.rstrip()}\n"
+        f"{ERROR_LOG_SEPARATOR}"
+    )
 
 
 def append_log_block(path: Path, text: str) -> bool:

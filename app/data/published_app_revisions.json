@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.257",
+      "version": "1.258",
+      "date_display": "11/25/2026",
+      "description": "App errors show on screen with time and a short summary instead of only a log file path. Checking App Revisions no longer crashes on a dropped Google connection. Meeting print preview keeps long column-flow lines on one line so it matches the printed PDF."
+    },
+    {
       "date_display": "11/22/2026",
+      "version": "1.257",
       "description": "Safer syncing. Import from Google no longer deletes contacts when the Drive copy comes from a different contact numbering, clearing the Meeting home/Elder code in CFS now clears it everywhere while a blank code never erases Google's, and Upload keeps Google's code when CFS has none. Share fixes: no more duplicate cards after temporary Google errors, and the roster fix merges one person's cards split across groups."
     },
     {

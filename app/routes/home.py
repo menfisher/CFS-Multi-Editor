@@ -1,12 +1,12 @@
 import os
 import threading
 import time
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from app.network_errors import NETWORK_REQUEST_ERRORS
 from app.services.app_revision_service import (
     APP_REVISION_DISPLAY_LIMIT,
     load_app_revisions_for_page,
@@ -169,7 +169,7 @@ def changes_list_download_from_drive():
     local_revision_before = str(state.get("changes_list_sync_revision") or "").strip()
     try:
         import_changes_list_from_google_drive()
-    except (RuntimeError, HTTPError, URLError) as exc:
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError) as exc:
         return JSONResponse(
             {
                 "ok": False,
@@ -208,7 +208,7 @@ def app_revisions(
             and bool(account.get("drive_scope_ready"))
         )
         all_revisions = load_app_revisions_for_page(sync_drive=sync_drive)
-    except (RuntimeError, HTTPError, URLError):
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError):
         all_revisions = load_app_revisions_for_page(sync_drive=False)
     notice_key = str(notice or "").strip()
     update_error = str(request.query_params.get("update_error") or "")
@@ -263,7 +263,7 @@ def app_revisions_check_updates(return_to: str = Query(default="/app-revisions")
         else:
             sync_app_revisions_from_google_drive()
             notice = "drive_import_success"
-    except (RuntimeError, HTTPError, URLError):
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError):
         notice = "drive_import_failed"
     separator = "&" if "?" in safe_return_to else "?"
     return RedirectResponse(url=f"{safe_return_to}{separator}notice={notice}", status_code=303)
@@ -291,7 +291,7 @@ def app_updates_download(platform_key: str):
         if download_url:
             return RedirectResponse(url=download_url, status_code=303)
         downloaded = download_google_drive_update_package(platform_key)
-    except (RuntimeError, HTTPError, URLError, OSError):
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError):
         return RedirectResponse(url="/app-revisions?update_checked=1&notice=app_update_download_failed", status_code=303)
 
     filename = str(downloaded.get("filename") or "ContactsFreeShare-update.zip").replace('"', "")
@@ -308,7 +308,7 @@ def app_updates_download(platform_key: str):
 def app_updates_install(request: Request, platform_key: str):
     try:
         staged = stage_app_update_install(platform_key)
-    except (RuntimeError, HTTPError, URLError, OSError, ValueError) as exc:
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError, ValueError) as exc:
         update_error = quote(str(exc)[:500])
         return RedirectResponse(
             url=f"/app-revisions?update_checked=1&notice=app_update_install_failed&update_error={update_error}",

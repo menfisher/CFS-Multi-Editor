@@ -227,14 +227,16 @@
       border-radius: 0;
       background: transparent;
       box-sizing: border-box;
+      overflow: visible;
     }
 
-    .print-preview-text {
-      white-space: normal;
-    }
-
+    .print-preview-text,
     .print-preview-flow-text {
-      white-space: pre-line;
+      /* Match PDF drawing: only explicit line breaks wrap. Long lines overflow into the next column. */
+      white-space: pre;
+      overflow: visible;
+      overflow-wrap: normal;
+      word-break: normal;
     }
 
     .print-preview-flow-grid {
@@ -243,6 +245,7 @@
       gap: {{ section.print_preview.column_gap_px }}px;
       width: 100%;
       box-sizing: border-box;
+      overflow: visible;
     }
 
     .print-preview-text div,
@@ -311,6 +314,7 @@
 
     .print-preview-flow-column {
       background: transparent;
+      overflow: visible;
     }
 
     @media print {

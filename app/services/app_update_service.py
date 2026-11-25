@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 from app.config import APP_DATA_DIR, DB_PATH, ERROR_LOG_PATH, PROJECT_ROOT
+from app.network_errors import NETWORK_REQUEST_ERRORS
 from app.services.app_info_service import (
     get_app_edition,
     get_current_app_version,
@@ -183,7 +184,7 @@ def _load_update_manifest() -> tuple[dict, str]:
             manifest = _load_manifest_from_url(manifest_url)
             manifest["_manifest_url"] = manifest_url
             candidates.append((manifest, "url"))
-        except (RuntimeError, HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+        except (*NETWORK_REQUEST_ERRORS, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             url_error = exc
 
     # When Google is connected, also read the Drive App Updates copy and keep the newer
@@ -202,7 +203,7 @@ def _load_update_manifest() -> tuple[dict, str]:
                 if manifest_url and not _is_placeholder_manifest_url(manifest_url):
                     drive_manifest["_manifest_url"] = manifest_url
                 candidates.append((drive_manifest, "google_drive"))
-    except (RuntimeError, HTTPError, URLError, OSError, ValueError, json.JSONDecodeError):
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError, ValueError, json.JSONDecodeError):
         pass
 
     if not candidates:
@@ -254,7 +255,7 @@ def get_app_update_status() -> dict:
     try:
         raw_manifest, source = _load_update_manifest()
         manifest = normalize_update_manifest(raw_manifest)
-    except (RuntimeError, HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (*NETWORK_REQUEST_ERRORS, RuntimeError, ValueError, json.JSONDecodeError) as exc:
         return {
             "ok": False,
             "source": "",
