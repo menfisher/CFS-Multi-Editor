@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.258",
+      "version": "1.259",
+      "date_display": "11/26/2026",
+      "description": "CFS stays source of truth on Google sync (no silent deletes). Roster fix shows live progress and uses targeted Share updates. Share photo resume improvements."
+    },
+    {
       "date_display": "11/25/2026",
+      "version": "1.258",
       "description": "App errors show on screen with time and a short summary instead of only a log file path. Checking App Revisions no longer crashes on a dropped Google connection. Meeting print preview keeps long column-flow lines on one line so it matches the printed PDF."
     },
     {
