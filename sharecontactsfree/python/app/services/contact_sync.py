@@ -641,7 +641,16 @@ def _apply_mapping_update(
             if recipient_person and not has_custom_contact_photo(recipient_person):
                 photo_changed = True
         if not hash_changed and not photo_changed and not etag_changed:
-            return {"status": "skipped", "reason": "unchanged", "mapping_id": mapping.get("id")}
+            live_etag = str(recipient_person.get("etag") or "")
+            if not live_etag:
+                live_etag = get_person_etags_batch(creds, [rid]).get(rid) or ""
+            if not live_etag:
+                live_etag, card_gone = _fetch_etag_or_gone(creds, rid)
+                if not live_etag and not card_gone:
+                    return {"status": "error", "reason": "etag_unavailable", "mapping_id": mapping.get("id")}
+            if live_etag:
+                return {"status": "skipped", "reason": "unchanged", "mapping_id": mapping.get("id")}
+            # Mapped card is gone. Fall through and create it again.
 
         etag = str(recipient_person.get("etag") or "")
         if not etag:

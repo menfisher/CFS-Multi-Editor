@@ -285,6 +285,37 @@ class EtagRateLimitTests(unittest.TestCase):
         create.assert_called_once()
         self.assertEqual(outcome["status"], "created")
 
+    def test_unchanged_hashes_still_recreate_gone_card(self):
+        from app.services import contact_sync
+        from app.services.contact_hash import compute_contact_hash, compute_photo_hash
+
+        member = _person("people/c1", "Ann", "Lee")
+        mapping = {
+            "id": 1, "share_id": SHARE_ID, "group_resource_name": RESOURCE,
+            "recipient_email": R1, "owner_person_id": "people/c1",
+            "recipient_person_id": "people/r1",
+            "last_hash": compute_contact_hash(member),
+            "last_photo_hash": compute_photo_hash(member),
+            "owner_etag": "e", "last_assignment_label": "",
+        }
+        with patch.object(contact_sync, "recipient_credentials", lambda e: FakeCreds()), \
+                patch.object(contact_sync, "get_person_etags_batch", lambda c, ids: {}), \
+                patch.object(contact_sync, "_load_recipient_person", lambda c, r: {}), \
+                patch.object(contact_sync, "_fetch_etag_or_gone", lambda c, r: ("", True)), \
+                patch.object(contact_sync.db, "upsert_sync_mapping"), \
+                patch.object(contact_sync, "_ensure_recipient_group", lambda *a, **k: "contactGroups/x"), \
+                patch.object(contact_sync, "create_contact_in_group", return_value="people/new") as create, \
+                patch.object(contact_sync.db, "get_app_data", lambda e: {"sharedGroups": [{
+                    "owner": OWNER, "resourceName": RESOURCE, "shareId": SHARE_ID, "name": "G"}]}), \
+                patch.object(contact_sync, "ensure_contact_in_group", lambda *a, **k: True), \
+                patch.object(contact_sync, "set_contact_photo", lambda *a, **k: True), \
+                patch.object(contact_sync, "ensure_assignment_contact_label", lambda *a, **k: True):
+            outcome = contact_sync._apply_mapping_update(
+                owner=OWNER, mapping=mapping, member_data=member, owner_etag="e"
+            )
+        create.assert_called_once()
+        self.assertEqual(outcome["status"], "created")
+
 
 class SharedKeyTests(unittest.TestCase):
     def test_shared_key_accepted_but_not_for_ops(self):

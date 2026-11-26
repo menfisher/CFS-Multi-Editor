@@ -2309,10 +2309,12 @@ h3 {
   margin-top: 8px;
 }
 
-#roster-fix-button:disabled {
+#roster-fix-button:disabled,
+#roster-fix-button.is-busy {
   opacity: 0.55;
   cursor: not-allowed;
-  background: #8aa3a5;
+  background: #8aa3a5 !important;
+  color: #f4f7f7 !important;
   pointer-events: none;
 }
 

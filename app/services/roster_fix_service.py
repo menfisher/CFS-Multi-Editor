@@ -7,10 +7,9 @@ Runs in a background thread for whichever Editor holds the Editor lock. Order:
 3. Fix Google Drive (remove deleted contacts, add missing ones).
 4. Re-create CFS contacts that are missing from the owner's Google account.
 5. Tell Share about the known missing and extra contact ids (one targeted call).
-6. Only if a card check already found real card drift (duplicates, wrong cards),
-   ask Share to repair that recipient. Mapping mismatches do not reread the
-   whole Google group.
-7. Re-check everything and write one Edit List entry.
+6. Do not download a recipient's whole shared group. That path is too slow when
+   the banner already named the contacts.
+7. Re-check the id lists and write one Edit List entry.
 
 Owner-Google contacts that CFS does not have are never changed here. The banner
 asks the Editor to Import or Delete each one (see import_google_extras and
@@ -49,7 +48,7 @@ from app.services.google_sync_service import (
     sync_shared_data_from_google_drive,
     upload_google_contacts,
 )
-from app.services.roster_check_service import _load_saved_report, refresh_share_roster_check
+from app.services.roster_check_service import _load_saved_report, _save_report, refresh_share_roster_check
 from app.services.share_sync_service import fix_share_recipient_cards, sync_share_app_contact_changes
 
 _LOGGER = logging.getLogger(__name__)
@@ -274,11 +273,76 @@ def _fix_google_missing(report: dict) -> list[str]:
     return [f"Owner Google: re-added {int(created or len(ids))} contact(s) that were missing"]
 
 
+def _missing_card_labels(report: dict) -> list[str]:
+    labels: list[str] = []
+    cards = ((report.get("share_cards") or {}).get("recipients") or {}) if isinstance(report.get("share_cards"), dict) else {}
+    for card in cards.values():
+        if not isinstance(card, dict):
+            continue
+        for label in (card.get("names") or {}).get("missing") or []:
+            text = str(label or "").strip()
+            if text:
+                labels.append(text)
+    return list(dict.fromkeys(labels))
+
+
+def _drop_missing_card_names_from_saved_report(labels: list[str]) -> None:
+    """Stop showing a stale 'missing card' after Share was asked to recreate it."""
+    wanted = {str(item).strip() for item in labels if str(item).strip()}
+    if not wanted:
+        return
+    saved = _load_saved_report()
+    cards = ((saved.get("share_cards") or {}).get("recipients") or {})
+    if not isinstance(cards, dict):
+        return
+    changed = False
+    for card in cards.values():
+        if not isinstance(card, dict):
+            continue
+        names = card.setdefault("names", {})
+        missing = [item for item in (names.get("missing") or []) if str(item).strip() not in wanted]
+        if missing != list(names.get("missing") or []):
+            names["missing"] = missing
+            counts = card.setdefault("counts", {})
+            counts["missing"] = len(missing)
+            card["changes"] = sum(int(counts.get(key) or 0) for key in counts)
+            card["clean"] = not card["changes"] and bool(card.get("ok", True))
+            changed = True
+    if changed:
+        _save_report(saved)
+
+
+def _google_ids_for_missing_card_names(report: dict) -> list[str]:
+    """Owner Google ids for names a prior card check said need a real recipient card."""
+    labels = _missing_card_labels(report)
+    if not labels:
+        return []
+    ids: list[str] = []
+    with get_connection() as conn:
+        for label in dict.fromkeys(labels):
+            family, given = (label.split(", ", 1) + [""])[:2] if ", " in label else (label, "")
+            row = conn.execute(
+                """
+                SELECT google_contact_id FROM contacts
+                WHERE family_name = ? AND given_name = ?
+                  AND COALESCE(google_contact_id, '') LIKE 'people/%'
+                LIMIT 1
+                """,
+                (family.strip(), given.strip()),
+            ).fetchone()
+            resource = str(row["google_contact_id"] if row else "")
+            if resource.startswith("people/"):
+                ids.append(resource)
+    return ids
+
+
 def _fix_share_mappings(report: dict, owner_email: str) -> list[str]:
     ids: set[str] = set()
     for item in report.get("recipients") or []:
         ids.update(item.get("missing_person_ids") or [])
         ids.update(item.get("extra_person_ids") or [])
+    named_missing = _missing_card_labels(report)
+    ids.update(_google_ids_for_missing_card_names(report))
     if not ids:
         return []
     _step(f"Updating Share for {len(ids)} known contact(s)")
@@ -286,6 +350,7 @@ def _fix_share_mappings(report: dict, owner_email: str) -> list[str]:
     if result is not None and result.get("ok") is False:
         _note(f"Share did not accept the update: {result.get('reason') or 'unknown reason'}")
         return []
+    _drop_missing_card_names_from_saved_report(named_missing)
     return [f"Share: asked to update {len(ids)} contact(s) that were missing or out of date"]
 
 
@@ -411,9 +476,6 @@ def _run_fix() -> None:
 
         _step("Checking what needs fixing")
         report = refresh_share_roster_check(deep=False)
-        previous_cards = _load_saved_report().get("share_cards")
-        if previous_cards and not report.get("share_cards"):
-            report["share_cards"] = previous_cards
 
         lines += _fix_drive(report)
         lines += _fix_google_missing(report)
@@ -421,10 +483,9 @@ def _run_fix() -> None:
             _step("Re-checking after the Drive and Google changes")
             report = refresh_share_roster_check(deep=False)
         lines += _fix_share_mappings(report, owner_email)
-        lines += _fix_share_cards(report, owner_email)
 
         _step("Final check")
-        final = refresh_share_roster_check(deep=True)
+        final = refresh_share_roster_check(deep=False)
         remaining = [item for item in final.get("issues") or [] if item.get("kind") != "google_extra"]
         if remaining:
             _set_state(ok=False, message="The fix finished, but some problems remain. See the list above the button.")

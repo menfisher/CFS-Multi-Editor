@@ -269,6 +269,65 @@ class RosterFixRunnerTests(unittest.TestCase):
         sync.assert_called_once_with("owner@gmail.com", ["people/a", "people/old"])
         self.assertEqual(len(lines), 1)
 
+    def test_share_mapping_sync_includes_named_missing_cards(self) -> None:
+        from app.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO contacts (family_name, given_name, google_contact_id)
+                VALUES ('Garnett', 'Marsha', 'people/marsha')
+                """
+            )
+            conn.commit()
+        report = {
+            "recipients": [{"missing_person_ids": [], "extra_person_ids": []}],
+            "share_cards": {
+                "recipients": {
+                    "philip@gmail.com": {"names": {"missing": ["Garnett, Marsha"]}},
+                }
+            },
+        }
+        with patch.object(fix, "sync_share_app_contact_changes", return_value={"ok": True}) as sync:
+            lines = fix._fix_share_mappings(report, "owner@gmail.com")
+        sync.assert_called_once_with("owner@gmail.com", ["people/marsha"])
+        self.assertEqual(len(lines), 1)
+
+    def test_run_fix_does_not_scan_whole_group_for_known_mapping_ids(self) -> None:
+        report = {
+            "recipients": [
+                {
+                    "email": "philip@gmail.com",
+                    "missing": ["Bible, Keith"],
+                    "extra_count": 0,
+                    "missing_person_ids": ["people/keith"],
+                    "extra_person_ids": [],
+                }
+            ],
+            "share_cards": {
+                "recipients": {
+                    "philip@gmail.com": {"ok": False, "changes": 4, "clean": False},
+                    "other@gmail.com": {"ok": False, "changes": 2, "clean": False},
+                }
+            },
+            "drive_missing_ids": [],
+            "drive_extra_ids": [],
+            "google_missing_ids": [],
+            "issues": [],
+        }
+        with patch.object(fix, "_get_valid_access_token", return_value=("tok", "owner@gmail.com")), patch.object(
+            fix, "sync_shared_data_from_google_drive"
+        ), patch.object(fix, "refresh_share_roster_check", return_value=report) as refresh, patch.object(
+            fix, "sync_share_app_contact_changes", return_value={"ok": True}
+        ) as sync, patch.object(fix, "fix_share_recipient_cards") as cards, patch.object(
+            fix, "_log_to_edit_list"
+        ):
+            fix._run_fix()
+        sync.assert_called_once_with("owner@gmail.com", ["people/keith"])
+        cards.assert_not_called()
+        self.assertTrue(refresh.call_args_list)
+        self.assertTrue(all(call.kwargs.get("deep") is False for call in refresh.call_args_list))
+
     def test_google_extra_actions_need_editor_lock(self) -> None:
         with patch.object(fix, "is_editing_allowed", return_value=False):
             self.assertEqual(fix.import_google_extras(["people/x"])["reason"], "not_editor")

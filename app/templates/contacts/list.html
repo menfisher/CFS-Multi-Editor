@@ -247,13 +247,21 @@
             fixLocked = true;
             if (!button) { return; }
             button.disabled = true;
+            button.classList.add("is-busy");
             button.setAttribute("aria-disabled", "true");
+            if (!button.getAttribute("data-label")) {
+              button.setAttribute("data-label", button.textContent);
+            }
+            button.textContent = "Fixing...";
           }
           function unlockButton() {
             fixLocked = false;
             if (!button) { return; }
             button.disabled = false;
+            button.classList.remove("is-busy");
             button.setAttribute("aria-disabled", "false");
+            var label = button.getAttribute("data-label");
+            if (label) { button.textContent = label; }
           }
           function escapeHtml(text) {
             return String(text)
@@ -299,6 +307,7 @@
                     setStatus(s.message || "Finished.");
                     renderLog(s.log);
                     if (s.ok) { setTimeout(function () { window.location.reload(); }, 1500); }
+                    else { unlockButton(); }
                     return;
                   }
                   timer = setTimeout(poll, 2000);
