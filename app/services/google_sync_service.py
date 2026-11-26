@@ -5476,11 +5476,15 @@ def collapse_stale_identity_duplicate_contacts(conn) -> list[int]:
 
 
 def _prune_local_contacts_missing_google_ids(conn, live_google_ids: set[str]) -> list[int]:
-    """Delete local contacts whose Google person id is no longer in a full Google list."""
+    """Return CFS contacts whose Google person id is not in a full Google list.
+
+    CFS is the source of truth. A missing Google card is restored on Upload,
+    never by erasing the local row.
+    """
     live_ids = {_clean(item) for item in live_google_ids if _clean(item)}
     if not live_ids:
         return []
-    deleted_ids: list[int] = []
+    missing_ids: list[int] = []
     rows = conn.execute(
         """
         SELECT id, google_contact_id
@@ -5492,10 +5496,82 @@ def _prune_local_contacts_missing_google_ids(conn, live_google_ids: set[str]) ->
         google_contact_id = _clean(row["google_contact_id"])
         if google_contact_id in live_ids:
             continue
-        contact_id = int(row["id"])
-        _delete_local_contact_record(conn, contact_id)
-        deleted_ids.append(contact_id)
-    return deleted_ids
+        missing_ids.append(int(row["id"]))
+    return missing_ids
+
+
+def _queue_google_restore_for_cfs_contacts(conn, contact_ids: list[int]) -> int:
+    """Queue CFS contacts so Upload puts them back on Google."""
+    unique_ids = []
+    seen: set[int] = set()
+    for raw_id in contact_ids:
+        contact_id = int(raw_id or 0)
+        if contact_id <= 0 or contact_id in seen:
+            continue
+        seen.add(contact_id)
+        unique_ids.append(contact_id)
+    if not unique_ids or not _google_sync_is_enabled_for_writes(conn):
+        return 0
+    placeholders = ",".join("?" for _ in unique_ids)
+    already = {
+        int(row["contact_id"] or 0)
+        for row in conn.execute(
+            f"""
+            SELECT contact_id
+            FROM google_sync_queue
+            WHERE status = 'pending' AND contact_id IN ({placeholders})
+            """,
+            unique_ids,
+        ).fetchall()
+        if int(row["contact_id"] or 0) > 0
+    }
+    now = _now_text()
+    queued = 0
+    for contact_id in unique_ids:
+        if contact_id in already:
+            continue
+        row = conn.execute(
+            """
+            SELECT family_name, given_name, google_contact_id
+            FROM contacts
+            WHERE id = ?
+            """,
+            (contact_id,),
+        ).fetchone()
+        if not row:
+            continue
+        payload_json = json.dumps(
+            {
+                "sync_action": "Restore",
+                "family_name": _clean(row["family_name"]),
+                "given_name": _clean(row["given_name"]),
+                "google_contact_id": _clean(row["google_contact_id"]),
+            },
+            sort_keys=True,
+        )
+        conn.execute(
+            """
+            INSERT INTO google_sync_queue (
+              contact_id,
+              google_contact_id,
+              operation,
+              payload_json,
+              status,
+              last_error,
+              updated_at
+            ) VALUES (?, ?, 'update', ?, 'pending', '', ?)
+            """,
+            (
+                contact_id,
+                _clean(row["google_contact_id"]),
+                payload_json,
+                now,
+            ),
+        )
+        queued += 1
+    if queued:
+        _refresh_pending_upload_count(conn)
+    return queued
 
 
 def _sync_shared_contact_revision_only(conn, contact_id: int, remote_revision: int) -> None:
@@ -12183,14 +12259,21 @@ def sync_google_contact_changes(
     skipped_conflict_count = 0
     conflict_names: list[str] = []
     touched_contact_ids: list[int] = []
+    restore_contact_ids: list[int] = []
 
     with get_connection() as conn:
         for person in people:
             metadata = person.get("metadata") or {}
             resource_name = _clean(person.get("resourceName"))
             if metadata.get("deleted"):
-                if resource_name and _delete_local_contact_by_google_id(conn, resource_name):
-                    deleted_count += 1
+                # CFS is the source of truth. A Google tombstone must not erase
+                # the local card; Upload recreates it if Google still lacks it.
+                if resource_name:
+                    for row in conn.execute(
+                        "SELECT id FROM contacts WHERE google_contact_id = ? ORDER BY id",
+                        (resource_name,),
+                    ).fetchall():
+                        restore_contact_ids.append(int(row["id"]))
                 continue
 
             fields = _google_person_import_fields(person, groups_map)
@@ -12257,9 +12340,8 @@ def sync_google_contact_changes(
                     touched_contact_ids.append(identity_id)
                     updated_count += 1
                 else:
-                    contact_id = _insert_contact_from_google_person(conn, fields, status="synced")
-                    touched_contact_ids.append(contact_id)
-                    created_count += 1
+                    # Google-only cards stay out of CFS until an Editor imports them.
+                    continue
 
         stale_duplicate_ids = collapse_stale_identity_duplicate_contacts(conn)
         if used_full_fetch:
@@ -12268,7 +12350,10 @@ def sync_google_contact_changes(
                 for person in people
                 if _clean(person.get("resourceName")) and not (person.get("metadata") or {}).get("deleted")
             }
-            stale_duplicate_ids.extend(_prune_local_contacts_missing_google_ids(conn, live_google_ids))
+            restore_contact_ids.extend(
+                _prune_local_contacts_missing_google_ids(conn, live_google_ids)
+            )
+        _queue_google_restore_for_cfs_contacts(conn, restore_contact_ids)
         if stale_duplicate_ids:
             conn.execute(
                 """

@@ -318,10 +318,27 @@ def _queue_unmapped_member_retries(
     return added
 
 
+def _photo_counters_unfinished(group: dict[str, Any]) -> bool:
+    """True when stored photoDone is still short of photoTarget."""
+    done = int(group.get("photoDoneCount") or 0)
+    target = int(group.get("photoTargetCount") or 0)
+    ceiling = max(
+        int(group.get("memberCount") or 0),
+        int(group.get("actualCount") or 0),
+        int(group.get("importCursor") or 0),
+    )
+    if ceiling > 0:
+        done = min(done, ceiling)
+        target = min(target, ceiling)
+    return target > 0 and done < target
+
+
 def _hydrate_photo_targets(
     group: dict[str, Any],
     members_data: list[dict[str, Any]],
     photo_targets: dict[str, str],
+    *,
+    include_uploaded: bool = False,
 ) -> dict[str, str]:
     """Rebuild index→recipient person map from sync mappings (not stored in app_data)."""
     share_id = str(group.get("shareId") or "")
@@ -342,9 +359,14 @@ def _hydrate_photo_targets(
         if not recipient_person_id.startswith("people/") or not has_contact_photo(member):
             continue
         # Photos already on this person (this share or a sibling such as AlMsLa)
-        # must not be queued again when a meeting group is shared.
+        # must not be queued again when a meeting group is shared. An unfinished
+        # photo pass may still need those rows so Google can be scanned.
         prev_photo = str(mapping.get("last_photo_hash") or "")
-        if prev_photo and prev_photo != "no-photo":
+        if (
+            not include_uploaded
+            and prev_photo
+            and prev_photo != "no-photo"
+        ):
             continue
         hydrated[str(idx)] = recipient_person_id
     return hydrated
@@ -397,16 +419,16 @@ def _ensure_photo_work_queue(
 ) -> bool:
     """Refill the photo queue when it was lost but uploads remain.
 
-    Uploads still skip pictures the recipient already has. An empty queue after
-    the first 50-photo batch is what stalled imports at Photos (50/…).
+    Hydrated targets are remaining unhashed pictures, not the original total.
+    Comparing photo_done to that length treated a half-finished import as done
+    and left the queue empty, so later passes never resumed.
     """
     _normalize_photo_queues(
         photo_pending, photo_retry, photo_targets, members_data
     )
     if photo_pending or photo_retry:
         return False
-    hydrate_count = len(photo_targets)
-    if hydrate_count <= 0 or photo_done >= hydrate_count:
+    if not photo_targets:
         return False
     blocked = set(photo_retry)
     for idx_str, _rid in photo_targets.items():
@@ -431,6 +453,12 @@ def group_needs_photo_backfill(group: dict[str, Any]) -> bool:
     photo_targets = _hydrate_photo_targets(group, members_data, {})
     photo_target_total = len(photo_targets)
     if photo_target_total <= 0:
+        if not members_data:
+            return False
+        if _photo_counters_unfinished(group) and any(
+            has_contact_photo(member) for member in members_data
+        ):
+            return True
         return False
     photo_pending = list(group.get("photoPendingIndexes") or [])
     photo_retry = list(group.get("photoRetryIndexes") or [])
@@ -515,19 +543,41 @@ def apply_missing_photo_backfill(
     photo_retry = list(group.get("photoRetryIndexes") or [])
     photo_retry_attempts = dict(group.get("photoRetryAttempts") or {})
     photo_done = int(group.get("photoDoneCount") or 0)
-    photo_target_total = len(photo_targets)
+    used_uploaded = False
+    if not photo_targets and (
+        force
+        or live_only
+        or bool(group.get("photoNeedsRecipientScan"))
+        or _photo_counters_unfinished(group)
+    ):
+        photo_targets = _hydrate_photo_targets(
+            group, members_data, {}, include_uploaded=True
+        )
+        used_uploaded = bool(photo_targets)
+    hydrate_count = len(photo_targets)
+    photo_target_total = _photo_target_count(group, photo_targets)
     looked_up = False
     if force:
         group["photoNeedsRecipientScan"] = True
     queue_stuck = False
-    if not live_only:
+    scan_with_creds = bool(
+        creds is not None
+        and (
+            live_only
+            or (
+                force
+                and (photo_done >= photo_target_total or used_uploaded)
+            )
+        )
+    )
+    if not live_only and not scan_with_creds:
         queue_stuck = _ensure_photo_work_queue(
             members_data,
             photo_targets,
             photo_pending,
             photo_retry,
             photo_done,
-            photo_target_total,
+            hydrate_count,
         )
     if photo_pending or photo_retry:
         group.pop("photoNeedsRecipientScan", None)
@@ -536,7 +586,7 @@ def apply_missing_photo_backfill(
     if (
         (force or live_only)
         and creds is not None
-        and photo_target_total > 0
+        and hydrate_count > 0
         and not photo_pending
         and not photo_retry
     ):
@@ -2003,6 +2053,11 @@ def create_shared_groups(
                 photo_targets = _hydrate_photo_targets(
                     group, members_data, photo_targets
                 )
+                if not photo_targets and _photo_counters_unfinished(group):
+                    group["photoNeedsRecipientScan"] = True
+                    photo_targets = _hydrate_photo_targets(
+                        group, members_data, {}, include_uploaded=True
+                    )
                 photo_target_total = _photo_target_count(group, photo_targets)
                 _normalize_photo_queues(
                     photo_pending, photo_retry, photo_targets, members_data
@@ -2026,14 +2081,18 @@ def create_shared_groups(
                     )
                     photo_done = int(group.get("photoDoneCount") or 0)
                     photo_targets = _hydrate_photo_targets(
-                        group, members_data, {}
+                        group,
+                        members_data,
+                        {},
+                        include_uploaded=_photo_counters_unfinished(group)
+                        or bool(photo_pending or photo_retry),
                     )
                     photo_target_total = _photo_target_count(group, photo_targets)
                 if (
                     not group.get("photoNeedsRecipientScan")
                     and _photos_import_complete(
                         photo_done,
-                        len(photo_targets),
+                        _photo_target_count(group, photo_targets),
                         photo_pending,
                         photo_retry,
                     )
@@ -2079,7 +2138,10 @@ def create_shared_groups(
                     photo_remaining = len(photo_pending) + len(photo_retry)
                     if photo_remaining <= 0:
                         photo_targets = _hydrate_photo_targets(
-                            group, members_data, photo_targets
+                            group,
+                            members_data,
+                            photo_targets,
+                            include_uploaded=_photo_counters_unfinished(group),
                         )
                         _ensure_photo_work_queue(
                             members_data,
@@ -2090,8 +2152,29 @@ def create_shared_groups(
                             len(photo_targets),
                         )
                         photo_remaining = len(photo_pending) + len(photo_retry)
+                    stored_target = _photo_target_count(group, photo_targets)
+                    if photo_remaining <= 0 and photo_done < stored_target:
+                        group["photoNeedsRecipientScan"] = True
+                        apply_missing_photo_backfill(
+                            group, members_data, force=True, creds=creds
+                        )
+                        photo_pending = list(group.get("photoPendingIndexes") or [])
+                        photo_retry = list(group.get("photoRetryIndexes") or [])
+                        photo_retry_attempts = dict(
+                            group.get("photoRetryAttempts") or {}
+                        )
+                        photo_done = int(group.get("photoDoneCount") or 0)
+                        photo_targets = _hydrate_photo_targets(
+                            group,
+                            members_data,
+                            {},
+                            include_uploaded=_photo_counters_unfinished(group)
+                            or bool(photo_pending or photo_retry),
+                        )
+                        photo_remaining = len(photo_pending) + len(photo_retry)
+                        stored_target = _photo_target_count(group, photo_targets)
                     if photo_remaining <= 0 and (
-                        not photo_targets or photo_done >= len(photo_targets)
+                        not photo_targets or photo_done >= stored_target
                     ):
                         break
                     if photo_remaining <= 0 or remaining_ops <= 0 or over_budget():
@@ -2135,7 +2218,10 @@ def create_shared_groups(
                         had_queue = bool(photo_pending or photo_retry)
                         if not had_queue:
                             photo_targets = _hydrate_photo_targets(
-                                group, members_data, photo_targets
+                                group,
+                                members_data,
+                                photo_targets,
+                                include_uploaded=_photo_counters_unfinished(group),
                             )
                             _ensure_photo_work_queue(
                                 members_data,
@@ -2145,9 +2231,13 @@ def create_shared_groups(
                                 photo_done,
                                 len(photo_targets),
                             )
-                        if not (photo_pending or photo_retry) or had_queue:
-                            break
-                        continue
+                        if photo_pending or photo_retry:
+                            if had_queue:
+                                break
+                            continue
+                        if photo_done < _photo_target_count(group, photo_targets):
+                            continue
+                        break
 
                     photo_done = _reconcile_photo_done(
                         group,
@@ -2179,7 +2269,8 @@ def create_shared_groups(
                     group["importPhase"] = "photos"
                     notify_group_progress(group)
                     if photo_remaining <= 0 and (
-                        not photo_targets or photo_done >= len(photo_targets)
+                        not photo_targets
+                        or photo_done >= _photo_target_count(group, photo_targets)
                     ):
                         break
 
@@ -2192,7 +2283,7 @@ def create_shared_groups(
                 not group.get("photoNeedsRecipientScan")
                 and _photos_import_complete(
                     photo_done,
-                    len(photo_targets),
+                    _photo_target_count(group, photo_targets),
                     photo_pending,
                     photo_retry,
                 )
@@ -2273,6 +2364,9 @@ def _persist_shared_group(
     existing = shared_groups[target_index] or {}
     persisted = deepcopy(group_state)
     persisted.pop("photoTargets", None)
+    persisted["recipientEmail"] = str(
+        persisted.get("recipientEmail") or recipient_email or ""
+    )
     try:
         persisted["importCursor"] = max(
             int(existing.get("importCursor") or 0),
@@ -2424,6 +2518,9 @@ def process_shared_import_for_group(
             cleaned = deepcopy(processed[0])
             rate_limited = bool(cleaned.pop("rateLimited", None))
             cleaned.pop("photoTargets", None)
+            cleaned["recipientEmail"] = str(
+                cleaned.get("recipientEmail") or recipient_email or ""
+            )
             shared_groups.insert(insert_at, cleaned)
 
         app_data["sharedGroups"] = shared_groups

@@ -6,8 +6,10 @@ Runs in a background thread for whichever Editor holds the Editor lock. Order:
 2. Re-run the quick roster check so every step works from fresh ids.
 3. Fix Google Drive (remove deleted contacts, add missing ones).
 4. Re-create CFS contacts that are missing from the owner's Google account.
-5. Tell Share about missing and stale contacts (one targeted call, not a full sync).
-6. Per recipient, ask Share to relink, de-duplicate and recreate real cards.
+5. Tell Share about the known missing and extra contact ids (one targeted call).
+6. Only if a card check already found real card drift (duplicates, wrong cards),
+   ask Share to repair that recipient. Mapping mismatches do not reread the
+   whole Google group.
 7. Re-check everything and write one Edit List entry.
 
 Owner-Google contacts that CFS does not have are never changed here. The banner
@@ -70,10 +72,20 @@ _STATE: dict = {
 }
 
 
+PROGRESS_TICK_SECONDS = 5.0
+
+
 def get_roster_fix_status() -> dict:
     with _LOCK:
         snapshot = dict(_STATE)
         snapshot["log"] = list(_STATE["log"])
+    started = float(snapshot.get("started_at") or 0)
+    finished = float(snapshot.get("finished_at") or 0)
+    if started:
+        end = finished or time.time()
+        snapshot["elapsed_seconds"] = max(0, int(end - started))
+    else:
+        snapshot["elapsed_seconds"] = 0
     return snapshot
 
 
@@ -94,8 +106,50 @@ def _step(text: str) -> None:
     _note(text)
 
 
-def _sleep(seconds: float) -> None:
-    time.sleep(seconds)
+def _progress(text: str) -> None:
+    """Update the live banner without filling the log."""
+    _set_state(step=text)
+
+
+def _format_tally(totals: dict | None) -> str:
+    totals = totals or {}
+    parts: list[str] = []
+    relinked = int(totals.get("relinked") or 0) + int(totals.get("linked_elsewhere") or 0)
+    if relinked:
+        parts.append(f"relinked {relinked}")
+    if totals.get("created"):
+        parts.append(f"created {totals['created']}")
+    if totals.get("repaired"):
+        parts.append(f"corrected {totals['repaired']}")
+    if totals.get("added_back"):
+        parts.append(f"added {totals['added_back']} back")
+    if totals.get("deleted"):
+        parts.append(f"deleted {totals['deleted']} duplicate(s)")
+    if totals.get("ungrouped"):
+        parts.append(f"removed {totals['ungrouped']} extra")
+    return ", ".join(parts)
+
+
+def _recipient_progress(email: str, index: int, total: int, detail: str, totals: dict | None = None) -> None:
+    pieces = [f"Fixing cards for {email} ({index} of {total})"]
+    if detail:
+        pieces.append(detail)
+    tally = _format_tally(totals)
+    if tally:
+        pieces.append(tally)
+    _progress(" · ".join(pieces))
+
+
+def _sleep(seconds: float, on_tick=None) -> None:
+    if on_tick is None or seconds <= PROGRESS_TICK_SECONDS:
+        time.sleep(seconds)
+        return
+    deadline = time.time() + seconds
+    remaining = seconds
+    while remaining > 0.05:
+        on_tick(int(max(remaining, 0)))
+        time.sleep(min(PROGRESS_TICK_SECONDS, remaining))
+        remaining = deadline - time.time()
 
 
 def _log_to_edit_list(title: str, lines: list[str]) -> None:
@@ -227,7 +281,7 @@ def _fix_share_mappings(report: dict, owner_email: str) -> list[str]:
         ids.update(item.get("extra_person_ids") or [])
     if not ids:
         return []
-    _step("Telling Share about missing and old contacts")
+    _step(f"Updating Share for {len(ids)} known contact(s)")
     result = sync_share_app_contact_changes(owner_email, sorted(ids))
     if result is not None and result.get("ok") is False:
         _note(f"Share did not accept the update: {result.get('reason') or 'unknown reason'}")
@@ -236,14 +290,17 @@ def _fix_share_mappings(report: dict, owner_email: str) -> list[str]:
 
 
 def _recipient_targets(report: dict) -> list[str]:
+    """Recipients whose real Google cards already showed drift.
+
+    Known missing/extra mapping ids are sent in `_fix_share_mappings`. A mapping
+    mismatch is not a reason to download that recipient's whole shared group.
+    """
     cards = ((report.get("share_cards") or {}).get("recipients") or {}) if isinstance(report.get("share_cards"), dict) else {}
     targets: list[str] = []
     for item in report.get("recipients") or []:
         email = item["email"]
         card = cards.get(email)
-        mapping_problem = bool(item.get("missing") or item.get("extra_count"))
-        card_problem = (not isinstance(card, dict)) or bool(card.get("changes")) or not card.get("ok")
-        if mapping_problem or card_problem:
+        if isinstance(card, dict) and (card.get("changes") or not card.get("ok")):
             targets.append(email)
     return targets
 
@@ -257,24 +314,40 @@ def _sum_applied(result: dict) -> dict:
     return totals
 
 
-def _fix_recipient(owner_email: str, email: str) -> tuple[dict, str]:
+def _fix_recipient(owner_email: str, email: str, index: int = 1, total: int = 1) -> tuple[dict, str]:
     """Run Share's card fix for one recipient until it is clean. Returns (totals, problem)."""
     totals: dict[str, int] = {}
     busy_waits = 0
     rounds = 0
     while rounds < MAX_FIX_ROUNDS:
+        _recipient_progress(email, index, total, f"round {rounds + 1}", totals)
         result = fix_share_recipient_cards(owner_email, email)
         reason = str(result.get("reason") or "")
         if reason == "push_queue_busy":
             busy_waits += 1
             if busy_waits > MAX_BUSY_WAITS:
                 return totals, "Share is still sending other updates"
-            _sleep(BUSY_WAIT_SECONDS)
+            _recipient_progress(email, index, total, "waiting for Share to finish sending", totals)
+
+            def tick(left: int) -> None:
+                _recipient_progress(
+                    email,
+                    index,
+                    total,
+                    f"waiting for Share to finish sending ({left}s)",
+                    totals,
+                )
+
+            _sleep(BUSY_WAIT_SECONDS, on_tick=tick)
             continue
         rounds += 1
-        for key, value in _sum_applied(result).items():
+        applied_now = _sum_applied(result)
+        for key, value in applied_now.items():
             totals[key] = totals.get(key, 0) + value
+        if applied_now:
+            _note(f"{email}: round {rounds} {_format_tally(applied_now)}")
         if result.get("clean"):
+            _recipient_progress(email, index, total, "done", totals)
             return totals, ""
         if reason in ("recipient_not_connected", "owner_not_connected", "share_key_not_configured", "share_app_endpoint_missing_redeploy_required"):
             return totals, str(result.get("message") or reason)
@@ -284,7 +357,17 @@ def _fix_recipient(owner_email: str, email: str) -> tuple[dict, str]:
             return totals, str(first.get("message") or first.get("reason"))
         if result.get("ok") is False and not result.get("groups") and not result.get("partial"):
             return totals, str(result.get("reason") or "Share could not be reached")
-        _sleep(PARTIAL_WAIT_SECONDS if result.get("partial") else 3.0)
+        wait_label = "waiting for remaining cards" if result.get("partial") else "checking again"
+
+        def tick(left: int, label: str = wait_label) -> None:
+            _recipient_progress(email, index, total, f"{label} ({left}s)", totals)
+
+        wait_seconds = PARTIAL_WAIT_SECONDS if result.get("partial") else 3.0
+        if wait_seconds > PROGRESS_TICK_SECONDS:
+            _sleep(wait_seconds, on_tick=tick)
+        else:
+            _recipient_progress(email, index, total, wait_label, totals)
+            _sleep(wait_seconds)
     return totals, "Still not finished after several rounds"
 
 
@@ -293,7 +376,7 @@ def _fix_share_cards(report: dict, owner_email: str) -> list[str]:
     lines: list[str] = []
     for index, email in enumerate(targets, start=1):
         _step(f"Fixing cards for {email} ({index} of {len(targets)})")
-        totals, problem = _fix_recipient(owner_email, email)
+        totals, problem = _fix_recipient(owner_email, email, index=index, total=len(targets))
         parts = []
         if totals.get("relinked") or totals.get("linked_elsewhere"):
             parts.append(f"relinked {totals.get('relinked', 0) + totals.get('linked_elsewhere', 0)}")

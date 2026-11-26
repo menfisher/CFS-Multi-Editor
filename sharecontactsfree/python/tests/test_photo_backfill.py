@@ -207,8 +207,8 @@ class PhotoBackfillTests(unittest.TestCase):
         saved = (db.get_app_data(RECIPIENT) or {})["sharedGroups"][0]
         self.assertTrue(str(saved["status"]).startswith("Photos ("))
         self.assertEqual(int(saved["photoDoneCount"]), 5)
-        self.assertTrue(saved.get("photoNeedsRecipientScan"))
-        self.assertEqual(len(saved.get("photoPendingIndexes") or []), 0)
+        self.assertFalse(saved.get("photoNeedsRecipientScan"))
+        self.assertEqual(len(saved.get("photoPendingIndexes") or []), 5)
 
     def test_force_without_creds_refills_queue_from_mapped_photos(self) -> None:
         group = self._shared_group(done=4, target=5, members=5)
@@ -232,6 +232,17 @@ class PhotoBackfillTests(unittest.TestCase):
         self.assertEqual(len(group.get("photoPendingIndexes") or []), 80)
         self.assertEqual(group["importPhase"], "photos")
         self.assertFalse(str(group["status"]).startswith("Shared"))
+
+    def test_empty_queue_refills_when_done_exceeds_remaining_targets(self) -> None:
+        pending: list[int] = []
+        retry: list[int] = []
+        members = [_photo_member(i) for i in range(80)]
+        remaining = {str(i): f"people/r{i}" for i in range(50, 80)}
+        stuck = _ensure_photo_work_queue(
+            members, remaining, pending, retry, 50, 30
+        )
+        self.assertFalse(stuck)
+        self.assertEqual(pending, list(range(50, 80)))
 
     def test_photo_progress_fields_never_decrease_done_or_target(self) -> None:
         group = {
@@ -293,6 +304,22 @@ class PhotoBackfillTests(unittest.TestCase):
             lookup.assert_not_called()
         self.assertEqual(int(group["photoDoneCount"]), 4)
         self.assertEqual(len(group.get("photoPendingIndexes") or []), 5)
+
+    def test_hashed_mappings_still_backfill_unfinished_photo_counter(self) -> None:
+        group = self._shared_group(done=2, target=5, members=5)
+        for idx in range(5):
+            self._map(idx, photo_hash="uploaded")
+        self.assertTrue(group_needs_photo_backfill(group))
+        with patch(
+            "app.services.recipient_import._missing_recipient_photo_indexes",
+            return_value=([2, 3, 4], 2),
+        ):
+            self.assertTrue(
+                apply_missing_photo_backfill(group, force=True, creds=object())
+            )
+        self.assertEqual(sorted(group.get("photoPendingIndexes") or []), [2, 3, 4])
+        self.assertEqual(int(group["photoDoneCount"]), 2)
+        self.assertFalse(str(group["status"]).startswith("Shared"))
 
     def test_finished_photos_do_not_backfill(self) -> None:
         for idx in range(3):

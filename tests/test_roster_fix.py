@@ -1,4 +1,5 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -134,6 +135,46 @@ class RosterFixRunnerTests(unittest.TestCase):
         self.assertEqual(second["reason"], "already_running")
         thread.return_value.start.assert_called_once()
 
+    def test_format_tally_summarizes_counts(self) -> None:
+        self.assertEqual(
+            fix._format_tally({"created": 5, "deleted": 2, "relinked": 1, "linked_elsewhere": 1}),
+            "relinked 2, created 5, deleted 2 duplicate(s)",
+        )
+
+    def test_status_includes_elapsed_seconds(self) -> None:
+        fix._set_state(running=True, started_at=time.time() - 12, finished_at=0.0, step="Working", log=["Checking"])
+        status = fix.get_roster_fix_status()
+        self.assertGreaterEqual(status["elapsed_seconds"], 11)
+        self.assertEqual(status["step"], "Working")
+        self.assertEqual(status["log"], ["Checking"])
+
+    def test_fix_recipient_reports_live_progress(self) -> None:
+        replies = [
+            {"ok": False, "reason": "push_queue_busy"},
+            {"ok": True, "partial": True, "groups": [{"applied": {"created": 3}}]},
+            {"ok": True, "clean": True, "groups": [{"applied": {"created": 2, "deleted": 1}}]},
+        ]
+        steps: list[str] = []
+        real_set = fix._set_state
+
+        def spy(**changes):
+            if "step" in changes:
+                steps.append(changes["step"])
+            real_set(**changes)
+
+        with patch.object(fix, "fix_share_recipient_cards", side_effect=replies), patch.object(
+            fix, "_sleep"
+        ), patch.object(fix, "_set_state", new=spy):
+            totals, problem = fix._fix_recipient("owner@gmail.com", "a@gmail.com", index=1, total=2)
+        self.assertEqual(problem, "")
+        self.assertEqual(totals, {"created": 5, "deleted": 1})
+        joined = "\n".join(steps)
+        self.assertIn("1 of 2", joined)
+        self.assertIn("waiting for Share to finish sending", joined)
+        self.assertIn("created 3", joined)
+        self.assertIn("created 5", joined)
+        self.assertTrue(any("round 1" in step for step in steps))
+
     def test_fix_recipient_repeats_until_clean(self) -> None:
         replies = [
             {"ok": True, "partial": True, "groups": [{"applied": {"created": 3, "partial": True, "errors": []}}]},
@@ -188,10 +229,7 @@ class RosterFixRunnerTests(unittest.TestCase):
                 }
             },
         }
-        self.assertEqual(
-            fix._recipient_targets(report),
-            ["dupes@gmail.com", "mapping@gmail.com", "unchecked@gmail.com"],
-        )
+        self.assertEqual(fix._recipient_targets(report), ["dupes@gmail.com"])
 
     def test_drive_fix_marks_missing_and_exports(self) -> None:
         report = {"drive_missing_ids": [4, 5], "drive_extra_ids": [9]}

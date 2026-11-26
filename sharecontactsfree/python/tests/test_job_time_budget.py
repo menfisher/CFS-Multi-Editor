@@ -204,6 +204,171 @@ class ImportTimeBudgetTests(unittest.TestCase):
         saved = (db.get_app_data(RECIPIENT) or {})["sharedGroups"][0]
         self.assertTrue(str(saved.get("status") or "").startswith("Shared"))
 
+    def _unfinished_photos_group(
+        self,
+        *,
+        status: str,
+        phase: str,
+        done: int,
+        target: int,
+        members: int,
+        share_id: str,
+    ) -> dict:
+        for idx in range(members):
+            db.upsert_sync_mapping(
+                share_id=share_id,
+                owner=OWNER,
+                group_resource_name=RESOURCE,
+                recipient_email=RECIPIENT,
+                owner_person_id=f"people/{idx}",
+                recipient_person_id=f"people/r{idx}",
+                last_hash="h",
+                last_photo_hash="",
+            )
+        db.write_shared_contacts(
+            share_id,
+            OWNER,
+            "Friends",
+            RESOURCE,
+            [
+                {
+                    "resourceName": f"people/{idx}",
+                    "names": [{"displayName": f"c{idx}"}],
+                    "photos": [
+                        {
+                            "url": f"https://example.com/p{idx}.jpg",
+                            "default": False,
+                        }
+                    ],
+                }
+                for idx in range(members)
+            ],
+        )
+        return {
+            "owner": OWNER,
+            "resourceName": RESOURCE,
+            "recipientEmail": RECIPIENT,
+            "shareId": share_id,
+            "status": status,
+            "importPhase": phase,
+            "memberCount": members,
+            "actualCount": members,
+            "importCursor": members,
+            "photoDoneCount": done,
+            "photoTargetCount": target,
+            "photoPendingIndexes": [],
+            "photoRetryIndexes": [],
+        }
+
+    def test_empty_photo_queue_with_remaining_photos_is_resumed(self) -> None:
+        db.save_app_data(
+            RECIPIENT,
+            {
+                "sharedGroups": [
+                    self._unfinished_photos_group(
+                        status="Photos (2/5)",
+                        phase="photos",
+                        done=2,
+                        target=5,
+                        members=5,
+                        share_id="share-resume-empty-queue",
+                    )
+                ]
+            },
+        )
+        job_id = db.enqueue_push_job(
+            owner=OWNER,
+            resource_name=RESOURCE,
+            recipient_email=RECIPIENT,
+            job_type="full_group",
+            payload={},
+        )
+        db.update_push_job(job_id, status="done")
+        group = (db.get_app_data(RECIPIENT) or {})["sharedGroups"][0]
+        self.assertFalse(
+            push_worker.recipient_finished_import_is_stale_photo_row(
+                group, RECIPIENT
+            )
+        )
+        self.assertTrue(push_worker._group_needs_import_job(group, RECIPIENT))
+        self.assertEqual(
+            push_worker.resume_stalled_imports_for_recipient(RECIPIENT), 1
+        )
+        saved = (db.get_app_data(RECIPIENT) or {})["sharedGroups"][0]
+        self.assertFalse(str(saved.get("status") or "").startswith("Shared"))
+
+    def test_shared_empty_photo_queue_with_remaining_photos_is_resumed(self) -> None:
+        db.save_app_data(
+            RECIPIENT,
+            {
+                "sharedGroups": [
+                    self._unfinished_photos_group(
+                        status="Shared",
+                        phase="done",
+                        done=2,
+                        target=5,
+                        members=5,
+                        share_id="share-resume-shared-photos",
+                    )
+                ]
+            },
+        )
+        self.assertTrue(
+            push_worker._group_needs_import_job(
+                (db.get_app_data(RECIPIENT) or {})["sharedGroups"][0],
+                RECIPIENT,
+            )
+        )
+        self.assertEqual(
+            push_worker.resume_stalled_imports_for_recipient(RECIPIENT), 1
+        )
+
+    def test_hashed_mappings_with_short_photo_counter_are_resumed(self) -> None:
+        db.save_app_data(
+            RECIPIENT,
+            {
+                "sharedGroups": [
+                    self._unfinished_photos_group(
+                        status="Photos (2/5)",
+                        phase="photos",
+                        done=2,
+                        target=5,
+                        members=5,
+                        share_id="share-resume-hashed-photos",
+                    )
+                ]
+            },
+        )
+        for idx in range(5):
+            db.upsert_sync_mapping(
+                share_id="share-resume-hashed-photos",
+                owner=OWNER,
+                group_resource_name=RESOURCE,
+                recipient_email=RECIPIENT,
+                owner_person_id=f"people/{idx}",
+                recipient_person_id=f"people/r{idx}",
+                last_hash="h",
+                last_photo_hash="uploaded",
+            )
+        job_id = db.enqueue_push_job(
+            owner=OWNER,
+            resource_name=RESOURCE,
+            recipient_email=RECIPIENT,
+            job_type="full_group",
+            payload={},
+        )
+        db.update_push_job(job_id, status="done")
+        group = (db.get_app_data(RECIPIENT) or {})["sharedGroups"][0]
+        self.assertFalse(
+            push_worker.recipient_finished_import_is_stale_photo_row(
+                group, RECIPIENT
+            )
+        )
+        self.assertTrue(push_worker._group_needs_import_job(group, RECIPIENT))
+        self.assertEqual(
+            push_worker.resume_stalled_imports_for_recipient(RECIPIENT), 1
+        )
+
     def test_open_photo_queue_is_still_resumed(self) -> None:
         share_id = "share-open-photos"
         db.upsert_sync_mapping(

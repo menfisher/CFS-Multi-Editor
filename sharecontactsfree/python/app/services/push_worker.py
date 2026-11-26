@@ -201,6 +201,12 @@ def reconcile_stale_share_rows(recipient_email: str) -> int:
     ) + reconcile_vanished_owner_share_rows(recipient_email)
 
 
+def _stamp_recipient_email(group: dict, recipient_email: str) -> None:
+    email = str(recipient_email or "").strip()
+    if email and not str(group.get("recipientEmail") or "").strip():
+        group["recipientEmail"] = email
+
+
 def recipient_finished_import_is_stale_photo_row(
     group: dict, recipient_email: str
 ) -> bool:
@@ -217,6 +223,11 @@ def recipient_finished_import_is_stale_photo_row(
     ):
         return False
     if _has_open_import_queues(group):
+        return False
+    _stamp_recipient_email(group, recipient_email)
+    from .recipient_import import group_needs_photo_backfill
+
+    if group_needs_photo_backfill(group):
         return False
     if not _contacts_mapping_is_complete(group, recipient_email):
         return False
@@ -275,6 +286,7 @@ def _group_needs_import_job(group: dict, recipient_email: str) -> bool:
         return False
     if _is_idle_photo_scan(group):
         return False
+    _stamp_recipient_email(group, recipient_email)
     if recipient_finished_import_is_stale_photo_row(group, recipient_email):
         return False
     if list(group.get("retryIndexes") or []):
@@ -293,12 +305,15 @@ def _group_needs_import_job(group: dict, recipient_email: str) -> bool:
             return True
         # Shared + a stale photoDone counter is not unfinished work. Retry
         # fills photoPendingIndexes; only that (or a short/duplicate group)
-        # should reopen a finished share.
+        # should reopen a finished share. Real leftover photos still have
+        # staged contacts without last_photo_hash.
         if list(group.get("photoPendingIndexes") or []) or list(
             group.get("photoRetryIndexes") or []
         ):
             return True
-        return False
+        from .recipient_import import group_needs_photo_backfill
+
+        return group_needs_photo_backfill(group)
     return phase in ("contacts", "photos") or status.startswith(in_progress_prefixes)
 
 
@@ -710,6 +725,7 @@ def _finalize_group_if_photos_done(
     complete = False
     for group in groups:
         if group.get("owner") == owner and group.get("resourceName") == resource_name:
+            _stamp_recipient_email(group, recipient_email)
             if recipient_finished_import_is_stale_photo_row(group, recipient_email):
                 group["status"] = "Shared"
                 group["importPhase"] = "done"

@@ -124,15 +124,15 @@ class StaleContactIdentityTests(unittest.TestCase):
         )
         self.assertEqual(found, 5)
 
-    def test_prune_removes_dead_google_ids(self) -> None:
+    def test_prune_lists_dead_google_ids_without_deleting(self) -> None:
         self._add_contact(1, "Dorothy", "Turner", google_contact_id="people/dead")
         self._add_contact(2, "Live", "Person", google_contact_id="people/live")
         self.conn.commit()
 
-        deleted = _prune_local_contacts_missing_google_ids(self.conn, {"people/live"})
+        missing = _prune_local_contacts_missing_google_ids(self.conn, {"people/live"})
         ids = [int(row["id"]) for row in self.conn.execute("SELECT id FROM contacts ORDER BY id")]
-        self.assertEqual(deleted, [1])
-        self.assertEqual(ids, [2])
+        self.assertEqual(missing, [1])
+        self.assertEqual(ids, [1, 2])
 
     def test_prune_does_not_wipe_when_google_list_is_empty(self) -> None:
         self._add_contact(1, "Dorothy", "Turner", google_contact_id="people/dead")

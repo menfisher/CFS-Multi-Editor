@@ -221,7 +221,10 @@
             {% elif google_sync.state.roster_fixable %}
               <span>Only the Editor who holds the Editor lock can run the automatic fix.</span>
             {% endif %}
-            <span id="roster-fix-status" aria-live="polite"></span>
+            <div class="roster-fix-progress">
+              <div id="roster-fix-status" aria-live="polite"></div>
+              <ul id="roster-fix-log" class="roster-fix-log" hidden></ul>
+            </div>
           </div>
           {% if google_sync.state.roster_checked_at %}
             <div class="roster-checked-at">Last checked {{ google_sync.state.roster_checked_at }}</div>
@@ -236,41 +239,91 @@
         (function () {
           var button = document.getElementById("roster-fix-button");
           var statusEl = document.getElementById("roster-fix-status");
+          var logEl = document.getElementById("roster-fix-log");
           var timer = null;
+          var fixLocked = false;
           function setStatus(text) { if (statusEl) { statusEl.textContent = text; } }
+          function lockButton() {
+            fixLocked = true;
+            if (!button) { return; }
+            button.disabled = true;
+            button.setAttribute("aria-disabled", "true");
+          }
+          function unlockButton() {
+            fixLocked = false;
+            if (!button) { return; }
+            button.disabled = false;
+            button.setAttribute("aria-disabled", "false");
+          }
+          function escapeHtml(text) {
+            return String(text)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;");
+          }
+          function formatElapsed(secs) {
+            secs = Math.max(0, parseInt(secs, 10) || 0);
+            var m = Math.floor(secs / 60);
+            var s = secs % 60;
+            if (m <= 0) { return s + "s"; }
+            return m + "m " + (s < 10 ? "0" : "") + s + "s";
+          }
+          function renderLog(lines) {
+            if (!logEl) { return; }
+            var recent = (lines || []).slice(-8);
+            if (!recent.length) {
+              logEl.hidden = true;
+              logEl.innerHTML = "";
+              return;
+            }
+            logEl.hidden = false;
+            logEl.innerHTML = recent.map(function (line) {
+              return "<li>" + escapeHtml(line) + "</li>";
+            }).join("");
+          }
           function poll() {
+            if (timer) { clearTimeout(timer); timer = null; }
             fetch("/contacts/roster-fix/status", { headers: { Accept: "application/json" } })
               .then(function (r) { return r.json(); })
               .then(function (s) {
                 if (s.running) {
-                  if (button) { button.disabled = true; }
-                  setStatus((s.step || "Working") + "... this can take several minutes. You can keep working.");
-                  timer = setTimeout(poll, 4000);
-                } else {
-                  if (button) { button.disabled = false; }
+                  lockButton();
+                  setStatus((s.step || "Working") + " · " + formatElapsed(s.elapsed_seconds) + ". You can keep working.");
+                  renderLog(s.log);
+                  timer = setTimeout(poll, 2000);
+                  return;
+                }
+                if (fixLocked) {
                   if (s.finished_at) {
                     setStatus(s.message || "Finished.");
+                    renderLog(s.log);
                     if (s.ok) { setTimeout(function () { window.location.reload(); }, 1500); }
+                    return;
                   }
+                  timer = setTimeout(poll, 2000);
+                  return;
                 }
+                if (button) { button.disabled = false; }
               })
               .catch(function () { timer = setTimeout(poll, 8000); });
           }
           if (button) {
             button.addEventListener("click", function () {
-              button.disabled = true;
+              if (fixLocked || button.disabled) { return; }
+              lockButton();
               setStatus("Starting...");
               fetch("/contacts/roster-fix/start", { method: "POST", headers: { Accept: "application/json" } })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                   if (!data.ok && data.reason !== "already_running") {
-                    button.disabled = false;
+                    unlockButton();
                     setStatus(data.message || "The fix could not start.");
                     return;
                   }
                   poll();
                 })
-                .catch(function () { button.disabled = false; setStatus("The fix could not start."); });
+                .catch(function () { unlockButton(); setStatus("The fix could not start."); });
             });
             poll();
           }

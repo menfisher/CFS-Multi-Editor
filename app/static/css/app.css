@@ -2303,9 +2303,32 @@ h3 {
 
 .roster-fix-controls {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 10px;
   margin-top: 8px;
+}
+
+#roster-fix-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #8aa3a5;
+  pointer-events: none;
+}
+
+.roster-fix-progress {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.roster-fix-log {
+  margin: 6px 0 0 18px;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+.roster-fix-log li {
+  margin: 2px 0;
 }
 
 .roster-checked-at {
