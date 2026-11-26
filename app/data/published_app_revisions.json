@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.259",
+      "version": "1.260",
       "date_display": "11/26/2026",
+      "description": "Roster fix sends only known missing cards, greys the Fix automatically button while it runs, and recreates a Share card when Google no longer has it."
+    },
+    {
+      "date_display": "11/26/2026",
+      "version": "1.259",
       "description": "CFS stays source of truth on Google sync (no silent deletes). Roster fix shows live progress and uses targeted Share updates. Share photo resume improvements."
     },
     {
