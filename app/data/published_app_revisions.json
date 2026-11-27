@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.260",
+      "version": "1.261",
       "date_display": "11/26/2026",
+      "description": "Pending phones no longer drop Drive contacts they never had. An Editor copy, including Mobile with the lock, can still overwrite Drive. Editor sign-in keeps local cards omitted from Drive and puts them back."
+    },
+    {
+      "date_display": "11/26/2026",
+      "version": "1.260",
       "description": "Roster fix sends only known missing cards, greys the Fix automatically button while it runs, and recreates a Share card when Google no longer has it."
     },
     {
