@@ -2229,6 +2229,33 @@ def _clear_expired_local_editor_session(state: dict, *, now: datetime | None = N
     return True
 
 
+def _this_copy_holds_editor_lock() -> bool:
+    """True when this CFS copy is the Editor, including during sign-in sync.
+
+    is_editing_allowed() is False while sign-in is in progress, which is exactly
+    when Drive import used to prune contacts another copy just imported.
+    """
+    summary = get_google_sync_summary()
+    account = summary.get("account") or {}
+    state = summary.get("state") or {}
+    if _is_bootstrap_blocking_state(state):
+        return False
+    if not bool(state.get("multi_editor_enabled") or state.get("multi_editor_account_locked")):
+        return True
+    if is_non_editor_access_role(normalize_access_role(state.get("access_role"))):
+        return False
+    return _has_active_local_editor_session(account, state)
+
+
+def _keep_drive_ids_not_in_local_for_incremental_export() -> bool:
+    """Pending copies must not drop Drive IDs they never had.
+
+    The Editor copy — desktop or Mobile — is CFS, so it may overwrite Drive,
+    including deletes.
+    """
+    return not _this_copy_holds_editor_lock()
+
+
 def is_editing_allowed() -> bool:
     summary = get_google_sync_summary()
     account = summary.get("account") or {}
@@ -5104,8 +5131,14 @@ def _replace_shared_contacts_manifest_from_local(
     *,
     existing_manifest: dict | None = None,
     refreshed_contact_ids: list[int] | None = None,
+    keep_drive_ids_not_in_local: bool = False,
 ) -> dict:
-    """Drive's contact list is exactly the local CFS set. Leftover Drive IDs are dropped."""
+    """Write local CFS contacts into the Drive list.
+
+    Full Editor export drops leftover Drive IDs so deletes propagate. Incremental
+    pending-edit exports keep Drive IDs this copy does not have unless this copy
+    holds the Editor lock.
+    """
     payload = _shared_contacts_manifest_payload(conn)
     existing_by_id = {
         int(item.get("id") or 0): dict(item)
@@ -5141,6 +5174,12 @@ def _replace_shared_contacts_manifest_from_local(
             if old_digest:
                 merged["content_digest"] = old_digest
         replaced_contacts.append(merged)
+    if keep_drive_ids_not_in_local:
+        local_ids = {int(item.get("id") or 0) for item in replaced_contacts}
+        for contact_id, old in existing_by_id.items():
+            if contact_id > 0 and contact_id not in local_ids:
+                replaced_contacts.append(old)
+        replaced_contacts.sort(key=lambda item: int(item.get("id") or 0))
     payload["contacts"] = replaced_contacts
     return payload
 
@@ -6854,6 +6893,18 @@ def import_shared_contacts_from_google_drive(
             local_contact_count,
         )
         removed_contact_ids = set()
+    elif removed_contact_ids and _this_copy_holds_editor_lock():
+        # This Editor copy is the source of truth. A later phone/pending-editor
+        # Drive write can omit contacts we just imported. Keep them and put them
+        # back on Drive instead of deleting them on sign-in.
+        _LOGGER.warning(
+            "Keeping %s local contact(s) omitted from Drive because this Editor copy is the source of truth.",
+            len(removed_contact_ids),
+        )
+        for contact_id in sorted(removed_contact_ids):
+            mark_contact_for_drive_export(contact_id)
+        mark_contacts_manifest_for_drive_export()
+        removed_contact_ids = set()
 
     # Fast path: dataset revision differed, but no per-contact Drive-ahead work and no
     # removals. Adopt the remote dataset revision without listing/downloading records.
@@ -8390,6 +8441,7 @@ def export_pending_edits_contact_assets_to_google_drive(*, access_token: str | N
                 conn,
                 existing_manifest=existing_manifest,
                 refreshed_contact_ids=uploaded_contact_ids,
+                keep_drive_ids_not_in_local=_keep_drive_ids_not_in_local_for_incremental_export(),
             )
             _drive_update_json_file_content(token, storage["contacts_current_file_id"], manifest_payload)
             referenced_files = {
@@ -8514,6 +8566,7 @@ def export_mobile_pending_shared_contacts_to_google_drive(
                 conn,
                 existing_manifest=existing_manifest,
                 refreshed_contact_ids=uploaded_contact_ids,
+                keep_drive_ids_not_in_local=_keep_drive_ids_not_in_local_for_incremental_export(),
             )
             _drive_update_json_file_content(token, resolved_storage["contacts_current_file_id"], manifest_payload)
             for file_name in _removed_contact_record_file_names(existing_manifest, manifest_payload):

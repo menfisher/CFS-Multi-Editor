@@ -251,6 +251,121 @@ class SmallerDriveManifestImportTests(unittest.TestCase):
         restore.assert_called_once_with(full_backup, restore_files=False)
         store_revisions.assert_called_once_with(contacts_sync_revision=5)
 
+    def _overlapping_manifest_omitting(self, omitted_ids: set[int]) -> dict:
+        return {
+            "format": "contactsfreeshare.shared_contacts.v2",
+            "contacts": [
+                {
+                    "id": contact_id,
+                    "family_name": f"Family{contact_id}",
+                    "given_name": f"Given{contact_id}",
+                    "shared_drive_revision": 1,
+                    "file_name": f"contact_{contact_id}.json",
+                }
+                for contact_id in range(1, 31)
+                if contact_id not in omitted_ids
+            ],
+            "assignment_options": [],
+        }
+
+    def test_editor_keeps_local_contacts_omitted_from_drive(self) -> None:
+        omitted = {29, 30}
+        manifest = self._overlapping_manifest_omitting(omitted)
+        marked_ids: list[int] = []
+
+        with (
+            patch.object(
+                gss,
+                "get_google_sync_summary",
+                return_value={"state": {"contacts_sync_revision": 4}},
+            ),
+            patch.object(gss, "_this_copy_holds_editor_lock", return_value=True),
+            patch.object(gss, "_drive_load_json_file_content", return_value=manifest),
+            patch.object(gss, "_delete_local_contact_record") as delete_local,
+            patch.object(gss, "mark_contact_for_drive_export", side_effect=marked_ids.append),
+            patch.object(gss, "mark_contacts_manifest_for_drive_export") as mark_manifest,
+            patch.object(gss, "_store_local_sync_revisions"),
+            patch.object(gss, "_replace_contact_assignment_options"),
+            patch.object(gss, "_import_changed_contact_photos_from_google_drive"),
+        ):
+            result = gss.import_shared_contacts_from_google_drive(
+                access_token="token",
+                storage={"contacts_current_file_id": "current"},
+                remote_sync_state={"contacts_sync_revision": 5},
+                backfill_manifest_digests=False,
+            )
+
+        self.assertTrue(result)
+        delete_local.assert_not_called()
+        self.assertEqual(marked_ids, [29, 30])
+        mark_manifest.assert_called_once()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 30)
+
+    def test_non_editor_still_adopts_small_drive_deletes(self) -> None:
+        omitted = {29, 30}
+        manifest = self._overlapping_manifest_omitting(omitted)
+
+        with (
+            patch.object(
+                gss,
+                "get_google_sync_summary",
+                return_value={"state": {"contacts_sync_revision": 4}},
+            ),
+            patch.object(gss, "_this_copy_holds_editor_lock", return_value=False),
+            patch.object(gss, "_drive_load_json_file_content", return_value=manifest),
+            patch.object(gss, "_delete_local_contact_record") as delete_local,
+            patch.object(gss, "_store_local_sync_revisions"),
+            patch.object(gss, "_replace_contact_assignment_options"),
+            patch.object(gss, "collapse_stale_identity_duplicate_contacts", return_value=[]),
+            patch.object(gss, "_import_changed_contact_photos_from_google_drive"),
+        ):
+            result = gss.import_shared_contacts_from_google_drive(
+                access_token="token",
+                storage={"contacts_current_file_id": "current"},
+                remote_sync_state={"contacts_sync_revision": 5},
+                backfill_manifest_digests=False,
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(
+            [call.args[1] for call in delete_local.call_args_list],
+            [29, 30],
+        )
+
+
+class EditorLockDuringSigninTests(unittest.TestCase):
+    def test_editor_lock_counts_during_signin_sync(self) -> None:
+        summary = {
+            "account": {"status": "connected"},
+            "state": {
+                "multi_editor_enabled": 1,
+                "access_role": "editor",
+                "editor_mode": "edit",
+                "editor_session_id": "session-1",
+                "editor_lock_expires_at": "2099-01-01T00:00:00+00:00",
+                "signin_sync_in_progress": 1,
+            },
+        }
+        with patch.object(gss, "get_google_sync_summary", return_value=summary):
+            self.assertTrue(gss._this_copy_holds_editor_lock())
+            self.assertFalse(gss.is_editing_allowed())
+            self.assertFalse(gss._keep_drive_ids_not_in_local_for_incremental_export())
+
+    def test_pending_editor_does_not_hold_lock(self) -> None:
+        summary = {
+            "account": {"status": "connected"},
+            "state": {
+                "multi_editor_enabled": 1,
+                "access_role": "editor",
+                "editor_mode": "no_edit",
+                "pending_editor_name": "Pat",
+                "signin_sync_in_progress": 1,
+            },
+        }
+        with patch.object(gss, "get_google_sync_summary", return_value=summary):
+            self.assertFalse(gss._this_copy_holds_editor_lock())
+            self.assertTrue(gss._keep_drive_ids_not_in_local_for_incremental_export())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -105,6 +105,43 @@ class PendingEditsUploadPerformanceTests(unittest.TestCase):
         self.assertEqual(ids, [1, 2])
         self.assertNotIn(9000, ids)
 
+    def test_replace_keeps_drive_ids_this_copy_does_not_have(self) -> None:
+        existing = {
+            "format": "contactsfreeshare.shared_contacts.v2",
+            "contacts": [
+                {
+                    "id": 1,
+                    "shared_drive_revision": 3,
+                    "status": "",
+                    "family_name": "Smith",
+                    "given_name": "John",
+                    "file_name": "contact_1.json",
+                },
+                {
+                    "id": 9000,
+                    "shared_drive_revision": 6,
+                    "status": "",
+                    "family_name": "Leftover",
+                    "given_name": "Card",
+                    "file_name": "contact_9000.json",
+                },
+            ],
+        }
+
+        with patch(
+            "app.services.google_sync_service._build_shared_contact_record_payload",
+            return_value=None,
+        ):
+            replaced = _replace_shared_contacts_manifest_from_local(
+                self.conn,
+                existing_manifest=existing,
+                refreshed_contact_ids=[1],
+                keep_drive_ids_not_in_local=True,
+            )
+
+        ids = [item["id"] for item in replaced["contacts"]]
+        self.assertEqual(ids, [1, 2, 9000])
+
     def test_membership_delta_finds_missing_and_leftover_ids(self) -> None:
         existing = {
             "format": "contactsfreeshare.shared_contacts.v2",
