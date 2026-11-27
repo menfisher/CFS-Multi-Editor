@@ -2,8 +2,13 @@
   "format": "contactsfreeshare.published_revisions.v1",
   "revisions": [
     {
-      "version": "1.261",
+      "version": "1.262",
       "date_display": "11/26/2026",
+      "description": "Fix automatically shows live Drive progress (contact names and counts) while the roster fix runs. Recovers cleanly if the app reloads mid-fix."
+    },
+    {
+      "date_display": "11/26/2026",
+      "version": "1.261",
       "description": "Pending phones no longer drop Drive contacts they never had. An Editor copy, including Mobile with the lock, can still overwrite Drive. Editor sign-in keeps local cards omitted from Drive and puts them back."
     },
     {
