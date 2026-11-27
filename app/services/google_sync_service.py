@@ -6496,7 +6496,8 @@ def export_shared_contacts_to_google_drive() -> bool:
             for item in (existing_manifest.get("contacts") if isinstance(existing_manifest, dict) else []) or []
             if isinstance(item, dict) and int(item.get("id") or 0) > 0
         }
-        for contact_id in changed_contact_ids:
+        export_total = len(changed_contact_ids)
+        for export_index, contact_id in enumerate(changed_contact_ids, start=1):
             payload = _build_shared_contact_record_payload(conn, contact_id)
             if payload is None:
                 continue
@@ -6508,8 +6509,8 @@ def export_shared_contacts_to_google_drive() -> bool:
                     conn,
                     in_progress=True,
                     phase="drive_shared_data",
-                    total_count=1,
-                    processed_count=0,
+                    total_count=export_total or 1,
+                    processed_count=export_index,
                     current_contact=f"Drive: finding contact file {filename}",
                     started_at=str(state.get("upload_started_at") or _now_text()),
                 )
@@ -6543,8 +6544,8 @@ def export_shared_contacts_to_google_drive() -> bool:
                 conn,
                 in_progress=True,
                 phase="drive_shared_data",
-                total_count=1,
-                processed_count=0,
+                total_count=export_total or 1,
+                processed_count=export_index,
                 current_contact=current_contact_name or "Shared app data",
                 started_at=str(state.get("upload_started_at") or _now_text()),
             )
@@ -6554,8 +6555,8 @@ def export_shared_contacts_to_google_drive() -> bool:
                     conn,
                     in_progress=True,
                     phase="drive_shared_data",
-                    total_count=1,
-                    processed_count=0,
+                    total_count=export_total or 1,
+                    processed_count=export_index,
                     current_contact=f"Drive: creating contact file {filename}",
                     started_at=str(state.get("upload_started_at") or _now_text()),
                 )
@@ -6570,8 +6571,8 @@ def export_shared_contacts_to_google_drive() -> bool:
                 conn,
                 in_progress=True,
                 phase="drive_shared_data",
-                total_count=1,
-                processed_count=0,
+                total_count=export_total or 1,
+                processed_count=export_index,
                 current_contact=f"Drive: uploading {current_contact_name or filename}",
                 started_at=str(state.get("upload_started_at") or _now_text()),
             )
@@ -8860,13 +8861,18 @@ def import_changes_list_from_google_drive(
         return True
 
 
-def sync_shared_data_from_google_drive() -> None:
+def sync_shared_data_from_google_drive(progress_callback=None) -> None:
     access_token, _account_email = _get_valid_access_token()
     storage = _ensure_shared_drive_storage(access_token)
     remote_sync_state = _load_shared_sync_state(access_token, storage)
     import_shared_settings_from_google_drive(access_token=access_token, storage=storage, remote_sync_state=remote_sync_state)
     import_book_layouts_from_google_drive(access_token=access_token, storage=storage, remote_sync_state=remote_sync_state)
-    import_shared_contacts_from_google_drive(access_token=access_token, storage=storage, remote_sync_state=remote_sync_state)
+    import_shared_contacts_from_google_drive(
+        access_token=access_token,
+        storage=storage,
+        remote_sync_state=remote_sync_state,
+        progress_callback=progress_callback,
+    )
     import_shared_meetingdata_from_google_drive(access_token=access_token, storage=storage, remote_sync_state=remote_sync_state)
     import_field_list_from_google_drive(access_token=access_token, storage=storage, remote_sync_state=remote_sync_state)
     import_changes_list_from_google_drive(access_token=access_token, storage=storage, remote_sync_state=remote_sync_state)

@@ -143,10 +143,53 @@ class RosterFixRunnerTests(unittest.TestCase):
 
     def test_status_includes_elapsed_seconds(self) -> None:
         fix._set_state(running=True, started_at=time.time() - 12, finished_at=0.0, step="Working", log=["Checking"])
-        status = fix.get_roster_fix_status()
+        with patch.object(fix, "get_google_upload_progress", return_value={"in_progress": False}):
+            status = fix.get_roster_fix_status()
         self.assertGreaterEqual(status["elapsed_seconds"], 11)
         self.assertEqual(status["step"], "Working")
         self.assertEqual(status["log"], ["Checking"])
+
+    def test_status_overlays_live_drive_progress(self) -> None:
+        fix._set_state(
+            running=True,
+            started_at=time.time(),
+            finished_at=0.0,
+            step="Fixing Google Drive · adding 2",
+            log=["Fixing Google Drive · adding 2"],
+        )
+        with patch.object(
+            fix,
+            "get_google_upload_progress",
+            return_value={
+                "in_progress": True,
+                "processed_count": 12,
+                "total_count": 40,
+                "current_contact": "Drive: uploading Bible, Keith",
+            },
+        ):
+            status = fix.get_roster_fix_status()
+        self.assertIn("Fixing Google Drive · adding 2", status["step"])
+        self.assertIn("12 of 40", status["step"])
+        self.assertIn("Bible, Keith", status["step"])
+        self.assertEqual(status["log"], ["Fixing Google Drive · adding 2"])
+
+    def test_fix_drive_step_names_counts(self) -> None:
+        steps: list[str] = []
+        real_set = fix._set_state
+
+        def spy(**changes):
+            if "step" in changes:
+                steps.append(changes["step"])
+            real_set(**changes)
+
+        with patch.object(fix, "mark_contact_for_drive_export"), patch.object(
+            fix, "mark_contacts_manifest_for_drive_export"
+        ), patch.object(fix, "export_shared_contacts_to_google_drive"), patch.object(
+            fix, "_set_state", new=spy
+        ):
+            lines = fix._fix_drive({"drive_missing_ids": [1, 2], "drive_extra_ids": [9]})
+        self.assertTrue(any("adding 2" in step and "removing 1" in step for step in steps))
+        self.assertTrue(any("Google Drive: added 2" in line for line in lines))
 
     def test_fix_recipient_reports_live_progress(self) -> None:
         replies = [

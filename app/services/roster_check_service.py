@@ -517,11 +517,15 @@ def _deep_check_is_stale(share_cards: object) -> bool:
     return age > DEEP_CHECK_MAX_AGE_SECONDS
 
 
-def refresh_share_roster_check(*, deep: bool | None = None) -> dict:
+def refresh_share_roster_check(*, deep: bool | None = None, progress=None) -> dict:
     """Fast check first (saved right away), then the slower real-card check when due.
 
     deep=True forces the card check, deep=False skips it, None runs it every 12 hours.
     """
+    def _tick(text: str) -> None:
+        if progress:
+            progress(text)
+
     ensure_google_sync_records()
     cfs_people = _local_cfs_people()
     google_people = None
@@ -536,14 +540,17 @@ def refresh_share_roster_check(*, deep: bool | None = None) -> dict:
         access_token, account_email = "", str((_load_google_account() or {}).get("account_email") or "")
     if access_token:
         try:
+            _tick("owner's Google")
             google_people = _owner_google_people(access_token)
         except Exception:
             google_people = None
         try:
+            _tick("Google Drive")
             drive_ids, drive_labels = _drive_roster_snapshot(access_token)
         except Exception:
             drive_ids, drive_labels = None, {}
     if account_email:
+        _tick("Share recipient lists")
         share_result = fetch_share_roster_status(account_email)
         if share_result and share_result.get("ok") is not False:
             payload = share_result.get("result") if isinstance(share_result.get("result"), dict) else share_result

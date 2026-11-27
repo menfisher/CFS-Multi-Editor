@@ -41,6 +41,7 @@ from app.services.google_sync_service import (
     export_shared_data_after_edit,
     get_current_editor_initials,
     get_google_sync_summary,
+    get_google_upload_progress,
     get_share_web_api_key,
     is_editing_allowed,
     mark_contact_for_drive_export,
@@ -74,6 +75,25 @@ _STATE: dict = {
 PROGRESS_TICK_SECONDS = 5.0
 
 
+def _live_drive_detail() -> str:
+    """What Drive is doing right now, for the roster banner."""
+    try:
+        progress = get_google_upload_progress()
+    except Exception:
+        return ""
+    if not progress.get("in_progress"):
+        return ""
+    contact = str(progress.get("current_contact") or "").strip()
+    processed = int(progress.get("processed_count") or 0)
+    total = int(progress.get("total_count") or 0)
+    parts: list[str] = []
+    if total > 1:
+        parts.append(f"{processed} of {total}")
+    if contact:
+        parts.append(contact)
+    return " · ".join(parts)
+
+
 def get_roster_fix_status() -> dict:
     with _LOCK:
         snapshot = dict(_STATE)
@@ -85,6 +105,11 @@ def get_roster_fix_status() -> dict:
         snapshot["elapsed_seconds"] = max(0, int(end - started))
     else:
         snapshot["elapsed_seconds"] = 0
+    if snapshot.get("running"):
+        detail = _live_drive_detail()
+        step = str(snapshot.get("step") or "Working")
+        if detail and detail not in step:
+            snapshot["step"] = f"{step} · {detail}"
     return snapshot
 
 
@@ -228,12 +253,31 @@ def start_roster_fix() -> dict:
 # --- steps ---------------------------------------------------------------------------
 
 
+def _on_drive_pull_progress(phase, processed_count=None, total_count=None, current_item=None, **kwargs) -> None:
+    if phase != "contacts":
+        return
+    total = int(total_count or 0)
+    processed = int(processed_count or 0)
+    name = str(current_item or "").strip()
+    pieces = ["Getting the latest from Google Drive"]
+    if total > 0:
+        pieces.append(f"{processed} of {total}")
+    if name:
+        pieces.append(name)
+    _progress(" · ".join(pieces))
+
+
 def _fix_drive(report: dict) -> list[str]:
     missing = [int(i) for i in report.get("drive_missing_ids") or [] if int(i) > 0]
     extra = [int(i) for i in report.get("drive_extra_ids") or [] if int(i) > 0]
     if not missing and not extra:
         return []
-    _step("Fixing Google Drive")
+    parts = []
+    if missing:
+        parts.append(f"adding {len(missing)}")
+    if extra:
+        parts.append(f"removing {len(extra)}")
+    _step("Fixing Google Drive · " + ", ".join(parts))
     for contact_id in missing:
         mark_contact_for_drive_export(contact_id)
     mark_contacts_manifest_for_drive_export()
@@ -470,12 +514,15 @@ def _run_fix() -> None:
         _, owner_email = _get_valid_access_token()
         _step("Getting the latest from Google Drive")
         try:
-            sync_shared_data_from_google_drive()
+            sync_shared_data_from_google_drive(progress_callback=_on_drive_pull_progress)
         except Exception as exc:  # noqa: BLE001
             _note(f"Could not pull from Drive first ({str(exc)[:80]}); continuing with this copy")
 
         _step("Checking what needs fixing")
-        report = refresh_share_roster_check(deep=False)
+        report = refresh_share_roster_check(
+            deep=False,
+            progress=lambda text: _progress(f"Checking what needs fixing · {text}"),
+        )
 
         lines += _fix_drive(report)
         lines += _fix_google_missing(report)

@@ -310,6 +310,11 @@
                     else { unlockButton(); }
                     return;
                   }
+                  if (!s.running && !s.started_at) {
+                    unlockButton();
+                    setStatus("The fix stopped when the app reloaded. Click Fix automatically to run it again.");
+                    return;
+                  }
                   timer = setTimeout(poll, 2000);
                   return;
                 }
